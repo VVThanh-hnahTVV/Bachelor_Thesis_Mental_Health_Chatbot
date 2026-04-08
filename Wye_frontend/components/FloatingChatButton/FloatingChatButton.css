@@ -1,0 +1,46 @@
+.floatingChat {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 40;
+}
+
+.floatingChat__btn.ant-btn {
+  width: 4rem !important;
+  height: 4rem !important;
+  min-width: 4rem !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  background: var(--color-secondary-container) !important;
+  color: var(--color-on-secondary-container) !important;
+  box-shadow: 0 8px 28px rgba(58, 102, 110, 0.28);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.floatingChat__btn.ant-btn:hover {
+  background: #b7e5ee !important;
+  color: var(--color-on-secondary-container) !important;
+  transform: scale(1.08);
+}
+
+.floatingChat__btn.ant-btn:active {
+  transform: scale(0.95);
+}
+
+.floatingChat__pulse {
+  animation: floatingChatPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes floatingChatPulse {
+  0%,
+  100% {
+    box-shadow: 0 8px 28px rgba(58, 102, 110, 0.28);
+  }
+  50% {
+    box-shadow: 0 8px 36px rgba(58, 102, 110, 0.45);
+  }
+}

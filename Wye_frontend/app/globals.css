@@ -1,0 +1,38 @@
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+/* Aliases: Next/font injects --font-manrope / --font-noto-serif on body */
+body {
+  --font-sans: var(--font-manrope);
+  --font-serif: var(--font-noto-serif);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-on-background);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --color-primary: #466744;
+  --color-primary-dim: #3a5b39;
+  --color-on-primary: #eaffe3;
+  --color-on-surface: #30332e;
+  --color-on-surface-variant: #5c605a;
+  --color-on-background: #30332e;
+  --color-surface: #fafaf5;
+  --color-surface-container-low: #f3f4ee;
+  --color-surface-container-highest: #e0e4dc;
+  --color-primary-container: #c6edc1;
+  --color-secondary: #3a666e;
+  --color-secondary-container: #c5f3fd;
+  --color-on-secondary-container: #315d65;
+  --color-tertiary-container: #fbc08f;
+  --color-outline-variant: #b0b3ac;
+}
+
+::selection {
+  background: var(--color-primary-container);
+  color: #264627;
+}
