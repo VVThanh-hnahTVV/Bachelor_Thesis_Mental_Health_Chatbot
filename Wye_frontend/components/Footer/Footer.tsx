@@ -4,7 +4,7 @@ export function Footer() {
   return (
     <footer className="footer">
       <p className="footer__text">
-        © 2026 Serene Mental Wellness. Crafted for peace of mind.
+        © 2026 Wye Mental Wellness. Crafted for peace of mind.
       </p>
     </footer>
   );
