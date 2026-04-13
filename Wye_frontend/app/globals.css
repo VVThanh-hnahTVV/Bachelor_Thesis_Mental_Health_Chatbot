@@ -30,6 +30,10 @@ body {
   --color-on-secondary-container: #315d65;
   --color-tertiary-container: #fbc08f;
   --color-outline-variant: #b0b3ac;
+  --color-surface-container-high: #e7e9e2;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-primary-container: #395938;
+  --color-outline: #787c75;
 }
 
 ::selection {

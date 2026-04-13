@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Noto_Serif } from "next/font/google";
-import { AntdRegistry } from "@ant-design/nextjs-registry";
-import { ConfigProvider } from "antd";
+import { AppProviders } from "./providers";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -32,19 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${manrope.variable} ${notoSerif.variable}`}>
-        <AntdRegistry>
-          <ConfigProvider
-            theme={{
-              token: {
-                colorPrimary: "#466744",
-                borderRadiusLG: 24,
-                fontFamily: "var(--font-manrope), system-ui, sans-serif",
-              },
-            }}
-          >
-            {children}
-          </ConfigProvider>
-        </AntdRegistry>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

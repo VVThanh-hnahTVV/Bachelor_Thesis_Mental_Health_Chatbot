@@ -1,10 +1,10 @@
 """Application settings and LangChain chat models wired from environment."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
 
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="llama-3.3-70b-versatile")
     openai_model: str = Field(default="gpt-4o-mini")
     gemini_model: str = Field(default="gemini-2.0-flash")
+
+    mongo_uri: SecretStr = Field(..., alias='MONGO_URI')
+    mongo_db_name: str = Field(default='mental_health', alias='MONGO_DB_NAME')
 
     @model_validator(mode="after")
     def _strip_dummy_keys(self) -> Settings:
@@ -116,3 +119,14 @@ def build_llm_registry(settings: Settings | None = None) -> LLMRegistry:
 def get_llm_registry() -> LLMRegistry:
     """Cached registry for use across the app lifecycle (invalidate cache in tests if env changes)."""
     return build_llm_registry(get_settings())
+
+
+@lru_cache
+def get_mongo_client() -> AsyncIOMotorClient:
+    s = get_settings()
+    return AsyncIOMotorClient(s.mongo_uri.get_secret_value())
+
+def get_database() -> AsyncIOMotorDatabase:
+    s = get_settings()
+    return get_mongo_client()[s.mongo_db_name]
+

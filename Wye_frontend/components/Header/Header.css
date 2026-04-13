@@ -22,6 +22,9 @@
 }
 
 .header__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-family: var(--font-serif);
   font-size: 1.5rem;
   font-style: italic;
@@ -61,7 +64,60 @@
   transform: scale(1.03);
 }
 
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header__authBtn {
+  cursor: pointer !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 600 !important;
+  border-radius: 9999px !important;
+  height: auto !important;
+  padding: 0.5rem 1.25rem !important;
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-primary-dim) 100%
+  ) !important;
+  border: none !important;
+  box-shadow: 0 6px 18px -6px rgba(70, 103, 68, 0.35) !important;
+  color: #ffffff !important;
+}
+
+.header__authBtn span {
+  cursor: pointer !important;
+  color: #ffffff !important;
+}
+
+.header__authBtn:hover {
+  background: linear-gradient(
+    90deg,
+    var(--color-primary-dim) 0%,
+    var(--color-primary) 100%
+  ) !important;
+  color: #ffffff !important;
+}
+
+.header__authBtn:hover span {
+  color: #ffffff !important;
+}
+
+.header__authBtn:focus-visible,
+.header__authBtn:focus-visible span {
+  color: #ffffff !important;
+}
+
+@media (max-width: 767px) {
+  .header__authBtn:not(.ant-btn-block) {
+    display: none !important;
+  }
+}
+
 .header__menuBtn {
+  cursor: pointer !important;
   display: flex !important;
   align-items: center;
   justify-content: center;
@@ -75,7 +131,27 @@
 }
 
 .header__drawer .ant-drawer-body {
-  padding-top: 24px;
+  padding-top: 16px;
+}
+
+.header__drawerAuth {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(120, 124, 117, 0.12);
+}
+
+.header__registerBtn {
+  cursor: pointer !important;
+  font-family: var(--font-sans) !important;
+  font-weight: 600 !important;
+  border-radius: 9999px !important;
+  height: auto !important;
+  padding: 0.5rem 1.25rem !important;
+  border-color: rgba(70, 103, 68, 0.35) !important;
+  color: var(--color-primary) !important;
 }
 
 .header__drawerLink {
