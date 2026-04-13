@@ -8,6 +8,7 @@ type ApiRequestOptions = {
   headers?: HeadersInit;
   query?: QueryParams;
   signal?: AbortSignal;
+  skipRefresh?: boolean;
 };
 
 type ApiErrorPayload = {
@@ -49,6 +50,50 @@ const mergeHeaders = (headers?: HeadersInit): Headers => {
   return merged;
 };
 
+const getCookie = (name: string): string => {
+  if (typeof document === "undefined") return "";
+  const token = document.cookie
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+  if (!token) return "";
+  return decodeURIComponent(token.slice(name.length + 1));
+};
+
+const setCookie = (name: string, value: string, maxAgeSeconds: number) => {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax`;
+};
+
+const shouldAttemptRefresh = (endpoint: string) =>
+  !endpoint.startsWith("/auth/login") &&
+  !endpoint.startsWith("/auth/register") &&
+  !endpoint.startsWith("/auth/refresh");
+
+const shouldAttachAccessToken = (endpoint: string) =>
+  !endpoint.startsWith("/auth/login") &&
+  !endpoint.startsWith("/auth/register") &&
+  !endpoint.startsWith("/auth/refresh");
+
+const tryRefreshAccessToken = async (): Promise<boolean> => {
+  const refreshToken = getCookie("refreshToken");
+  if (!refreshToken) return false;
+  try {
+    const response = await fetch(buildUrl("/auth/refresh"), {
+      method: "POST",
+      headers: mergeHeaders(),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) return false;
+    const payload = (await response.json()) as { access_token?: string };
+    if (!payload.access_token) return false;
+    setCookie("accessToken", payload.access_token, 60 * 60 * 24 * 7);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const parseError = async (response: Response): Promise<ApiError> => {
   let payload: ApiErrorPayload | undefined;
   try {
@@ -70,14 +115,31 @@ async function apiRequest<TResponse, TBody = unknown>(
   body?: TBody,
   options?: ApiRequestOptions
 ): Promise<TResponse> {
-  const response = await fetch(buildUrl(endpoint, options?.query), {
+  const requestUrl = buildUrl(endpoint, options?.query);
+  const requestHeaders = mergeHeaders(options?.headers);
+  if (shouldAttachAccessToken(endpoint) && !requestHeaders.has("Authorization")) {
+    const accessToken = getCookie("accessToken");
+    if (accessToken) {
+      requestHeaders.set("Authorization", `Bearer ${accessToken}`);
+    }
+  }
+
+  const response = await fetch(requestUrl, {
     method,
-    headers: mergeHeaders(options?.headers),
+    headers: requestHeaders,
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: options?.signal,
   });
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !options?.skipRefresh &&
+      shouldAttemptRefresh(endpoint) &&
+      (await tryRefreshAccessToken())
+    ) {
+      return apiRequest<TResponse, TBody>(method, endpoint, body, { ...options, skipRefresh: true });
+    }
     throw await parseError(response);
   }
 

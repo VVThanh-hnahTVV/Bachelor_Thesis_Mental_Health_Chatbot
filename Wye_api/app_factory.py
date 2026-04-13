@@ -4,8 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_mongo_client, get_settings
-from db.setup_collections import ensure_users_collection
+from db.setup_collections import (
+    ensure_conversations_collection,
+    ensure_messages_collection,
+    ensure_users_collection,
+)
 from routes.auth import auth_router
+from routes.chat import chat_router
 
 
 @asynccontextmanager
@@ -16,6 +21,8 @@ async def lifespan(app: FastAPI):
         await client.admin.command("ping")
         db = client[s.mongo_db_name]
         await ensure_users_collection(db)
+        await ensure_conversations_collection(db)
+        await ensure_messages_collection(db)
         print("Connected to MongoDB", s.mongo_db_name)
         app.state.mongo_client = client
         app.state.db = db
@@ -48,5 +55,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
+    app.include_router(chat_router)
 
     return app

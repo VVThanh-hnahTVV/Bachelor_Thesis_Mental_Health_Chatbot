@@ -10,6 +10,9 @@ from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _secret_present(value: SecretStr | None) -> bool:
@@ -98,7 +101,7 @@ def build_llm_registry(settings: Settings | None = None) -> LLMRegistry:
     if _secret_present(s.groq_api_key):
         groq = ChatGroq(
             model=s.groq_model,
-            api_key=s.groq_api_key.get_secret_value(),
+            temperature=0.0,
         )
 
     openai: ChatOpenAI | None = None
@@ -106,14 +109,14 @@ def build_llm_registry(settings: Settings | None = None) -> LLMRegistry:
     if okey is not None:
         openai = ChatOpenAI(
             model=s.openai_model,
-            api_key=okey.get_secret_value(),
+            temperature=0.0,
         )
 
     gemini: ChatGoogleGenerativeAI | None = None
     if _secret_present(s.gemini_api_key):
         gemini = ChatGoogleGenerativeAI(
             model=s.gemini_model,
-            google_api_key=s.gemini_api_key.get_secret_value(),
+            temperature=0.0,
         )
 
     return LLMRegistry(groq=groq, openai=openai, gemini=gemini)

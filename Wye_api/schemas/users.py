@@ -73,3 +73,16 @@ class AuthResponse(BaseModel):
     token_type: str = "Bearer"
 
     model_config = ConfigDict(extra="forbid")
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+
+    model_config = ConfigDict(extra="forbid")

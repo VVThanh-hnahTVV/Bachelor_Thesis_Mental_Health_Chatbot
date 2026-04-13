@@ -48,6 +48,11 @@ export function AuthModal({ open, onClose, mode, onModeChange, onAuthSuccess }: 
     const maxAgeSeconds = 60 * 60 * 24 * 7;
     document.cookie = `accessToken=${encodeURIComponent(accessToken)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax`;
   };
+  const setRefreshTokenCookie = (refreshToken?: string) => {
+    if (!refreshToken) return;
+    const maxAgeSeconds = 60 * 60 * 24 * 30;
+    document.cookie = `refreshToken=${encodeURIComponent(refreshToken)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax`;
+  };
 
   const handleFinish = async (values: AuthFormValues) => {
     try {
@@ -58,6 +63,7 @@ export function AuthModal({ open, onClose, mode, onModeChange, onAuthSuccess }: 
           password: values.password,
         });
         setAccessTokenCookie(response.access_token);
+        setRefreshTokenCookie(response.refresh_token);
         messageApi.success("Đăng ký thành công");
       } else {
         const response = await login({
@@ -65,6 +71,7 @@ export function AuthModal({ open, onClose, mode, onModeChange, onAuthSuccess }: 
           password: values.password,
         });
         setAccessTokenCookie(response.access_token);
+        setRefreshTokenCookie(response.refresh_token);
         messageApi.success("Đăng nhập thành công");
       }
 
