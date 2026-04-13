@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, Drawer } from "antd";
-import { MenuOutlined } from "@ant-design/icons";
+import { Avatar, Button, Drawer } from "antd";
+import { MenuOutlined, UserOutlined } from "@ant-design/icons";
 import { AuthModal } from "../AuthModal/AuthModal";
 import "./Header.css";
 
@@ -19,17 +19,19 @@ export function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const hasAccessToken = () =>
+    document.cookie
+      .split(";")
+      .map((cookie) => cookie.trim())
+      .some((cookie) => cookie.startsWith("accessToken="));
 
   useEffect(() => {
-    console.log("[Wye Header] mounted (client JS đang chạy)");
+    setIsAuthenticated(hasAccessToken());
   }, []);
 
-  useEffect(() => {
-    console.log("[Wye Header] authOpen =", authOpen, "authMode =", authMode);
-  }, [authOpen, authMode]);
-
   const openAuth = (mode: "login" | "register") => {
-    console.log("[Wye Header] openAuth called, mode =", mode);
     setAuthMode(mode);
     setAuthOpen(true);
     setDrawerOpen(false);
@@ -52,17 +54,20 @@ export function Header() {
           </nav>
 
           <div className="header__actions">
-            <Button
-              type="primary"
-              htmlType="button"
-              className="header__authBtn"
-              onClick={(e) => {
-                console.log("[Wye Header] Đăng nhập button onClick", e.type);
-                openAuth("login");
-              }}
-            >
-              Đăng nhập
-            </Button>
+            {isAuthenticated ? (
+              <Avatar className="header__avatar" size={40}>
+                <UserOutlined />
+              </Avatar>
+            ) : (
+              <Button
+                type="primary"
+                htmlType="button"
+                className="header__authBtn"
+                onClick={() => openAuth("login")}
+              >
+                Đăng nhập
+              </Button>
+            )}
             <Button
               type="text"
               className="header__menuBtn"
@@ -81,23 +86,33 @@ export function Header() {
             width={280}
           >
             <div className="header__drawerAuth">
-              <Button
-                type="primary"
-                htmlType="button"
-                block
-                className="header__authBtn"
-                onClick={() => openAuth("login")}
-              >
-                Đăng nhập
-              </Button>
-              <Button
-                type="default"
-                block
-                className="header__registerBtn"
-                onClick={() => openAuth("register")}
-              >
-                Tạo tài khoản
-              </Button>
+              {isAuthenticated ? (
+                <div className="header__drawerAvatarWrap">
+                  <Avatar className="header__avatar" size={40}>
+                    <UserOutlined />
+                  </Avatar>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    type="primary"
+                    htmlType="button"
+                    block
+                    className="header__authBtn"
+                    onClick={() => openAuth("login")}
+                  >
+                    Đăng nhập
+                  </Button>
+                  <Button
+                    type="default"
+                    block
+                    className="header__registerBtn"
+                    onClick={() => openAuth("register")}
+                  >
+                    Tạo tài khoản
+                  </Button>
+                </>
+              )}
             </div>
             {navItems.map((item) => (
               <Link
@@ -118,6 +133,7 @@ export function Header() {
         onClose={() => setAuthOpen(false)}
         mode={authMode}
         onModeChange={setAuthMode}
+        onAuthSuccess={() => setIsAuthenticated(true)}
       />
     </>
   );

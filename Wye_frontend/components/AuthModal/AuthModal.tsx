@@ -2,7 +2,9 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Form, Input } from "antd";
+import { Form, Input, message } from "antd";
+import { ApiError } from "../../api/apiMethod";
+import { login, register } from "../../api/auth";
 import "./AuthModal.css";
 
 export type AuthMode = "login" | "register";
@@ -12,6 +14,13 @@ type AuthModalProps = {
   onClose: () => void;
   mode: AuthMode;
   onModeChange: (mode: AuthMode) => void;
+  onAuthSuccess: () => void;
+};
+
+type AuthFormValues = {
+  fullName?: string;
+  email: string;
+  password: string;
 };
 
 function BrandPanel() {
@@ -30,14 +39,49 @@ function BrandPanel() {
   );
 }
 
-export function AuthModal({ open, onClose, mode, onModeChange }: AuthModalProps) {
+export function AuthModal({ open, onClose, mode, onModeChange, onAuthSuccess }: AuthModalProps) {
   const [form] = Form.useForm();
+  const [messageApi, contextHolder] = message.useMessage();
   const isRegister = mode === "register";
 
-  const handleFinish = (values: Record<string, string>) => {
-    // Wire to API when ready
-    console.log("[AuthModal]", mode, values);
-    onClose();
+  const setAccessTokenCookie = (accessToken: string) => {
+    const maxAgeSeconds = 60 * 60 * 24 * 7;
+    document.cookie = `accessToken=${encodeURIComponent(accessToken)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax`;
+  };
+
+  const handleFinish = async (values: AuthFormValues) => {
+    try {
+      if (isRegister) {
+        const response = await register({
+          name: values.fullName?.trim() ?? "",
+          email: values.email.trim(),
+          password: values.password,
+        });
+        setAccessTokenCookie(response.access_token);
+        messageApi.success("Đăng ký thành công");
+      } else {
+        const response = await login({
+          email: values.email.trim(),
+          password: values.password,
+        });
+        setAccessTokenCookie(response.access_token);
+        messageApi.success("Đăng nhập thành công");
+      }
+
+      onAuthSuccess();
+      onClose();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const detail =
+          (typeof error.payload?.detail === "string" && error.payload.detail) ||
+          (typeof error.payload?.message === "string" && error.payload.message) ||
+          error.message;
+        messageApi.error(detail);
+        return;
+      }
+
+      messageApi.error("Không thể kết nối máy chủ, vui lòng thử lại.");
+    }
   };
 
   const formBlock = (
@@ -186,32 +230,35 @@ export function AuthModal({ open, onClose, mode, onModeChange }: AuthModalProps)
   }
 
   return createPortal(
-    <div className="authModal__portal" role="presentation">
-      <button
-        type="button"
-        className="authModal__portalMask"
-        aria-label="Đóng"
-        onClick={onClose}
-      />
-      <div
-        className="authModal__portalDialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="auth-modal-title"
-      >
-        <button type="button" className="authModal__portalClose" onClick={onClose} aria-label="Đóng">
-          ×
-        </button>
-        <div className="authModal__card" data-auth-mode={mode}>
-          <div className="authModal__cardTrack">
-            <div className="authModal__cardHalf authModal__cardHalf--brand">
-              <BrandPanel />
+    <>
+      {contextHolder}
+      <div className="authModal__portal" role="presentation">
+        <button
+          type="button"
+          className="authModal__portalMask"
+          aria-label="Đóng"
+          onClick={onClose}
+        />
+        <div
+          className="authModal__portalDialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+        >
+          <button type="button" className="authModal__portalClose" onClick={onClose} aria-label="Đóng">
+            ×
+          </button>
+          <div className="authModal__card" data-auth-mode={mode}>
+            <div className="authModal__cardTrack">
+              <div className="authModal__cardHalf authModal__cardHalf--brand">
+                <BrandPanel />
+              </div>
+              <div className="authModal__cardHalf authModal__cardHalf--form">{formBlock}</div>
             </div>
-            <div className="authModal__cardHalf authModal__cardHalf--form">{formBlock}</div>
           </div>
         </div>
       </div>
-    </div>,
+    </>,
     document.body
   );
 }

@@ -70,6 +70,16 @@
   gap: 0.75rem;
 }
 
+.header__avatar {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.header__avatar .anticon {
+  font-size: 18px;
+}
+
 .header__authBtn {
   cursor: pointer !important;
   font-family: var(--font-sans) !important;
@@ -141,6 +151,11 @@
   margin-bottom: 20px;
   padding-bottom: 16px;
   border-bottom: 1px solid rgba(120, 124, 117, 0.12);
+}
+
+.header__drawerAvatarWrap {
+  display: flex;
+  justify-content: center;
 }
 
 .header__registerBtn {

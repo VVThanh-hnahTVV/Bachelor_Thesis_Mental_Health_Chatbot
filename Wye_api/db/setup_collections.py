@@ -6,46 +6,26 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 USERS_COLLECTION = "users"
 
-# Optional auth fields: omit from document until set. Never store plaintext passwords — use ``password_hash``.
 USERS_JSON_SCHEMA: dict = {
     "bsonType": "object",
     "required": [
-        "device_id",
+        "name",
+        "email",
+        "password_hash",
         "created_at",
-        "last_active",
-        "platform",
-        "locale",
-        "settings",
+        "updated_at",
     ],
     "properties": {
         "_id": {"bsonType": "objectId"},
-        "device_id": {"bsonType": "string", "minLength": 1},
-        "created_at": {"bsonType": "date"},
-        "last_active": {"bsonType": "date"},
-        "platform": {"enum": ["ios", "android", "web"]},
-        "locale": {
-            "bsonType": "string",
-            "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
-        },
-        "settings": {
-            "bsonType": "object",
-            "required": ["reminder_enabled", "notification_time"],
-            "properties": {
-                "reminder_enabled": {"bsonType": "bool"},
-                "notification_time": {
-                    "bsonType": "string",
-                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-                },
-            },
-            "additionalProperties": False,
-        },
+        "name": {"bsonType": "string", "minLength": 1},
         "email": {
             "bsonType": "string",
             "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
         },
         "password_hash": {"bsonType": "string", "minLength": 1},
-        "access_token": {"bsonType": ["string", "null"]},
-        "refresh_token": {"bsonType": ["string", "null"]},
+        "created_at": {"bsonType": "date"},
+        "updated_at": {"bsonType": "date"},
+        "last_login_at": {"bsonType": ["date", "null"]},
     },
     "additionalProperties": False,
 }
@@ -61,13 +41,24 @@ async def ensure_users_collection(db: AsyncIOMotorDatabase) -> None:
             validationLevel="strict",
             validationAction="error",
         )
+    else:
+        await db.command(
+            {
+                "collMod": USERS_COLLECTION,
+                "validator": {"$jsonSchema": USERS_JSON_SCHEMA},
+                "validationLevel": "strict",
+                "validationAction": "error",
+            }
+        )
 
     coll = db[USERS_COLLECTION]
-    await coll.create_index("device_id", unique=True)
+    index_info = await coll.index_information()
+    for index_name in ("users_email_unique_sparse", "device_id_1", "last_active_-1"):
+        if index_name in index_info:
+            await coll.drop_index(index_name)
+
     await coll.create_index(
         "email",
         unique=True,
-        sparse=True,
-        name="users_email_unique_sparse",
+        name="users_email_unique",
     )
-    await coll.create_index([("last_active", -1)])

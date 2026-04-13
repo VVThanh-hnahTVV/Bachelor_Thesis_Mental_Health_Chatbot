@@ -56,6 +56,10 @@ class Settings(BaseSettings):
 
     mongo_uri: SecretStr = Field(..., alias='MONGO_URI')
     mongo_db_name: str = Field(default='mental_health', alias='MONGO_DB_NAME')
+    jwt_secret_key: SecretStr = Field(..., alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
     @model_validator(mode="after")
     def _strip_dummy_keys(self) -> Settings:
