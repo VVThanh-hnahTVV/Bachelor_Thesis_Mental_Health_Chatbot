@@ -1,0 +1,27 @@
+[
+  {
+    "id": "sleep-hygiene",
+    "topic": "sleep",
+    "text": "Consistent sleep and wake times, dim screens before bed, and a cool dark room support mood regulation."
+  },
+  {
+    "id": "breathing-478",
+    "topic": "anxiety",
+    "text": "Try 4-7-8 breathing: inhale 4 seconds, hold 7, exhale 8, repeated a few cycles to calm the nervous system."
+  },
+  {
+    "id": "grounding-54321",
+    "topic": "anxiety",
+    "text": "Grounding 5-4-3-2-1: notice five things you see, four you feel, three you hear, two you smell, one you taste."
+  },
+  {
+    "id": "behavioral-activation",
+    "topic": "depression",
+    "text": "Small scheduled pleasant activities, even brief walks or listening to music, can improve motivation over time."
+  },
+  {
+    "id": "professional-help",
+    "topic": "general",
+    "text": "If symptoms persist or worsen, consider speaking with a licensed clinician or your doctor for personalized care."
+  }
+]
