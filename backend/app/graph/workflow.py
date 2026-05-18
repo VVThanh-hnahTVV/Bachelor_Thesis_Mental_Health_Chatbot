@@ -22,6 +22,7 @@ from app.config import ProviderName
 from app.graph.nodes.emotion_intent import node_emotion_intent
 from app.graph.nodes.input_normalizer import node_input_normalize
 from app.graph.nodes.memory_retrieval import node_memory_retrieval
+from app.graph.nodes.objection_detector import node_objection_detector
 from app.graph.nodes.response_filter import node_response_filter
 from app.graph.nodes.response_generator import node_response_generator
 from app.graph.nodes.therapy_router import node_therapy_router
@@ -63,6 +64,10 @@ class GraphState(TypedDict, total=False):
     # Phase 3: Memory
     retrieved_chunks: list[str]
     long_term_context: dict[str, Any]
+
+    # Phase 3b: Objection
+    objection_detected: bool
+    objection_type: str | None
 
     # Phase 4: Therapy
     therapy_strategy: str
@@ -125,6 +130,7 @@ def build_graph() -> StateGraph:
 
     g.add_node("input_normalize", node_input_normalize)
     g.add_node("emotion_intent", node_emotion_intent)
+    g.add_node("objection_detector", node_objection_detector)
     g.add_node("off_topic_reply", node_off_topic_reply)
     g.add_node("memory_retrieval", node_memory_retrieval)
     g.add_node("therapy_router", node_therapy_router)
@@ -136,9 +142,10 @@ def build_graph() -> StateGraph:
     g.add_conditional_edges(
         "emotion_intent",
         route_after_emotion_intent,
-        {"off_topic_reply": "off_topic_reply", "memory_retrieval": "memory_retrieval"},
+        {"off_topic_reply": "off_topic_reply", "memory_retrieval": "objection_detector"},
     )
     g.add_edge("off_topic_reply", END)
+    g.add_edge("objection_detector", "memory_retrieval")
     g.add_edge("memory_retrieval", "therapy_router")
     g.add_edge("therapy_router", "response_generator")
     g.add_edge("response_generator", "response_filter")

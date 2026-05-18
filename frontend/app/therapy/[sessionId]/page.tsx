@@ -36,6 +36,10 @@ import {
   ChatSession,
 } from "@/lib/api/chat";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { MessageFeedback } from "@/components/therapy/message-feedback";
+import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
+import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
+import type { QuickReply } from "@/lib/api/chat";
 
 const SUGGESTED_QUESTIONS = [
   { text: "Làm thế nào để quản lý lo lắng tốt hơn?" },
@@ -224,9 +228,15 @@ export default function TherapyPage() {
         setCrisisChoices([]);
       }
 
+      const quickReplies =
+        (response.quick_replies as QuickReply[] | undefined) ||
+        (response.metadata?.quick_replies as QuickReply[] | undefined) ||
+        [];
+
       setMessages((prev) => [
         ...prev,
         {
+          id: response.assistant_message_id,
           role: "assistant",
           content:
             response.response ||
@@ -239,10 +249,13 @@ export default function TherapyPage() {
             crisis_choices: response.crisis_choices,
             emotion: response.emotion,
             therapy_strategy: response.therapy_strategy,
+            quick_replies: quickReplies,
             ...(response.metadata || {}),
           },
         },
       ]);
+
+      // PHQ-2 is now analysed implicitly from conversation signals
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -273,6 +286,73 @@ export default function TherapyPage() {
 
   const handleCrisisChoice = (choice: string) => {
     void sendUserMessage(choice);
+  };
+
+  const openBreathing = async () => {
+    if (!sessionId) return;
+    try {
+      const { reply, assistant_message_id } = await startWellnessSession(
+        sessionId,
+        "breathing_box"
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistant_message_id,
+          role: "assistant",
+          content: reply,
+          timestamp: new Date(),
+          metadata: { suggested_activities: [{ id: "breathing_box", title: "", description: "" }] },
+        },
+      ]);
+    } catch {
+      // still open popup
+    }
+    setShowBreathingPopup(true);
+  };
+
+  const openOcean = async () => {
+    if (!sessionId) return;
+    try {
+      const { reply, assistant_message_id } = await startWellnessSession(
+        sessionId,
+        "ocean_sound"
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistant_message_id,
+          role: "assistant",
+          content: reply,
+          timestamp: new Date(),
+          metadata: { suggested_activities: [{ id: "ocean_sound", title: "", description: "" }] },
+        },
+      ]);
+    } catch {
+      // still open
+    }
+    setShowOceanPopup(true);
+  };
+
+  const handleWellnessComplete = async () => {
+    if (!sessionId) return;
+    try {
+      const { checkin_message, show_micro_feedback } =
+        await completeWellnessSession(sessionId);
+      if (checkin_message) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: checkin_message,
+            timestamp: new Date(),
+            metadata: { show_micro_feedback },
+          },
+        ]);
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const handleSessionSelect = async (selectedSessionId: string) => {
@@ -474,6 +554,26 @@ export default function TherapyPage() {
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                               </div>
 
+                              {msg.role === "assistant" &&
+                                Array.isArray(msg.metadata?.quick_replies) &&
+                                (msg.metadata.quick_replies as QuickReply[]).length > 0 && (
+                                  <QuickReplyChips
+                                    replies={msg.metadata.quick_replies as QuickReply[]}
+                                    onSelect={(text) => void sendUserMessage(text)}
+                                    disabled={isTyping || isChatPaused}
+                                  />
+                                )}
+
+                              {msg.role === "assistant" &&
+                                msg.metadata?.show_micro_feedback &&
+                                msg.id &&
+                                sessionId && (
+                                  <MessageFeedback
+                                    sessionId={sessionId}
+                                    assistantMessageId={msg.id}
+                                  />
+                                )}
+
                               {/* Wellness activity buttons */}
                               {msg.role === "assistant" && msg.metadata?.message_type !== "crisis" &&
                                 (() => {
@@ -491,7 +591,7 @@ export default function TherapyPage() {
                                         <Button
                                           size="sm"
                                           className="rounded-full bg-brand hover:bg-brand/90"
-                                          onClick={() => setShowBreathingPopup(true)}
+                                          onClick={() => void openBreathing()}
                                         >
                                           Mở bài tập hít thở
                                         </Button>
@@ -501,7 +601,7 @@ export default function TherapyPage() {
                                           size="sm"
                                           variant="secondary"
                                           className="rounded-full"
-                                          onClick={() => setShowOceanPopup(true)}
+                                          onClick={() => void openOcean()}
                                         >
                                           Mở âm sóng thư giãn
                                         </Button>
@@ -633,7 +733,13 @@ export default function TherapyPage() {
         </div>
       </div>
 
-      <Dialog open={showBreathingPopup} onOpenChange={setShowBreathingPopup}>
+      <Dialog
+        open={showBreathingPopup}
+        onOpenChange={(open) => {
+          setShowBreathingPopup(open);
+          if (!open) void handleWellnessComplete();
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Bài tập hít thở</DialogTitle>
@@ -641,11 +747,17 @@ export default function TherapyPage() {
               Dành vài phút hít vào - giữ - thở ra để ổn định nhịp thở và giảm căng thẳng.
             </DialogDescription>
           </DialogHeader>
-          <BreathingGame />
+          <BreathingGame onComplete={() => void handleWellnessComplete()} />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showOceanPopup} onOpenChange={setShowOceanPopup}>
+      <Dialog
+        open={showOceanPopup}
+        onOpenChange={(open) => {
+          setShowOceanPopup(open);
+          if (!open) void handleWellnessComplete();
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Âm sóng thư giãn</DialogTitle>

@@ -9,6 +9,8 @@ MESSAGES = "messages"
 MOOD_ENTRIES = "mood_entries"
 ACTIVITY_COMPLETIONS = "activity_completions"
 USER_PROFILES = "user_profiles"
+MESSAGE_FEEDBACK = "message_feedback"
+SCREENING_RESPONSES = "screening_responses"
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
@@ -18,6 +20,10 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[ACTIVITY_COMPLETIONS].create_index([("session_id", 1), ("created_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("linked_message_id", 1)])
     await db[USER_PROFILES].create_index([("session_id", 1)], unique=True)
+    await db[MESSAGE_FEEDBACK].create_index(
+        [("assistant_message_id", 1), ("session_id", 1)], unique=True
+    )
+    await db[SCREENING_RESPONSES].create_index([("session_id", 1), ("created_at", -1)])
 
 
 async def create_conversation(
@@ -220,6 +226,81 @@ async def upsert_user_profile(
         },
         upsert=True,
     )
+
+
+async def count_user_messages(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+) -> int:
+    return await db[MESSAGES].count_documents(
+        {"conversation_id": conversation_id, "role": "user"}
+    )
+
+
+async def save_message_feedback(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    assistant_message_id: str,
+    value: str,
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    doc = {
+        "session_id": session_id,
+        "assistant_message_id": assistant_message_id,
+        "value": value,
+        "created_at": now,
+    }
+    await db[MESSAGE_FEEDBACK].update_one(
+        {"session_id": session_id, "assistant_message_id": assistant_message_id},
+        {"$set": doc},
+        upsert=True,
+    )
+    return doc
+
+
+async def get_message_feedback(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    assistant_message_id: str,
+) -> dict[str, Any] | None:
+    return await db[MESSAGE_FEEDBACK].find_one(
+        {"session_id": session_id, "assistant_message_id": assistant_message_id}
+    )
+
+
+async def save_screening_response(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    instrument: str,
+    answers: list[int],
+    score: int,
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    doc = {
+        "session_id": session_id,
+        "instrument": instrument,
+        "answers": answers,
+        "score": score,
+        "created_at": now,
+    }
+    res = await db[SCREENING_RESPONSES].insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return doc
+
+
+async def latest_screening(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    instrument: str | None = None,
+) -> dict[str, Any] | None:
+    query: dict[str, Any] = {"session_id": session_id}
+    if instrument:
+        query["instrument"] = instrument
+    return await db[SCREENING_RESPONSES].find_one(query, sort=[("created_at", -1)])
 
 
 async def get_mood_trend(

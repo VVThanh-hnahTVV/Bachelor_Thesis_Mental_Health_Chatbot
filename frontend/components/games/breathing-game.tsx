@@ -8,7 +8,11 @@ import { Button } from "@/components/ui/button";
 
 const TOTAL_ROUNDS = 5;
 
-export function BreathingGame() {
+interface BreathingGameProps {
+  onComplete?: () => void;
+}
+
+export function BreathingGame({ onComplete }: BreathingGameProps) {
   const [phase, setPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
   const [progress, setProgress] = useState(0);
   const [round, setRound] = useState(1);
@@ -59,6 +63,10 @@ export function BreathingGame() {
 
     return () => clearInterval(timer);
   }, [phase, round, isComplete, isPaused]);
+
+  useEffect(() => {
+    if (isComplete) onComplete?.();
+  }, [isComplete, onComplete]);
 
   const handleReset = () => {
     setPhase("inhale");

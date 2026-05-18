@@ -66,6 +66,9 @@ async def node_therapy_router(state: dict[str, Any]) -> dict[str, Any]:
     provider: ProviderName = state.get("provider", "openai")
     long_term: dict[str, Any] = state.get("long_term_context") or {}
 
+    if state.get("objection_detected"):
+        return {"therapy_strategy": "reflective_listening"}
+
     if intent == "casual" or is_meta_conversation(user_input):
         return {"therapy_strategy": "reflective_listening"}
 

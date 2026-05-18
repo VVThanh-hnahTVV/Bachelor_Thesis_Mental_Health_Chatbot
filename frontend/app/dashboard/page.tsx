@@ -33,6 +33,7 @@ import { Container } from "@/components/ui/container";
 import { cn } from "@/lib/utils";
 
 import { MoodForm } from "@/components/mood/mood-form";
+import { PhqMiniForm } from "@/components/screening/phq-mini-form";
 import { AnxietyGames } from "@/components/games/anxiety-games";
 
 import {
@@ -282,6 +283,7 @@ export default function Dashboard() {
   // New states for activities and wearables
   const [activities, setActivities] = useState<Activity[]>([]);
   const [showMoodModal, setShowMoodModal] = useState(false);
+  const [showPhqModal, setShowPhqModal] = useState(false);
   const [showCheckInChat, setShowCheckInChat] = useState(false);
   const [activityHistory, setActivityHistory] = useState<DayActivity[]>([]);
   const [showActivityLogger, setShowActivityLogger] = useState(false);
@@ -611,15 +613,15 @@ export default function Dashboard() {
                           "justify-center items-center text-center",
                           "transition-all duration-200 group-hover:translate-y-[-2px]"
                         )}
-                        onClick={handleAICheckIn}
+                        onClick={() => setShowPhqModal(true)}
                       >
                         <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-2">
                           <BrainCircuit className="w-5 h-5 text-blue-500" />
                         </div>
                         <div>
-                          <div className="font-medium text-sm">Check-in</div>
+                          <div className="font-medium text-sm">Khảo sát nhanh</div>
                           <div className="text-xs text-muted-foreground mt-0.5">
-                            Quick wellness check
+                            PHQ-2 (~2 phút)
                           </div>
                         </div>
                       </Button>
@@ -747,6 +749,22 @@ export default function Dashboard() {
             </DialogDescription>
           </DialogHeader>
           <MoodForm onSuccess={() => setShowMoodModal(false)} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPhqModal} onOpenChange={setShowPhqModal}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Khảo sát sàng lọc PHQ-2</DialogTitle>
+            <DialogDescription>
+              Không thay cho đánh giá lâm sàng — chỉ giúp theo dõi xu hướng cảm xúc.
+            </DialogDescription>
+          </DialogHeader>
+          <PhqMiniForm
+            instrument="phq2"
+            onComplete={() => setShowPhqModal(false)}
+            onDismiss={() => setShowPhqModal(false)}
+          />
         </DialogContent>
       </Dialog>
 

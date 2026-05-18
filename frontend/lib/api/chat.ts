@@ -2,6 +2,12 @@ import { getOrCreateSessionId } from "@/lib/session";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+export interface QuickReply {
+  id: string;
+  label: string;
+  message: string;
+}
+
 export interface ChatMessage {
   id?: string;
   role: "user" | "assistant";
@@ -24,6 +30,9 @@ export interface ChatMessage {
       title: string;
       description: string;
     }>;
+    quick_replies?: QuickReply[];
+    show_micro_feedback?: boolean;
+    prompt_screening?: string | null;
     [key: string]: unknown;
   };
 }
@@ -38,6 +47,7 @@ export interface ChatSession {
 export interface ApiResponse {
   message: string;
   response?: string;
+  assistant_message_id?: string;
   // Safety / routing
   chat_blocked?: boolean;
   crisis_choices?: string[];
@@ -45,17 +55,27 @@ export interface ApiResponse {
   // Emotion / therapy
   emotion?: string;
   therapy_strategy?: string;
-  metadata?: {
-    technique?: string;
-    goal?: string;
-    progress?: any[];
-    suggested_activities?: Array<{
-      id: string;
-      title: string;
-      description: string;
-    }>;
-    [key: string]: unknown;
-  };
+  quick_replies?: QuickReply[];
+  metadata?: ChatMessage["metadata"];
+}
+
+export async function submitMessageFeedback(
+  sessionId: string,
+  assistantMessageId: string,
+  value: "yes" | "a_bit" | "no"
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/chat/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      assistant_message_id: assistantMessageId,
+      value,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to submit feedback");
+  }
 }
 
 export const createChatSession = async (): Promise<string> => {
@@ -82,12 +102,19 @@ export const sendChatMessage = async (
   return {
     message: data.reply,
     response: data.reply,
+    assistant_message_id: data.assistant_message_id ?? undefined,
     chat_blocked: data.chat_blocked ?? false,
     crisis_choices: data.crisis_choices ?? [],
     message_type: data.message_type ?? "normal",
     emotion: data.emotion ?? undefined,
     therapy_strategy: data.therapy_strategy ?? undefined,
-    metadata: data.metadata,
+    quick_replies: data.quick_replies ?? [],
+    metadata: {
+      ...(data.metadata || {}),
+      quick_replies: data.quick_replies ?? data.metadata?.quick_replies,
+      show_micro_feedback: data.metadata?.show_micro_feedback,
+      prompt_screening: data.metadata?.prompt_screening,
+    },
   };
 };
 

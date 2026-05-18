@@ -66,10 +66,10 @@ def test_parse_activity_truncates_to_allowed_and_max_two():
 
 @pytest.mark.asyncio
 async def test_high_risk_skips_suggestions():
-    out = await detect_suggested_activities_llm(
+    activities, _ = await detect_suggested_activities_llm(
         user_input="x",
         assistant_reply="y",
         risk_level="high",
         provider="openai",
     )
-    assert out == []
+    assert activities == []

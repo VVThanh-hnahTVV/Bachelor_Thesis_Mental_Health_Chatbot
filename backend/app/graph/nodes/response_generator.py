@@ -16,6 +16,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import ProviderName
+from app.graph.script_bank import resolve_script_reply
 from app.llm.factory import get_chat_model, invoke_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -37,10 +38,11 @@ Luna listens, validates feelings, and gently offers evidence-based techniques wh
 **Always:**
 - Use ONE language per reply — match the user's latest message exactly.
   Vietnamese in → Vietnamese out. English in → English out. No mixed sentences.
-- Sound like a caring friend: warm, sincere, natural, never clinical or robotic.
-- Be concise (roughly 2–5 short sentences unless guiding a breathing exercise).
+- Sound like a caring friend: warm, sincere, respectful, never curt or robotic.
+- Greetings deserve genuine warmth (2–4 sentences): greet back, show you are glad they
+  reached out, briefly that you are here to listen and support — then one gentle question.
+- Other turns: concise but caring (roughly 2–5 sentences unless guiding breathing).
 - Ask at most one gentle follow-up question when it fits.
-- When the user only greets or asks what you can do, keep it light — do not lecture.
 
 **Never:**
 - Mix Vietnamese and English in the same reply.
@@ -61,14 +63,17 @@ Luna listens, validates feelings, and gently offers evidence-based techniques wh
 ROLE_DIRECTIVES: dict[str, str] = {
 
     "casual": """\
-## Role this turn: Natural conversation
+## Role this turn: Warm greeting or small talk
 
-The user is greeting, making small talk, asking who you are, or what you can help with.
-- Introduce yourself briefly as Luna — a companion for emotional wellness (not a doctor).
-- If they ask what you can do: mention listening, gentle support, and simple techniques
-  (breathing, grounding, CBT-style reflection) in plain everyday words — max 3 short points.
-- Do NOT list clinical terms. Do NOT mention apps, ocean sounds, or exercises unless they ask.
-- End with one warm question (e.g. how they are feeling today).
+The user is greeting you or opening the conversation.
+- Respond with sincere warmth and respect — never a bare "Chào bạn" or one-liner.
+- Structure (Vietnamese example tone):
+  1) Greet them back kindly.
+  2) Briefly introduce yourself as Luna, a companion for emotional wellness.
+  3) Show genuine willingness to listen and support, without pressure.
+  4) End with one caring question about how they feel today.
+- Do NOT list services like a menu. Do NOT mention apps or breathing unless they ask.
+- Do NOT say "Bạn muốn làm gì hôm nay".
 """,
 
     "reflective_listening": """\
@@ -123,6 +128,17 @@ The user is asking about a specific mental or physical health topic (not "what c
 - If "Curated knowledge snippets" are provided, weave them in naturally (do not quote verbatim).
 - End with one gentle check-in in the user's language only
   (Vietnamese example: "Điều này có gần với những gì bạn đang trải qua không?").
+""",
+
+    "objection": """\
+## Role this turn: Recover from misunderstanding
+
+The user felt misunderstood, refused a suggestion, or asked you to stop repeating.
+1. Apologize briefly and sincerely (one sentence).
+2. Reflect what you think they meant — ask if you got it right.
+3. Do NOT suggest breathing, apps, tools, or new techniques.
+4. Do NOT repeat your previous advice.
+Keep it to 2–4 short sentences. Warm, humble tone.
 """,
 
     "stabilization": """\
@@ -200,9 +216,12 @@ def build_system_prompt(
     *,
     user_input: str = "",
     reply_language: str = "vi",
+    objection_detected: bool = False,
 ) -> str:
     """Assemble the 2-layer system prompt."""
-    if intent == "casual" or is_meta_conversation(user_input):
+    if objection_detected:
+        directive = ROLE_DIRECTIVES["objection"]
+    elif intent == "casual" or is_meta_conversation(user_input):
         directive = ROLE_DIRECTIVES["casual"]
     else:
         directive = ROLE_DIRECTIVES.get(strategy, _DEFAULT_DIRECTIVE)
@@ -270,10 +289,24 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
     provider: ProviderName = state.get("provider", "openai")
     strategy: str = state.get("therapy_strategy", "reflective_listening")
     intent: str = state.get("intent", "general_health")
+    objection_detected: bool = bool(state.get("objection_detected"))
     chunks: list[str] = state.get("retrieved_chunks") or []
     long_term: dict[str, Any] = state.get("long_term_context") or {}
 
     reply_language = detect_language(user_input, history)
+
+    scripted = await resolve_script_reply(
+        user_input=user_input,
+        intent=intent,
+        strategy=strategy,
+        objection_detected=objection_detected,
+        lang=reply_language,
+        provider=provider,
+        history=history,
+    )
+    if scripted:
+        return {"final_reply": _sanitize(scripted, reply_language=reply_language)}
+
     system_prompt = build_system_prompt(
         strategy,
         intent,
@@ -281,6 +314,7 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
         long_term,
         user_input=user_input,
         reply_language=reply_language,
+        objection_detected=objection_detected,
     )
     human_content = (
         f"Recent conversation:\n{_history_text(history)}\n\nLatest user message:\n{user_input}"

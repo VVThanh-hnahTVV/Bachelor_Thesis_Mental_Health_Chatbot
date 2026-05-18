@@ -25,6 +25,11 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from app.config import ProviderName
 from app.llm.factory import build_provider_chain, get_chat_model, invoke_with_fallback
 from app.loclog import loc_print
+from app.wellness.recommendation_engine import (
+    RecommendationDecision,
+    RecommendationSignals,
+    evaluate_recommendation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,22 +116,52 @@ def _tool_get_activity(activity_id: str) -> dict[str, str] | None:
     return {"id": activity_id, "title": title, "description": desc}
 
 
-# Short bridge + cues: if metadata suggests an in-app activity but the model reply
-# stayed generic, append a line so text matches what the UI button offers.
-_REPLY_ALIGN: dict[str, tuple[str, tuple[str, ...]]] = {
-    "ocean_sound": (
-        "Nếu bạn muốn thử ngay: trong app có âm sóng nhẹ — bạn có thể mở và để nền âm đó đồng hành lúc thư giãn.",
-        ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
-    ),
-    "breathing_box": (
-        "Trong app cũng có bài hít thở hộp (4-4-4-4) nếu bạn muốn thử một nhịp thở đều.",
-        ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
-    ),
+# CTA bridge text keyed by (activity_id, intensity)
+# soft: low-key mention, medium: question, strong: direct invitation
+from app.wellness.recommendation_engine import SuggestionIntensity
+
+_REPLY_ALIGN: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
+    "ocean_sound": {
+        SuggestionIntensity.SOFT: (
+            "Đôi khi âm sóng nhẹ trong app có thể giúp thư giãn một chút — nếu bạn muốn thử.",
+            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+        ),
+        SuggestionIntensity.MEDIUM: (
+            "Bạn có muốn thử mở âm sóng nhẹ trong app không? Nó có thể giúp thư giãn lúc này.",
+            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+        ),
+        SuggestionIntensity.STRONG: (
+            "Mình nghĩ âm sóng nhẹ có thể giúp bạn ngay lúc này — bạn có thể mở trong app.",
+            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+        ),
+    },
+    "breathing_box": {
+        SuggestionIntensity.SOFT: (
+            "Đôi khi một vài nhịp thở đều có thể giúp — trong app có bài hít thở hộp (4-4-4-4) nếu bạn muốn thử.",
+            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+        ),
+        SuggestionIntensity.MEDIUM: (
+            "Bạn có muốn thử bài hít thở hộp (4-4-4-4) trong app không? Chỉ vài phút thôi.",
+            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+        ),
+        SuggestionIntensity.STRONG: (
+            "Mình nghĩ bài hít thở hộp sẽ giúp bạn ổn định hơn ngay bây giờ — bạn có thể mở trong app.",
+            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+        ),
+    },
 }
 
 
-def align_assistant_reply_with_suggestions(reply: str, suggestions: list[dict[str, str]]) -> str:
-    """Keep assistant copy consistent with ``suggested_activities`` shown in the UI."""
+def align_assistant_reply_with_suggestions(
+    reply: str,
+    suggestions: list[dict[str, str]],
+    intensity: SuggestionIntensity = SuggestionIntensity.MEDIUM,
+) -> str:
+    """Append a CTA bridge line when the reply doesn't already mention the activity.
+
+    The bridge text varies by ``intensity`` so Luna sounds natural at each stage:
+    soft → light mention, medium → invitation, strong → direct recommendation.
+    """
     if not suggestions or not (reply or "").strip():
         return reply
     out = reply.strip()
@@ -137,7 +172,8 @@ def align_assistant_reply_with_suggestions(reply: str, suggestions: list[dict[st
         if sid not in _REPLY_ALIGN or sid in used:
             continue
         used.add(sid)
-        bridge, cues = _REPLY_ALIGN[sid]
+        intensity_variants = _REPLY_ALIGN[sid]
+        bridge, cues = intensity_variants.get(intensity, intensity_variants[SuggestionIntensity.MEDIUM])
         if any(c in low for c in cues):
             continue
         out = f"{out}\n\n{bridge}".strip()
@@ -362,6 +398,15 @@ def _fallback_activity_ids(user_input: str, assistant_reply: str) -> list[str]:
     return out[:2]
 
 
+def _ids_to_catalog(ids: list[str]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for aid in ids:
+        item = _tool_get_activity(aid)
+        if item:
+            out.append(item)
+    return out
+
+
 async def detect_suggested_activities_llm(
     *,
     user_input: str,
@@ -369,12 +414,27 @@ async def detect_suggested_activities_llm(
     risk_level: str,
     provider: ProviderName,
     recent_user_messages: str | None = None,
-) -> list[dict[str, str]]:
+    signals: RecommendationSignals | None = None,
+) -> tuple[list[dict[str, str]], SuggestionIntensity]:
+    _default_intensity = SuggestionIntensity.MEDIUM
+
     if risk_level == "high":
-        return []
+        return [], _default_intensity
+
+    decision: RecommendationDecision | None = None
+    if signals is not None:
+        decision = evaluate_recommendation(signals)
+        if not decision.eligible:
+            logger.debug("wellness skipped: %s", decision.reason)
+            return [], _default_intensity
+        _default_intensity = decision.intensity
+        if decision.activity_ids:
+            return _ids_to_catalog(decision.activity_ids), _default_intensity
+        if not decision.use_llm_planner:
+            return [], _default_intensity
+
     recent = (recent_user_messages or user_input).strip()
     if _user_refuses_breathing(recent) or _user_refuses_breathing(user_input):
-        # User opted out of breathing — still allow ocean_sound via tool agent / JSON / heuristics.
         prompt = (
             f"risk_level: {risk_level}\n"
             f"Recent user messages:\n{recent}\n\n"
@@ -396,31 +456,9 @@ async def detect_suggested_activities_llm(
                 user=prompt,
                 strip_breathing=True,
             )
-        if not out_ids:
-            # Fallback: no breathing; ocean if cues present
-            t = f"{user_input}\n{assistant_reply}".lower()
-            if any(
-                k in t
-                for k in (
-                    "nhạc",
-                    "music",
-                    "âm sóng",
-                    "ocean",
-                    "sóng",
-                    "wave",
-                    "thư giãn",
-                    "relax",
-                    "bài tập khác",
-                    "làm cái khác",
-                )
-            ):
-                out_ids = ["ocean_sound"]
-        result: list[dict[str, str]] = []
-        for aid in out_ids:
-            item = _tool_get_activity(aid)
-            if item:
-                result.append(item)
-        return result
+        if not out_ids and decision and decision.allow_keyword_fallback:
+            out_ids = _fallback_activity_ids(user_input, assistant_reply)
+        return _ids_to_catalog(out_ids), _default_intensity
 
     prompt = (
         f"risk_level: {risk_level}\n"
@@ -444,12 +482,8 @@ async def detect_suggested_activities_llm(
             strip_breathing=False,
         )
 
-    if not ids:
+    allow_fallback = bool(decision and decision.allow_keyword_fallback)
+    if not ids and allow_fallback:
         ids = _fallback_activity_ids(user_input, assistant_reply)
 
-    out: list[dict[str, str]] = []
-    for aid in ids:
-        item = _tool_get_activity(aid)
-        if item:
-            out.append(item)
-    return out
+    return _ids_to_catalog(ids), _default_intensity
