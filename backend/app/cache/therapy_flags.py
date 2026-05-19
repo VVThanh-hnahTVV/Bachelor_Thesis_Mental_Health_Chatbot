@@ -49,5 +49,9 @@ async def update_therapy_flags_after_turn(
     flags["last_strategy"] = strategy
     if strategy == "stabilization" and not flags.get("stabilization_turn"):
         flags["stabilization_turn"] = user_turn_count
+    if strategy == "reflective_listening":
+        flags["reflective_listening_turns"] = int(flags.get("reflective_listening_turns") or 0) + 1
+    elif strategy == "grounding":
+        flags["grounding_offered_turn"] = user_turn_count
     await set_therapy_flags(redis, session_id, flags)
     return flags

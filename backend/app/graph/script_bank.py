@@ -17,11 +17,24 @@ logger = logging.getLogger(__name__)
 
 _BANK_PATH = Path(__file__).resolve().parent.parent / "content" / "script_bank.json"
 
+# Fixed scripts for greetings, safety, explicit tool requests — never broad emotion keywords.
+_ALWAYS_SCRIPT_IDS = frozenset({
+    "greeting",
+    "capability",
+    "objection_apology",
+    "refuse_breathing",
+    "hopeless_hint",
+    "anxiety_spike",
+    "breathe_request",
+    "goodbye",
+})
+
 _PARAPHRASE_SYSTEM = """\
-You paraphrase a fixed mental-health script. Rules:
-- Keep the SAME meaning. Never shorten — same or slightly warmer tone, equal length.
+You paraphrase a fixed mental-health script using the conversation context. Rules:
+- Keep the script's intent but weave in what the user actually said when relevant.
+- Never shorten to a generic line like "something tough" or "share a bit more".
 - Do NOT strip greetings down to one short phrase.
-- Do NOT add advice, tools, diagnoses, or new topics.
+- Do NOT add advice, tools, diagnoses, or new topics beyond the script.
 - Match the user's language exactly.
 - Output only the paraphrased message, no quotes or labels.
 """
@@ -105,6 +118,17 @@ def render_template(scenario: Scenario, lang: str) -> str:
     return tpl.strip()
 
 
+def _prior_user_turns(history: list[dict[str, str]]) -> int:
+    return sum(1 for turn in history if turn.get("role") == "user")
+
+
+def should_use_script_for_turn(scenario: Scenario, history: list[dict[str, str]]) -> bool:
+    """Topic scripts only on the first user message; later turns need full LLM context."""
+    if scenario.objection_only or scenario.id in _ALWAYS_SCRIPT_IDS:
+        return True
+    return _prior_user_turns(history) < 1
+
+
 async def resolve_script_reply(
     *,
     user_input: str,
@@ -124,6 +148,8 @@ async def resolve_script_reply(
     )
     if sc is None:
         return None
+    if not should_use_script_for_turn(sc, history):
+        return None
     base = render_template(sc, lang)
     if not base:
         return None
@@ -131,7 +157,15 @@ async def resolve_script_reply(
         return base
     try:
         llm = get_chat_model(provider)
-        human = f"Script to paraphrase:\n{base}\n\nUser message:\n{user_input}"
+        hist_snippet = "\n".join(
+            f"{t.get('role', 'user')}: {t.get('content', '')}"
+            for t in history[-6:]
+        )
+        human = (
+            f"Script to paraphrase:\n{base}\n\n"
+            f"Recent conversation:\n{hist_snippet or '(none)'}\n\n"
+            f"Latest user message:\n{user_input}"
+        )
         msg = await invoke_with_fallback(
             llm,
             [SystemMessage(content=_PARAPHRASE_SYSTEM), HumanMessage(content=human)],

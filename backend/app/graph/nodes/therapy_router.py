@@ -35,6 +35,9 @@ _RELATIONSHIP_KEYWORDS = (
     "unrequited",
     "rejected",
     "breakup",
+    "broke up",
+    "broken up",
+    "split up",
     "relationship",
     "tình cảm",
 )
@@ -53,6 +56,46 @@ _POST_STABILIZATION_USER_MARKERS = (
     "vô ích",
     "vòng vo",
 )
+
+_PHYSICAL_DISTRESS_MARKERS = (
+    "tightness in my chest",
+    "tightness in chest",
+    "lump in my throat",
+    "lump in throat",
+    "chest tight",
+    "can't breathe",
+    "cannot breathe",
+    "hard to breathe",
+    "hyperventilat",
+    "khó thở",
+    "nghẹn",
+    "nghẹn họng",
+    "thắt ngực",
+    "tức ngực",
+    "nóng ruột",
+    "body shaking",
+    "run rẩy",
+    "tim đập",
+    "heart racing",
+    "knot in my stomach",
+    "knot in stomach",
+    "stomach in knots",
+    "shaking",
+    "trembling",
+    "dizzy",
+    "choáng váng",
+    "nauseous",
+    "feel sick",
+    "đau bụng vì căng",
+)
+
+# Intents where the user is processing feelings in the open (not Q&A / education).
+_VENTING_INTENTS_FOR_HEALING = frozenset({
+    "venting",
+    "loneliness",
+    "relationship_stress",
+    "journaling",
+})
 
 # Rule-based fast-path (avoids LLM call for clear cases)
 _FAST_PATH: list[tuple[set[str], set[str], str]] = [
@@ -96,6 +139,46 @@ def is_post_stabilization_followup(user_input: str) -> bool:
     return any(m in t for m in _POST_STABILIZATION_USER_MARKERS)
 
 
+def has_physical_distress(text: str) -> bool:
+    t = text.lower().strip()
+    return any(m in t for m in _PHYSICAL_DISTRESS_MARKERS)
+
+
+def _count_user_turns(history: list[dict[str, str]]) -> int:
+    return sum(1 for m in history if m.get("role") == "user")
+
+
+def is_sustained_emotional_sharing_lane(intent: str, state: dict[str, Any]) -> bool:
+    """Open-ended emotional processing: venting, grief, loneliness, journals, or relationship pain."""
+    if intent in _VENTING_INTENTS_FOR_HEALING:
+        return True
+    if has_relationship_context(state):
+        return True
+    return False
+
+
+def resolve_venting_regulation_strategy(state: dict[str, Any]) -> str:
+    """Listen first; after enough reflective turns or somatic cues, offer grounding (avoid over-probing)."""
+    user_input: str = state.get("user_input", "")
+    history: list[dict[str, str]] = state.get("history") or []
+    flags: dict[str, Any] = state.get("therapy_flags") or {}
+    blob = _user_blob(state)
+
+    if has_physical_distress(user_input) or has_physical_distress(blob):
+        return "grounding"
+
+    reflective_turns = int(flags.get("reflective_listening_turns") or 0)
+    user_turns = _count_user_turns(history) + 1
+
+    # After several reflective turns, shift to grounding offer (Wysa-style healing step)
+    if reflective_turns >= 2 and flags.get("last_strategy") == "reflective_listening":
+        return "grounding"
+    if user_turns >= 4 and flags.get("last_strategy") == "reflective_listening":
+        return "grounding"
+
+    return "reflective_listening"
+
+
 def resolve_hopeless_strategy(state: dict[str, Any]) -> str:
     """First hopeless turn → stabilization; later → post_stabilization or CBT."""
     flags: dict[str, Any] = state.get("therapy_flags") or {}
@@ -104,7 +187,8 @@ def resolve_hopeless_strategy(state: dict[str, Any]) -> str:
         is_post_stabilization_followup(user_input)
         or flags.get("last_strategy") == "stabilization"
     ):
-        if has_relationship_context(state):
+        intent: str = state.get("intent", "general_health")
+        if is_sustained_emotional_sharing_lane(intent, state):
             return "post_stabilization"
         return "CBT"
     if not flags.get("stabilization_turn"):
@@ -135,13 +219,15 @@ async def node_therapy_router(state: dict[str, Any]) -> dict[str, Any]:
     if intent == "casual" or is_meta_conversation(user_input):
         return {"therapy_strategy": "reflective_listening"}
 
-    if intent == "relationship_stress" or has_relationship_context(state):
-        if emotion == "hopeless":
-            return {"therapy_strategy": resolve_hopeless_strategy(state)}
-        return {"therapy_strategy": "reflective_listening"}
-
     if emotion == "hopeless":
         return {"therapy_strategy": resolve_hopeless_strategy(state)}
+
+    # Latest message names body distress → regulate before more verbal exploration
+    if has_physical_distress(user_input) and intent != "psychoeducation":
+        return {"therapy_strategy": "grounding"}
+
+    if is_sustained_emotional_sharing_lane(intent, state):
+        return {"therapy_strategy": resolve_venting_regulation_strategy(state)}
 
     # Post-stabilization without hopeless label
     if flags.get("stabilization_turn") and is_post_stabilization_followup(user_input):

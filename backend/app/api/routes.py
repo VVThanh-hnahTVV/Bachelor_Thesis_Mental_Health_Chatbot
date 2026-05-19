@@ -426,6 +426,9 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
                 suggested_activities=suggested_activities,
                 objection_detected=_objection,
                 conv_state=conv_state,
+                user_input=req.message,
+                primary_emotion=str(emotion or "neutral"),
+                emotion_intensity=_emotion_intensity,
             )
         )
 

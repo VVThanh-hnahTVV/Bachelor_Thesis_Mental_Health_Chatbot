@@ -1,3 +1,4 @@
+from app.wellness.conversation_state import ConvState
 from app.wellness.recommendation_engine import (
     RecommendationSignals,
     evaluate_recommendation,
@@ -125,12 +126,46 @@ def test_micro_feedback_skipped_when_activity_buttons_shown():
     )
 
 
-def test_micro_feedback_on_substantive_reply_without_buttons():
+def test_micro_feedback_on_positive_commitment():
     assert should_show_activity_micro_feedback(
+        user_turn_count=6,
+        intent="seeking_advice",
+        therapy_strategy="behavioral_activation",
+        reply="A" * 120,
+        suggested_activities=[],
+        objection_detected=False,
+        conv_state=ConvState.EXPLORATION,
+        user_input="Mình sẽ đi dạo sau bữa trưa",
+        primary_emotion="sadness",
+        emotion_intensity=0.4,
+    )
+
+
+def test_micro_feedback_not_when_user_still_flat():
+    assert not should_show_activity_micro_feedback(
+        user_turn_count=6,
+        intent="venting",
+        therapy_strategy="reflective_listening",
+        reply="A" * 120,
+        suggested_activities=[],
+        objection_detected=False,
+        conv_state=ConvState.EXPLORATION,
+        user_input="Tôi chẳng có cảm giác gì để chia sẻ",
+        primary_emotion="sadness",
+        emotion_intensity=0.7,
+    )
+
+
+def test_micro_feedback_not_on_generic_substantive_reply():
+    assert not should_show_activity_micro_feedback(
         user_turn_count=6,
         intent="seeking_advice",
         therapy_strategy="CBT",
         reply="A" * 120,
         suggested_activities=[],
         objection_detected=False,
+        conv_state=ConvState.EXPLORATION,
+        user_input="Tôi stress quá",
+        primary_emotion="anxiety",
+        emotion_intensity=0.8,
     )

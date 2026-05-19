@@ -88,6 +88,7 @@ export default function TherapyPage() {
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -212,15 +213,18 @@ export default function TherapyPage() {
   }, [messages]);
 
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
-    }
+    requestAnimationFrame(() => {
+      const container = messagesScrollRef.current;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        return;
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
   };
 
   useEffect(() => {
-    if (!isTyping) scrollToBottom();
+    scrollToBottom();
   }, [messages, isTyping]);
 
   useEffect(() => {
@@ -237,6 +241,7 @@ export default function TherapyPage() {
       ...prev,
       { role: "user", content: currentMessage, timestamp: new Date() },
     ]);
+    scrollToBottom();
 
     try {
       const response = await sendChatMessage(sessionId, currentMessage);
@@ -418,6 +423,20 @@ export default function TherapyPage() {
 
   const recentSessions = sessions.filter((s) => s.messages.length > 0);
 
+  const latestFeedbackMessageId = (() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (
+        msg.role === "assistant" &&
+        msg.metadata?.show_micro_feedback &&
+        msg.id
+      ) {
+        return msg.id;
+      }
+    }
+    return null;
+  })();
+
   return (
     <>
       <div className="relative mx-auto flex h-full max-w-7xl flex-col px-4 md:px-6">
@@ -525,8 +544,11 @@ export default function TherapyPage() {
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth">
-                  <div className="mx-auto max-w-3xl">
+                <motion.div
+                  ref={messagesScrollRef}
+                  className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
+                >
+                  <motion.div className="mx-auto max-w-3xl">
                     <AnimatePresence initial={false}>
                       {messages.map((msg, i) => (
                         <motion.div
@@ -540,10 +562,17 @@ export default function TherapyPage() {
                               ? msg.metadata?.message_type === "crisis"
                                 ? "bg-red-50/60"
                                 : "bg-brand-light/40"
-                              : ""
+                              : "flex justify-end"
                           )}
                         >
-                          <div className="flex gap-4">
+                          <motion.div
+                            className={cn(
+                              "flex min-w-0 max-w-3/4 gap-4",
+                              msg.role === "user"
+                                ? "ml-auto flex-row-reverse"
+                                : "mr-auto"
+                            )}
+                          >
                             <div className="mt-1 h-8 w-8 shrink-0">
                               {msg.role === "assistant" ? (
                                 <div
@@ -561,13 +590,25 @@ export default function TherapyPage() {
                                   )}
                                 </div>
                               ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-border/60 text-gray-600">
+                                <motion.div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white">
                                   <User className="h-4 w-4" />
-                                </div>
+                                </motion.div>
                               )}
                             </div>
-                            <div className="min-h-[2rem] flex-1 space-y-2 overflow-hidden">
-                              <div className="flex items-center gap-2">
+                            <motion.div
+                              className={cn(
+                                "min-h-[2rem] min-w-0 space-y-2",
+                                msg.role === "user"
+                                  ? "flex w-fit max-w-full flex-col items-end"
+                                  : "flex-1 overflow-hidden"
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "flex items-center gap-2",
+                                  msg.role === "user" && "justify-end"
+                                )}
+                              >
                                 <p className="text-sm font-medium text-gray-800">
                                   {msg.role === "assistant" ? "Luna AI" : "Bạn"}
                                 </p>
@@ -594,13 +635,20 @@ export default function TherapyPage() {
                                   )}
                               </div>
 
-                              <div className="prose prose-sm max-w-none leading-relaxed text-gray-700 prose-p:my-1">
+                              <motion.div
+                                className={cn(
+                                  "prose prose-sm leading-relaxed prose-p:my-1",
+                                  msg.role === "user"
+                                    ? "inline-block w-fit max-w-full rounded-2xl bg-brand px-4 py-3 text-left text-white [&_p]:m-0 [&_p]:w-auto [&_p]:text-white [&_strong]:text-white"
+                                    : "max-w-none text-gray-700"
+                                )}
+                              >
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
-                              </div>
+                              </motion.div>
 
                               {msg.role === "assistant" &&
                                 msg.metadata?.show_micro_feedback &&
-                                msg.id &&
+                                msg.id === latestFeedbackMessageId &&
                                 sessionId && (
                                   <MessageFeedback
                                     sessionId={sessionId}
@@ -642,16 +690,16 @@ export default function TherapyPage() {
                                     </div>
                                   );
                                 })()}
-                            </div>
-                          </div>
+                            </motion.div>
+                          </motion.div>
                         </motion.div>
                       ))}
                     </AnimatePresence>
 
                     {isTyping && <LunaTypingIndicator />}
                     <div ref={messagesEndRef} />
-                  </div>
-                </div>
+                  </motion.div>
+                </motion.div>
               </>
             )}
 

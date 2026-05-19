@@ -1,4 +1,9 @@
-from app.graph.script_bank import match_scenario, render_template
+from app.graph.script_bank import (
+    _load_scenarios,
+    match_scenario,
+    render_template,
+    should_use_script_for_turn,
+)
 from app.screening.phq import score_phq as phq_score
 
 
@@ -23,3 +28,29 @@ def test_render_template_vi():
 
 def test_phq_score():
     assert phq_score([0, 1, 2, 3]) == 6
+
+
+def test_mild_distress_removed():
+    ids = {s.id for s in _load_scenarios()}
+    assert "mild_distress" not in ids
+
+
+def test_topic_script_skipped_after_first_user_turn():
+    sc = match_scenario(
+        "My lover and I had a break up",
+        intent="relationship_stress",
+    )
+    assert sc is not None
+    assert sc.id == "relationship_stress"
+    history = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "Hello"},
+    ]
+    assert not should_use_script_for_turn(sc, history)
+
+
+def test_greeting_script_allowed_with_history():
+    sc = match_scenario("xin chào bạn", intent="casual")
+    assert sc is not None
+    history = [{"role": "user", "content": "old"}]
+    assert should_use_script_for_turn(sc, history)

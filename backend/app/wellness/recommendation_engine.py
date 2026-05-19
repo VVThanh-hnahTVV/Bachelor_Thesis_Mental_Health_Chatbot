@@ -360,6 +360,65 @@ def evaluate_recommendation(signals: RecommendationSignals) -> RecommendationDec
 # Micro-feedback eligibility
 # ---------------------------------------------------------------------------
 
+_POSITIVE_USER_MARKERS_VI = (
+    "sẽ thử",
+    "muốn thử",
+    "sẽ đi",
+    "đi dạo",
+    "cảm thấy nhẹ",
+    "đỡ hơn",
+    "tốt hơn",
+    "khá hơn",
+    "ổn hơn",
+    "hy vọng",
+    "cảm ơn",
+    "biết ơn",
+    "nhẹ lòng",
+    "bớt buồn",
+    "bớt lo",
+)
+_POSITIVE_USER_MARKERS_EN = (
+    "i'll try",
+    "i will try",
+    "feel a little better",
+    "feel better",
+    "a bit better",
+    "thank you",
+    "feeling hopeful",
+    "go for a walk",
+)
+
+_STILL_DISTRESSED_MARKERS_VI = (
+    "chẳng có cảm giác",
+    "không có cảm giác",
+    "không cảm thấy gì",
+    "vẫn chán",
+    "vẫn buồn",
+    "vẫn tệ",
+    "chẳng khá hơn",
+    "không khá hơn",
+    "không đỡ",
+    "vô nghĩa",
+    "chán ghét",
+    "tuyệt vọng",
+)
+_STILL_DISTRESSED_MARKERS_EN = (
+    "don't feel anything",
+    "no feelings",
+    "still feel awful",
+    "not better",
+    "worse",
+    "hopeless",
+)
+
+
+def user_signals_positive_shift(user_input: str) -> bool:
+    t = user_input.lower().strip()
+    if any(m in t for m in _STILL_DISTRESSED_MARKERS_VI + _STILL_DISTRESSED_MARKERS_EN):
+        return False
+    return any(m in t for m in _POSITIVE_USER_MARKERS_VI + _POSITIVE_USER_MARKERS_EN)
+
+
 def should_show_activity_micro_feedback(
     *,
     user_turn_count: int,
@@ -369,22 +428,41 @@ def should_show_activity_micro_feedback(
     suggested_activities: list[Any],
     objection_detected: bool,
     conv_state: ConvState = ConvState.OPENING,
+    user_input: str = "",
+    primary_emotion: str = "neutral",
+    emotion_intensity: float = 0.5,
 ) -> bool:
-    """Show 'did this help?' only after a real intervention, not mid-vent."""
+    """Show 'did this help?' only after user signals relief or commits to a small step."""
     if objection_detected:
         return False
     if user_turn_count < MIN_TURNS_WHILE_VENTING:
         return False
-    # Same turn already has activity buttons — avoid a second feedback row
     if suggested_activities:
         return False
-    # Never interrupt early venting phase
-    if conv_state == ConvState.VENTING and user_turn_count < MIN_TURNS_WHILE_VENTING + 2:
+    if conv_state in (ConvState.CRISIS, ConvState.VENTING):
         return False
-    if intent in VENTING_INTENTS and therapy_strategy == "reflective_listening":
-        return user_turn_count >= MIN_TURNS_WHILE_VENTING + 2
+    if conv_state == ConvState.REGULATION and not user_signals_positive_shift(user_input):
+        return False
     if len(reply.strip()) < 100:
         return False
+
+    positive_shift = user_signals_positive_shift(user_input)
+    in_reflective_phase = conv_state in (ConvState.REFLECTION, ConvState.CLOSING)
+    after_activation = (
+        therapy_strategy == "behavioral_activation" and positive_shift
+    )
+
+    if primary_emotion in NEGATIVE_EMOTIONS and emotion_intensity >= 0.55:
+        if not positive_shift and not in_reflective_phase:
+            return False
+
+    if not (positive_shift or in_reflective_phase or after_activation):
+        return False
+
+    if intent in VENTING_INTENTS and therapy_strategy == "reflective_listening":
+        if not positive_shift and not in_reflective_phase:
+            return False
+
     return True
 
 

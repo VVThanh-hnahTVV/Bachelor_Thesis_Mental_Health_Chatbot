@@ -108,18 +108,6 @@
       "max_sentences": 3
     },
     {
-      "id": "mild_distress",
-      "priority": 65,
-      "keywords": ["buồn", "stress", "áp lực", "overwhelmed", "sad"],
-      "intents": ["venting", "seeking_advice"],
-      "templates": {
-        "vi": "Nghe có vẻ bạn đang trải qua điều khó khăn. Bạn muốn kể thêm chút về chuyện đó không?",
-        "en": "It sounds like you're going through something hard. Would you like to tell me a bit more?"
-      },
-      "allow_llm_paraphrase": true,
-      "max_sentences": 2
-    },
-    {
       "id": "listen_request",
       "priority": 80,
       "keywords": ["lắng nghe", "muốn được nghe", "just listen", "be heard"],
@@ -155,11 +143,11 @@
     {
       "id": "relationship_stress",
       "priority": 68,
-      "keywords": ["chia tay", "break up", "vợ", "chồng", "bạn trai", "bạn gái", "relationship"],
+      "keywords": ["chia tay", "break up", "broke up", "breakup", "vợ", "chồng", "bạn trai", "bạn gái", "lover", "relationship"],
       "intents": ["relationship_stress"],
       "templates": {
-        "vi": "Chuyện tình cảm có thể đau lòng lắm. Bạn muốn chia sẻ điều gì đang làm bạn bận tâm nhất?",
-        "en": "Relationship pain can hurt deeply. What's weighing on you most right now?"
+        "vi": "Mình rất tiếc khi nghe về chuyện này — mất mát trong tình cảm có thể nặng và cô đơn lắm. Cảm buồn như vậy là điều tự nhiên. Bạn muốn chia sẻ thêm về cảm giác của mình ngay lúc này không?",
+        "en": "I'm really sorry to hear about your breakup. That kind of loss can feel heavy and lonely. It's okay to feel sad — it shows how much the connection meant to you. Would you like to share more about how you're feeling right now?"
       },
       "allow_llm_paraphrase": true,
       "max_sentences": 2

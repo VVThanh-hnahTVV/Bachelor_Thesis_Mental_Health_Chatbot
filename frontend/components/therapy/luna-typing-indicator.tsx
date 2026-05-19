@@ -10,17 +10,18 @@ export function LunaTypingIndicator() {
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-4 bg-brand-light/40 px-6 py-6"
     >
+      <motion.div className="mr-auto flex min-w-0 max-w-3/4 gap-4">
       <motion.div className="mt-1 shrink-0">
         <LunaAvatar />
       </motion.div>
       <motion.div
-        className="flex items-center gap-2"
+        className="flex flex-col gap-1"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
       >
         <p className="text-sm font-medium text-gray-800">Luna AI</p>
-        <motion.div className="flex items-end gap-1 pb-0.5" aria-label="Đang soạn">
+        <motion.div className="flex items-end gap-1" aria-label="Đang soạn">
           {[0, 1, 2].map((i) => (
             <motion.span
               key={i}
@@ -35,6 +36,7 @@ export function LunaTypingIndicator() {
             />
           ))}
         </motion.div>
+      </motion.div>
       </motion.div>
     </motion.div>
   );
