@@ -43,6 +43,7 @@ Luna listens, validates feelings, and gently offers evidence-based techniques wh
   reached out, briefly that you are here to listen and support — then one gentle question.
 - Other turns: concise but caring (roughly 2–5 sentences unless guiding breathing).
 - Ask at most one gentle follow-up question when it fits.
+- Vary wording naturally across turns. Do not reuse the same opening sentence repeatedly.
 
 **Never:**
 - Mix Vietnamese and English in the same reply.
@@ -150,7 +151,19 @@ Only do three things:
 1. Acknowledge their pain ("I hear you…").
 2. Anchor them to the present: "Right now, you are safe."
 3. Offer one small physical anchor: "Try placing both feet flat on the floor and notice the feeling."
+Suggest the feet-on-floor anchor at most ONCE per conversation — if it was already offered, skip it and only validate + check in.
 Keep the reply very short (2–4 sentences). Tone: gentle and steady.
+""",
+
+    "post_stabilization": """\
+## Role this turn: After a brief calming exercise
+
+The user has tried or finished a short grounding step. Do NOT repeat feet-on-floor or breathing instructions.
+1. Acknowledge their effort (one sentence).
+2. Ask ONE specific, caring question about what matters most right now
+   (e.g. the relationship, what hurts most, or one small next step they want).
+3. Do NOT use generic "share more" or "do you want to talk more" phrasing.
+Keep it warm and concise (2–4 sentences).
 """,
 }
 
@@ -191,17 +204,35 @@ def is_meta_conversation(text: str) -> bool:
 
 def detect_language(text: str, history: list[dict[str, str]] | None = None) -> str:
     """Return 'vi' or 'en' from recent user text."""
-    blob = text
+    latest = text or ""
+    if re.search(r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", latest, re.I):
+        return "vi"
+    # Prioritize current message language first; only fallback to history when
+    # the latest message is too short or ambiguous (e.g. "ok", "hmm").
+    if re.search(r"\b(i|me|my|you|know|help|feel|do)\b", latest.lower()):
+        return "en"
+    blob = latest
     if history:
         user_lines = [m.get("content", "") for m in history if m.get("role") == "user"][-3:]
-        blob = " ".join(user_lines + [text])
-    if re.search(r"[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", blob, re.I):
-        return "vi"
+        blob = " ".join(user_lines + [latest])
     vi_words = ("tôi", "bạn", "mình", "không", "cảm", "thấy", "chào", "giúp", "buồn", "lo")
     low = blob.lower()
     if sum(1 for w in vi_words if w in low) >= 2:
         return "vi"
     return "en"
+
+
+def _is_known_user_query(text: str) -> bool:
+    t = text.lower().strip()
+    patterns = (
+        "do you know me",
+        "you know me",
+        "bạn biết mình là ai",
+        "bạn biết tôi là ai",
+        "biết mình là ai không",
+        "biết tôi là ai không",
+    )
+    return any(p in t for p in patterns)
 
 
 # ---------------------------------------------------------------------------
@@ -217,18 +248,31 @@ def build_system_prompt(
     user_input: str = "",
     reply_language: str = "vi",
     objection_detected: bool = False,
+    therapy_flags: dict[str, Any] | None = None,
 ) -> str:
     """Assemble the 2-layer system prompt."""
+    flags = therapy_flags or {}
     if objection_detected:
         directive = ROLE_DIRECTIVES["objection"]
     elif intent == "casual" or is_meta_conversation(user_input):
         directive = ROLE_DIRECTIVES["casual"]
+    elif strategy == "post_stabilization" or (
+        flags.get("stabilization_turn")
+        and strategy in ("reflective_listening", "CBT")
+        and flags.get("last_strategy") == "stabilization"
+    ):
+        directive = ROLE_DIRECTIVES["post_stabilization"]
     else:
         directive = ROLE_DIRECTIVES.get(strategy, _DEFAULT_DIRECTIVE)
 
     # Curated knowledge snippets (RAG)
     if chunks:
-        rag_block = "\n## Curated knowledge snippets\n" + "\n".join(f"- {c}" for c in chunks)
+        rag_block = (
+            "\n## Curated knowledge snippets\n"
+            "Use these only if they directly help answer the latest message. "
+            "If they are weakly related, ignore them.\n"
+            + "\n".join(f"- {c}" for c in chunks)
+        )
     else:
         rag_block = ""
 
@@ -240,8 +284,14 @@ def build_system_prompt(
         lt_parts.append(f"- Preferred coping methods: {', '.join(long_term['coping_preferences'])}")
     if long_term.get("mood_trend"):
         lt_parts.append(f"- Recent mood trend: {long_term['mood_trend']}")
+    if long_term.get("recent_mood_notes"):
+        lt_parts.append(
+            f"- Recent mood highlights: {' | '.join(long_term['recent_mood_notes'])}"
+        )
     if long_term.get("preferred_tone"):
         lt_parts.append(f"- Preferred tone: {long_term['preferred_tone']}")
+    if long_term.get("user_display_name"):
+        lt_parts.append(f"- User display name: {long_term['user_display_name']}")
     lt_block = (
         "\n## User context (from previous sessions)\n" + "\n".join(lt_parts)
         if lt_parts else ""
@@ -292,8 +342,25 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
     objection_detected: bool = bool(state.get("objection_detected"))
     chunks: list[str] = state.get("retrieved_chunks") or []
     long_term: dict[str, Any] = state.get("long_term_context") or {}
+    therapy_flags: dict[str, Any] = state.get("therapy_flags") or {}
 
     reply_language = detect_language(user_input, history)
+    if _is_known_user_query(user_input):
+        display_name = str(long_term.get("user_display_name") or "").strip()
+        if display_name:
+            if reply_language == "vi":
+                return {
+                    "final_reply": (
+                        f"Mình nhớ bạn là {display_name}. "
+                        "Mình sẽ đồng hành cùng bạn theo đúng bối cảnh và cảm xúc bạn đã chia sẻ trước đó."
+                    )
+                }
+            return {
+                "final_reply": (
+                    f"Yes, I remember you as {display_name}. "
+                    "I'll personalize my support based on your previous context and mood."
+                )
+            }
 
     scripted = await resolve_script_reply(
         user_input=user_input,
@@ -315,6 +382,7 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
         user_input=user_input,
         reply_language=reply_language,
         objection_detected=objection_detected,
+        therapy_flags=therapy_flags,
     )
     human_content = (
         f"Recent conversation:\n{_history_text(history)}\n\nLatest user message:\n{user_input}"

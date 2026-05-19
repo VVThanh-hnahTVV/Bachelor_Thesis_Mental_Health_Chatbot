@@ -84,8 +84,10 @@ async def advance_conv_state(
     risk_level: str,
     user_turn_count: int,
     wellness_activity_just_completed: bool = False,
+    therapy_flags: dict[str, Any] | None = None,
 ) -> ConvState:
     """Compute next state and persist it. Returns the new state."""
+    flags = therapy_flags or {}
     if redis is None:
         return _transition_pure(
             current=ConvState.OPENING,
@@ -96,6 +98,7 @@ async def advance_conv_state(
             risk_level=risk_level,
             user_turn_count=user_turn_count,
             wellness_activity_just_completed=wellness_activity_just_completed,
+            therapy_flags=flags,
         )
 
     current = await get_conv_state(redis, session_id)
@@ -108,6 +111,7 @@ async def advance_conv_state(
         risk_level=risk_level,
         user_turn_count=user_turn_count,
         wellness_activity_just_completed=wellness_activity_just_completed,
+        therapy_flags=flags,
     )
     if next_state != current:
         await _set_state(redis, session_id, next_state)
@@ -124,6 +128,7 @@ def _transition_pure(
     risk_level: str,
     user_turn_count: int,
     wellness_activity_just_completed: bool,
+    therapy_flags: dict[str, Any] | None = None,
 ) -> ConvState:
     """Pure transition function — no I/O, fully testable."""
 
@@ -180,7 +185,11 @@ def _transition_pure(
             return ConvState.EXPLORATION
 
         case ConvState.REGULATION:
-            # After calming, move to reflection
+            flags = therapy_flags or {}
+            # After stabilization was offered, allow progression without requiring low intensity
+            if flags.get("stabilization_turn") and user_turn_count >= 2:
+                if therapy_strategy in ("post_stabilization", "reflective_listening", "CBT"):
+                    return ConvState.EXPLORATION
             if emotion_intensity <= 0.45 and user_turn_count >= 3:
                 return ConvState.REFLECTION
             return ConvState.REGULATION

@@ -23,6 +23,26 @@ _SAFE_FALLBACK_EN = (
     "Would you like to share a bit more so I can better understand?"
 )
 
+_NEXT_STEP_FALLBACK_VI = (
+    "Cảm ơn bạn đã thử bước nhỏ đó. "
+    "Điều gì đang nặng nhất với bạn ngay lúc này — cảm xúc hay chuyện với người bạn quan tâm?"
+)
+_NEXT_STEP_FALLBACK_EN = (
+    "Thank you for trying that small step. "
+    "What feels heaviest for you right now — the feeling itself or something about the person you care about?"
+)
+
+_FOLLOWUP_MARKERS = (
+    "rồi sao",
+    "xong rồi",
+    "làm xong",
+    "tiếp theo",
+    "sau đó",
+    "what now",
+    "what next",
+    "done now",
+)
+
 _SYSTEM = """\
 You are a response safety auditor for a mental health chatbot.
 Review the assistant's reply for ANY of these issues:
@@ -39,9 +59,17 @@ or
 """
 
 
+def _is_followup_question(user_input: str) -> bool:
+    t = user_input.lower().strip()
+    return any(m in t for m in _FOLLOWUP_MARKERS)
+
+
 def _safe_fallback(state: dict[str, Any]) -> str:
     history: list[dict[str, str]] = state.get("history") or []
-    lang = detect_language(state.get("user_input", ""), history)
+    user_input = state.get("user_input", "")
+    lang = detect_language(user_input, history)
+    if _is_followup_question(user_input):
+        return _NEXT_STEP_FALLBACK_VI if lang == "vi" else _NEXT_STEP_FALLBACK_EN
     return _SAFE_FALLBACK_VI if lang == "vi" else _SAFE_FALLBACK_EN
 
 

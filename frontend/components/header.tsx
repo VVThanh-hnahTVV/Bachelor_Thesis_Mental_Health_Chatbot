@@ -18,7 +18,7 @@ export function Header() {
   ];
 
   return (
-    <div className="w-full fixed top-0 z-50 bg-serene-bg/90 backdrop-blur-sm">
+    <div className="fixed top-0 z-50 w-full bg-serene-bg/90 backdrop-blur-sm supports-[backdrop-filter]:bg-serene-bg/80">
       <nav className="relative max-w-7xl mx-auto px-6 md:px-8 py-5 flex items-center justify-between">
         <Link
           href="/"

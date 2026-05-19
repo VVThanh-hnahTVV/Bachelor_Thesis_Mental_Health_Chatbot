@@ -14,32 +14,20 @@ from app.llm.factory import get_chat_model, invoke_with_fallback
 logger = logging.getLogger(__name__)
 
 _SYSTEM = """\
-You decide whether tap-to-send reply chips help the user respond to Luna's last message,
-and if so, generate 3–4 short options.
+Generate exactly 3 tap-to-send reply chips so the user can respond to Luna's last message.
 
-OFFER chips (offer_chips: true) ONLY when:
-- Luna asked a clear, answerable question or offered distinct concrete choices.
-- Chips would feel natural — e.g. mood check-in, picking a topic, yes/no, or simple alternatives.
-- Labels can be short (max 22 chars) and messages are natural first-person replies.
+ALWAYS set offer_chips: true and provide exactly 3 options unless the user message is crisis-adjacent.
 
-DO NOT offer chips (offer_chips: false, options: []) when:
-- Luna mainly validated, reflected, or held space — user should type freely.
-- The user vented, swore, or seems frustrated or confused (e.g. "wtf") — chips feel robotic.
-- The moment is sensitive, crisis-adjacent, or needs an open personal answer.
-- Luna is guiding breathing, grounding, or a step-by-step exercise.
-- Luna only said "I'm here for you" without a specific question.
-- Meta/identity small talk where free text is better.
-
-Rules for options when offer_chips is true:
+Rules:
 - Labels: max 22 characters; match conversation language (Vietnamese or English).
 - message: first-person sentence the user would send (not a duplicate of the label).
-- Options must directly answer Luna's question — never generic menus.
-- Do NOT suggest breathing apps, "what can you do", or unrelated mood templates.
+- Options must fit Luna's last message — answer her question or continue the emotional thread.
+- For grounding/stabilization: offer chips like "I tried it", "Not yet", "I need to talk more".
+- For reflective listening: offer chips that open the story (feelings, relationship, need to be heard).
+- Do NOT suggest breathing apps, generic menus, or unrelated topics.
 
 JSON only:
-{"offer_chips": true, "options": [{"id": "1", "label": "...", "message": "..."}]}
-or
-{"offer_chips": false, "options": []}
+{"offer_chips": true, "options": [{"id": "1", "label": "...", "message": "..."}, ...]}
 """
 
 
@@ -66,7 +54,7 @@ def _parse_llm_response(raw: str) -> tuple[bool, list[dict[str, str]]]:
         return False, []
 
     out: list[dict[str, str]] = []
-    for i, item in enumerate(opts[:4]):
+    for i, item in enumerate(opts[:3]):
         if not isinstance(item, dict):
             continue
         label = str(item.get("label", "")).strip()[:28]
@@ -113,7 +101,7 @@ async def generate_follow_up_quick_replies(
         raw = msg.content if isinstance(msg.content, str) else str(msg.content)
         offer, options = _parse_llm_response(raw)
         if offer and options:
-            return options[:4]
+            return options[:3]
     except Exception as exc:
         logger.warning("dynamic quick replies LLM failed: %s", exc)
 

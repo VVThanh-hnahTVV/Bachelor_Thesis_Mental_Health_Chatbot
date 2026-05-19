@@ -11,6 +11,10 @@ def _key(session_id: str) -> str:
     return f"session:{session_id}:turns"
 
 
+def _personalization_key(session_id: str) -> str:
+    return f"session:{session_id}:personalization"
+
+
 async def push_turn(
     redis: aioredis.Redis,
     session_id: str,
@@ -42,3 +46,31 @@ async def get_turns(
 
 async def clear_session(redis: aioredis.Redis, session_id: str) -> None:
     await redis.delete(_key(session_id))
+    await redis.delete(_personalization_key(session_id))
+
+
+async def set_personalization_context(
+    redis: aioredis.Redis,
+    session_id: str,
+    context: dict[str, object],
+) -> None:
+    ttl = get_settings().session_ttl_seconds
+    k = _personalization_key(session_id)
+    await redis.set(k, json.dumps(context))
+    await redis.expire(k, ttl)
+
+
+async def get_personalization_context(
+    redis: aioredis.Redis,
+    session_id: str,
+) -> dict[str, object] | None:
+    raw = await redis.get(_personalization_key(session_id))
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from app.auth.repository import (
@@ -13,10 +13,9 @@ from app.auth.repository import (
     link_session_to_user,
     user_public,
 )
+from app.auth.dependencies import get_current_user
 from app.auth.security import (
-    bearer_token,
     create_access_token,
-    decode_access_token,
     hash_password,
     verify_password,
 )
@@ -106,28 +105,14 @@ async def login(body: LoginBody, request: Request) -> AuthResponse:
 
 
 @router.get("/me", response_model=UserOut)
-async def me(request: Request) -> UserOut:
-    db = get_db(request)
-    token = bearer_token(request)
-    if not token:
-        raise HTTPException(401, "Not authenticated")
-    payload = decode_access_token(token)
-    user = await get_user_by_id(db, ObjectId(payload["sub"]))
-    if not user:
-        raise HTTPException(401, "User not found")
+async def me(user: dict[str, Any] = Depends(get_current_user)) -> UserOut:
     return _to_user_out(user)
 
 
 @router.post("/link-session")
 async def link_session(body: LinkSessionBody, request: Request) -> dict[str, str]:
     db = get_db(request)
-    token = bearer_token(request)
-    if not token:
-        raise HTTPException(401, "Not authenticated")
-    payload = decode_access_token(token)
-    user = await get_user_by_id(db, ObjectId(payload["sub"]))
-    if not user:
-        raise HTTPException(401, "User not found")
+    user = await get_current_user(request, db)
     uid = user["_id"]
     assert isinstance(uid, ObjectId)
     await link_session_to_user(db, session_id=body.session_id, user_id=uid)

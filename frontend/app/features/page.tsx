@@ -21,13 +21,13 @@ const features = [
     icon: MessageCircleHeart,
     title: "AI Companion Chat",
     description:
-      "Talk with Luna anytime through guided therapy sessions. Conversations are powered by LangGraph with multi-turn memory, empathetic replies, and optional LLM providers (OpenAI, Groq, Gemini, and more).",
+      "Talk with Luna anytime through guided therapy sessions. Conversations are powered by LangGraph with multi-turn memory, empathetic replies, and local, Groq, OpenAI, or Gemini models.",
   },
   {
     icon: BookOpen,
     title: "Knowledge-Grounded Guidance",
     description:
-      "Responses are enriched with retrieval from a curated wellness knowledge base, so coping ideas and psychoeducation stay aligned with evidence-based content—not generic chatbot guesses.",
+      "Responses can use hybrid retrieval from a curated wellness knowledge base, with source-aware context kept separate from Luna's normal supportive tone.",
   },
   {
     icon: Smile,
@@ -153,4 +153,3 @@ export default function FeaturesPage() {
     </div>
   );
 }
-

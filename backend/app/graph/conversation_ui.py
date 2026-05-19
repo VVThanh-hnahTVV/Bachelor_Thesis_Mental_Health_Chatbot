@@ -100,6 +100,26 @@ def should_skip_wellness_suggestions(
     return False
 
 
+_IN_CHAT_WELLNESS_CTA_MARKERS = (
+    "ra ngoài đi dạo",
+    "đi dạo 10",
+    "đi dạo quanh",
+    "đi bộ 10",
+    "go for a 10",
+    "take a 10-minute walk",
+    "hành động nhỏ có thể",
+    "bước nhỏ có thể",
+    "muốn thử ngay bây giờ",
+    "thử ngay bây giờ không",
+)
+
+
+def reply_has_in_chat_wellness_cta(reply: str) -> bool:
+    """True when Luna already proposed a concrete in-conversation action (e.g. a short walk)."""
+    low = (reply or "").lower()
+    return any(m in low for m in _IN_CHAT_WELLNESS_CTA_MARKERS)
+
+
 def should_skip_quick_replies(
     *,
     user_input: str,
@@ -108,13 +128,15 @@ def should_skip_quick_replies(
     objection_detected: bool,
     chat_blocked: bool,
     message_type: str,
+    suggested_activities: list[Any] | None = None,
 ) -> bool:
     """Skip chip generation when tap-to-send options would feel out of place."""
     if chat_blocked or message_type != "normal":
         return True
     if is_casual_or_meta(intent, user_input) or objection_detected:
         return True
-    if therapy_strategy in ("stabilization",):
+    # Activity buttons + LLM chips on the same turn feel cluttered
+    if suggested_activities:
         return True
     return False
 

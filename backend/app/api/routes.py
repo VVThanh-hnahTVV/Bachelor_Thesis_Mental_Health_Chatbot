@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import resolve_optional_current_user
+from app.auth.repository import link_session_to_user
 from app.config import ProviderName
 from app.db.repository import (
     add_activity_completion,
@@ -18,8 +20,7 @@ from app.db.repository import (
     list_messages_chronological,
 )
 from app.graph.safety_engine import (
-    CRISIS_CHOICES_VI,
-    CRISIS_REPLY_VI,
+    crisis_reply_for_language,
     run_safety_engine,
 )
 from app.graph.conversation_ui import (
@@ -28,6 +29,7 @@ from app.graph.conversation_ui import (
     should_skip_wellness_suggestions,
 )
 from app.graph.dynamic_quick_replies import generate_follow_up_quick_replies
+from app.graph.guided_quick_replies import ensure_three_quick_replies
 from app.graph.nodes.response_generator import detect_language, is_meta_conversation
 from app.graph.workflow import run_turn
 from app.wellness.activity_profile import load_activity_profile
@@ -148,12 +150,43 @@ class ScreeningOut(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, request: Request) -> ChatResponse:
-    from app.cache.session_memory import get_turns, push_turn
+    from app.cache.session_memory import (
+        get_personalization_context,
+        get_turns,
+        push_turn,
+        set_personalization_context,
+    )
     from app.db.repository import count_user_messages
     from app.graph.nodes.memory_update import run_memory_update
+    from app.personalization.context import build_personalization_context
 
     db = get_db(request)
     redis = get_redis(request)
+    maybe_user = await resolve_optional_current_user(request, db)
+    if maybe_user:
+        uid = maybe_user.get("_id")
+        if isinstance(uid, ObjectId):
+            # Keep chat flow backward compatible while linking authenticated users
+            # so personalization context can access user profile/name immediately.
+            await link_session_to_user(db, session_id=req.session_id, user_id=uid)
+
+    personalization_context: dict[str, Any] = {}
+    if redis is not None:
+        cached_ctx = await get_personalization_context(redis, req.session_id)
+        if isinstance(cached_ctx, dict):
+            personalization_context = cached_ctx
+    if not personalization_context:
+        personalization_context = await build_personalization_context(
+            db,
+            session_id=req.session_id,
+            include_user_display=True,
+        )
+        if redis is not None:
+            await set_personalization_context(
+                redis,
+                req.session_id,
+                personalization_context,
+            )
 
     # Ensure conversation exists in MongoDB (persistent store)
     conv = await get_conversation_by_session(db, req.session_id)
@@ -178,6 +211,13 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     default_p: ProviderName = default_provider()
     provider: ProviderName = resolve_provider(req.provider, default=default_p)
 
+    from app.cache.therapy_flags import (
+        get_therapy_flags,
+        update_therapy_flags_after_turn,
+    )
+
+    therapy_flags = await get_therapy_flags(redis, req.session_id)
+
     # -----------------------------------------------------------------------
     # Parallel: safety engine + main LangGraph graph
     # Pattern from QueryWeaver: asyncio.create_task for both, then gather
@@ -188,6 +228,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         "provider": provider,
         "session_id": req.session_id,
         "db": db,
+        "personalization_context": personalization_context,
+        "therapy_flags": therapy_flags,
     }
 
     safety_task = asyncio.create_task(
@@ -204,9 +246,9 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     suggestion_intensity: SuggestionIntensity = SuggestionIntensity.MEDIUM
 
     if safety_result["emergency_mode"]:
-        reply = CRISIS_REPLY_VI
+        _crisis_lang = detect_language(req.message, history)
+        reply, crisis_choices = crisis_reply_for_language(_crisis_lang)
         chat_blocked = True
-        crisis_choices = CRISIS_CHOICES_VI
         message_type = "crisis"
         suggested_activities: list[dict[str, Any]] = []
         emotion = graph_out.get("primary_emotion")
@@ -215,6 +257,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             "risk_level": safety_result["risk_level"],
             "safety_confidence": safety_result["confidence"],
             "safety_triggers": safety_result["triggers"],
+            "safety_fallback_used": "llm_failure" in safety_result["triggers"],
             "conv_state": ConvState.CRISIS.value,
             "suggestion_intensity": SuggestionIntensity.MEDIUM.value,
         }
@@ -274,6 +317,14 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             therapy_strategy=therapy_strategy,
             risk_level=_risk,
             user_turn_count=user_turn_count,
+            therapy_flags=therapy_flags,
+        )
+
+        await update_therapy_flags_after_turn(
+            redis,
+            session_id=req.session_id,
+            therapy_strategy=therapy_strategy,
+            user_turn_count=user_turn_count,
         )
 
         recent_user_blob = "\n".join(
@@ -313,7 +364,10 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             if suggested_activities:
                 await mark_suggestion_turn(redis, req.session_id, user_turn_count)
             reply = align_assistant_reply_with_suggestions(
-                reply, suggested_activities, suggestion_intensity
+                reply,
+                suggested_activities,
+                suggestion_intensity,
+                therapy_strategy=therapy_strategy,
             )
         else:
             suggested_activities = []
@@ -326,6 +380,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             objection_detected=_objection,
             chat_blocked=chat_blocked,
             message_type=message_type,
+            suggested_activities=suggested_activities,
         ):
             quick_replies = await generate_follow_up_quick_replies(
                 user_input=req.message,
@@ -335,6 +390,13 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
                 intent=_intent,
                 emotion=emotion,
                 therapy_strategy=therapy_strategy,
+            )
+            quick_replies = ensure_three_quick_replies(
+                quick_replies,
+                lang=_lang,
+                strategy=therapy_strategy,
+                emotion=str(emotion or "neutral"),
+                intent=_intent,
             )
 
         from app.db.repository import recent_messages as _recent_messages
@@ -370,7 +432,9 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         meta_out = {
             "risk_level": safety_result["risk_level"],
             "safety_confidence": safety_result["confidence"],
+            "safety_fallback_used": "llm_failure" in safety_result["triggers"],
             "emotion": emotion,
+            "emotion_intensity": _emotion_intensity,
             "intent": _intent,
             "therapy_strategy": therapy_strategy,
             "objection_detected": _objection,
@@ -405,9 +469,17 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
     # Background: update long-term user profile (non-blocking)
     if not chat_blocked and message_type == "normal":
-        asyncio.create_task(
-            run_memory_update(db, req.session_id, req.message, reply, provider)
-        )
+        async def _update_profile_and_cache() -> None:
+            await run_memory_update(db, req.session_id, req.message, reply, provider)
+            if redis is not None:
+                refreshed = await build_personalization_context(
+                    db,
+                    session_id=req.session_id,
+                    include_user_display=True,
+                )
+                await set_personalization_context(redis, req.session_id, refreshed)
+
+        asyncio.create_task(_update_profile_and_cache())
 
     qr_out: list[QuickReplyOut] = []
     if not chat_blocked:
@@ -615,6 +687,108 @@ async def conversations(
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Dashboard stats (chat emotions + wellness activity)
+# ---------------------------------------------------------------------------
+
+class DashboardStatsOut(BaseModel):
+    mood_score: int | None = None
+    mood_source: str = "none"  # "chat" | "form" | "none"
+    dominant_emotion: str | None = None
+    emotion_samples_today: int = 0
+    completion_rate: int = 0
+    therapy_sessions: int = 0
+    total_activities_today: int = 0
+    chat_turns_today: int = 0
+    last_updated: str
+
+
+@router.get("/dashboard/stats", response_model=DashboardStatsOut)
+async def dashboard_stats(session_id: str, request: Request) -> DashboardStatsOut:
+    from app.db.repository import list_activity_completions, list_conversations, list_mood_entries
+    from app.wellness.emotion_scores import aggregate_chat_emotions_today
+
+    db = get_db(request)
+    now = datetime.now(UTC)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    message_docs: list[dict[str, Any]] = []
+    conv = await get_conversation_by_session(db, session_id)
+    if conv:
+        cid = conv["_id"]
+        assert isinstance(cid, ObjectId)
+        message_docs = await list_messages_chronological(db, conversation_id=cid, limit=500)
+
+    chat_agg = aggregate_chat_emotions_today(message_docs, day_start=day_start)
+
+    day_end = day_start + timedelta(days=1)
+    mood_rows = await list_mood_entries(db, session_id=session_id, limit=60)
+    today_form_scores = []
+    for row in mood_rows:
+        created = row.get("created_at")
+        if not isinstance(created, datetime):
+            continue
+        created_dt = created if created.tzinfo else created.replace(tzinfo=UTC)
+        if not (day_start <= created_dt < day_end):
+            continue
+        score = row.get("score")
+        if score is not None:
+            today_form_scores.append(int(score) * 10)
+
+    if chat_agg["mood_score"] is not None:
+        mood_score = int(chat_agg["mood_score"])
+        mood_source = "chat"
+        dominant_emotion = chat_agg.get("dominant_emotion")
+        emotion_samples = int(chat_agg.get("samples") or 0)
+    elif today_form_scores:
+        mood_score = round(sum(today_form_scores) / len(today_form_scores))
+        mood_source = "form"
+        dominant_emotion = None
+        emotion_samples = 0
+    else:
+        mood_score = None
+        mood_source = "none"
+        dominant_emotion = None
+        emotion_samples = 0
+
+    activity_rows = await list_activity_completions(db, session_id=session_id, limit=200)
+    activities_today = 0
+    for doc in activity_rows:
+        created = doc.get("created_at")
+        if not isinstance(created, datetime):
+            continue
+        created_dt = created if created.tzinfo else created.replace(tzinfo=UTC)
+        if day_start <= created_dt < day_end:
+            activities_today += 1
+
+    chat_turns_today = 0
+    for doc in message_docs:
+        if doc.get("role") != "user":
+            continue
+        created = doc.get("created_at")
+        if not isinstance(created, datetime):
+            continue
+        created_dt = created if created.tzinfo else created.replace(tzinfo=UTC)
+        if day_start <= created_dt < day_end:
+            chat_turns_today += 1
+
+    sessions = await list_conversations(db, session_id=session_id, limit=100)
+    total_today = activities_today + len(today_form_scores)
+    engaged = bool(emotion_samples or today_form_scores or activities_today or chat_turns_today)
+
+    return DashboardStatsOut(
+        mood_score=mood_score,
+        mood_source=mood_source,
+        dominant_emotion=dominant_emotion,
+        emotion_samples_today=emotion_samples,
+        completion_rate=100 if engaged else 0,
+        therapy_sessions=len(sessions),
+        total_activities_today=total_today,
+        chat_turns_today=chat_turns_today,
+        last_updated=now.isoformat(),
+    )
 
 
 # ---------------------------------------------------------------------------

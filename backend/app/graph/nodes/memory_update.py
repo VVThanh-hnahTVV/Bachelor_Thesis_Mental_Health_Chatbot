@@ -13,6 +13,21 @@ from app.llm.factory import get_chat_model, invoke_with_fallback
 
 logger = logging.getLogger(__name__)
 
+
+def _merge_unique(existing: list[Any], incoming: list[Any], limit: int = 12) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in [*existing, *incoming]:
+        text = str(value).strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        out.append(text)
+        seen.add(key)
+        if len(out) >= limit:
+            break
+    return out
+
 _SYSTEM = """\
 You are extracting structured information from a single therapy chat turn.
 Return ONLY valid JSON with these optional fields (omit fields with no new info):
@@ -58,10 +73,18 @@ async def run_memory_update(
             return
 
         updates: dict[str, Any] = {}
+        from app.db.repository import get_user_profile
+        existing_profile = await get_user_profile(db, session_id) or {}
         if data.get("new_stressors"):
-            updates["recurring_stressors"] = data["new_stressors"]
+            updates["recurring_stressors"] = _merge_unique(
+                list(existing_profile.get("recurring_stressors") or []),
+                list(data["new_stressors"]),
+            )
         if data.get("coping_pref"):
-            updates["coping_preferences"] = [data["coping_pref"]]
+            updates["coping_preferences"] = _merge_unique(
+                list(existing_profile.get("coping_preferences") or []),
+                [data["coping_pref"]],
+            )
         if data.get("tone_pref"):
             updates["preferred_tone"] = data["tone_pref"]
 

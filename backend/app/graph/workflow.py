@@ -52,6 +52,8 @@ class GraphState(TypedDict, total=False):
     provider: ProviderName
     session_id: str
     db: Any  # AsyncIOMotorDatabase — passed for memory_retrieval
+    personalization_context: dict[str, Any]
+    therapy_flags: dict[str, Any]
 
     # Phase 1: Normalize
     language: str

@@ -156,28 +156,34 @@ def align_assistant_reply_with_suggestions(
     reply: str,
     suggestions: list[dict[str, str]],
     intensity: SuggestionIntensity = SuggestionIntensity.MEDIUM,
+    *,
+    therapy_strategy: str | None = None,
 ) -> str:
-    """Append a CTA bridge line when the reply doesn't already mention the activity.
+    """Append at most one CTA bridge when the reply doesn't already mention the activity.
 
-    The bridge text varies by ``intensity`` so Luna sounds natural at each stage:
-    soft → light mention, medium → invitation, strong → direct recommendation.
+    Skips extra paragraphs when Luna already gave an in-chat action (walk, small step)
+    so buttons/chips are not duplicated in prose.
     """
+    from app.graph.conversation_ui import reply_has_in_chat_wellness_cta
+
     if not suggestions or not (reply or "").strip():
         return reply
+    if therapy_strategy == "behavioral_activation" or reply_has_in_chat_wellness_cta(reply):
+        return reply.strip()
+
     out = reply.strip()
     low = out.lower()
-    used: set[str] = set()
-    for item in suggestions:
+    # One in-app tool mention per turn — UI shows the matching button(s).
+    for item in suggestions[:1]:
         sid = str(item.get("id", "")).strip()
-        if sid not in _REPLY_ALIGN or sid in used:
+        if sid not in _REPLY_ALIGN:
             continue
-        used.add(sid)
         intensity_variants = _REPLY_ALIGN[sid]
         bridge, cues = intensity_variants.get(intensity, intensity_variants[SuggestionIntensity.MEDIUM])
         if any(c in low for c in cues):
-            continue
+            break
         out = f"{out}\n\n{bridge}".strip()
-        low = out.lower()
+        break
     return out
 
 

@@ -1,18 +1,10 @@
-from app.graph.workflow import route_after_risk, route_after_generate
-from langgraph.graph import END
+from app.graph.workflow import route_after_emotion_intent
 
 
-def test_route_after_risk_high():
-    assert route_after_risk({"risk_level": "high"}) == "crisis"
+def test_route_after_emotion_intent_off_topic():
+    assert route_after_emotion_intent({"intent": "off_topic"}) == "off_topic_reply"
 
 
-def test_route_after_risk_low():
-    assert route_after_risk({"risk_level": "low"}) == "generate"
-
-
-def test_route_after_generate_coping():
-    assert route_after_generate({"risk_level": "low", "include_coping": True}) == "coping"
-
-
-def test_route_after_generate_end():
-    assert route_after_generate({"risk_level": "low", "include_coping": False}) == END
+def test_route_after_emotion_intent_health_or_casual():
+    assert route_after_emotion_intent({"intent": "casual"}) == "memory_retrieval"
+    assert route_after_emotion_intent({"intent": "panic_support"}) == "memory_retrieval"

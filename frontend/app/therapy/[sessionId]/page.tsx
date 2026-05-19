@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Send,
-  Bot,
   User,
   Loader2,
   Moon,
@@ -13,6 +12,7 @@ import {
   PlusCircle,
   Phone,
   AlertTriangle,
+  BookOpenCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,6 +38,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageFeedback } from "@/components/therapy/message-feedback";
 import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
+import { LunaAvatar } from "@/components/therapy/luna-avatar";
+import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
 import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
 import type { QuickReply } from "@/lib/api/chat";
 
@@ -62,6 +64,14 @@ const EMOTION_LABELS: Record<string, string> = {
   guilt: "Tội lỗi",
   joy: "Vui vẻ",
 };
+
+function quickRepliesFromMessages(msgs: ChatMessage[]): QuickReply[] {
+  const last = [...msgs].reverse().find((m) => m.role === "assistant");
+  if (!last?.metadata) return [];
+  const raw = last.metadata.quick_replies;
+  if (!Array.isArray(raw)) return [];
+  return (raw as QuickReply[]).slice(0, 3);
+}
 
 function getSessionTitle(session: ChatSession): string {
   const first =
@@ -90,18 +100,7 @@ export default function TherapyPage() {
     params.sessionId as string
   );
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-
-  const hasBreathingSuggestion = (text: string): boolean => {
-    const normalized = text.toLowerCase();
-    const hints = ["hít thở", "hit tho", "hít sâu", "4 giây", "4-4-4", "box breathing", "breathe"];
-    return hints.some((hint) => normalized.includes(hint));
-  };
-
-  const hasOceanSuggestion = (text: string): boolean => {
-    const normalized = text.toLowerCase();
-    const hints = ["âm sóng", "ocean", "waves", "sóng biển", "nhạc thư giãn", "nghe nhạc"];
-    return hints.some((hint) => normalized.includes(hint));
-  };
+  const [inputQuickReplies, setInputQuickReplies] = useState<QuickReply[]>([]);
 
   const getSuggestedActivities = (metadata: ChatMessage["metadata"]) => {
     if (!metadata || !Array.isArray((metadata as any).suggested_activities)) {
@@ -110,6 +109,23 @@ export default function TherapyPage() {
     return (metadata as any).suggested_activities
       .map((s: any) => String(s?.id ?? "").trim())
       .filter(Boolean);
+  };
+
+  const getRetrievalSummary = (metadata: ChatMessage["metadata"]) => {
+    const chunks = metadata?.retrieved_chunks;
+    if (!Array.isArray(chunks) || chunks.length === 0) return null;
+    const mode = metadata?.retrieval_mode;
+    if (!mode || mode === "none") return null;
+    const topics = Array.from(
+      new Set(
+        chunks
+          .map((chunk: any) => String(chunk?.topic ?? "").trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 2);
+    return topics.length > 0
+      ? `Dựa trên kiến thức: ${topics.join(", ")}`
+      : "Dựa trên kiến thức đã tuyển chọn";
   };
 
   const handleNewSession = async () => {
@@ -125,6 +141,7 @@ export default function TherapyPage() {
       setSessions((prev) => [newSession, ...prev]);
       setSessionId(newSessionId);
       setMessages([]);
+      setInputQuickReplies([]);
       setIsChatPaused(false);
       setCrisisChoices([]);
       window.history.pushState({}, "", `/therapy/${newSessionId}`);
@@ -147,17 +164,21 @@ export default function TherapyPage() {
           try {
             const history = await getChatHistory(sessionId);
             if (Array.isArray(history)) {
-              setMessages(
-                history.map((msg) => ({ ...msg, timestamp: new Date(msg.timestamp) }))
-              );
-              // Restore crisis state from last assistant message if still blocked
+              const mapped = history.map((msg) => ({
+                ...msg,
+                timestamp: new Date(msg.timestamp),
+              }));
+              setMessages(mapped);
+              setInputQuickReplies(quickRepliesFromMessages(mapped));
               const last = [...history].reverse().find((m) => m.role === "assistant");
               if (last?.metadata?.chat_blocked) {
                 setIsChatPaused(true);
                 setCrisisChoices((last.metadata.crisis_choices as string[]) ?? []);
+                setInputQuickReplies([]);
               }
             } else {
               setMessages([]);
+              setInputQuickReplies([]);
             }
           } catch {
             setMessages([]);
@@ -211,6 +232,7 @@ export default function TherapyPage() {
     if (!currentMessage || isTyping || !sessionId) return;
 
     setIsTyping(true);
+    setInputQuickReplies([]);
     setMessages((prev) => [
       ...prev,
       { role: "user", content: currentMessage, timestamp: new Date() },
@@ -228,10 +250,17 @@ export default function TherapyPage() {
         setCrisisChoices([]);
       }
 
-      const quickReplies =
+      const quickReplies = (
         (response.quick_replies as QuickReply[] | undefined) ||
         (response.metadata?.quick_replies as QuickReply[] | undefined) ||
-        [];
+        []
+      ).slice(0, 3);
+
+      if (!response.chat_blocked) {
+        setInputQuickReplies(quickReplies);
+      } else {
+        setInputQuickReplies([]);
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -361,7 +390,12 @@ export default function TherapyPage() {
       setIsLoading(true);
       const history = await getChatHistory(selectedSessionId);
       if (Array.isArray(history)) {
-        setMessages(history.map((msg) => ({ ...msg, timestamp: new Date(msg.timestamp) })));
+        const mapped = history.map((msg) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        }));
+        setMessages(mapped);
+        setInputQuickReplies(quickRepliesFromMessages(mapped));
         setSessionId(selectedSessionId);
         setIsChatPaused(false);
         setCrisisChoices([]);
@@ -482,9 +516,7 @@ export default function TherapyPage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 border-b border-brand-border/50 px-6 py-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-brand">
-                    <Bot className="h-5 w-5" />
-                  </div>
+                  <LunaAvatar size="md" />
                   <div>
                     <h2 className="font-bold text-gray-800">Luna AI</h2>
                     <p className="text-xs text-gray-500">
@@ -525,7 +557,7 @@ export default function TherapyPage() {
                                   {msg.metadata?.message_type === "crisis" ? (
                                     <AlertTriangle className="h-4 w-4" />
                                   ) : (
-                                    <Bot className="h-4 w-4" />
+                                    <LunaAvatar />
                                   )}
                                 </div>
                               ) : (
@@ -548,21 +580,23 @@ export default function TherapyPage() {
                                     {EMOTION_LABELS[msg.metadata.emotion as string] ?? msg.metadata.emotion}
                                   </Badge>
                                 )}
+                                {msg.role === "assistant" &&
+                                  msg.metadata?.message_type !== "crisis" &&
+                                  getRetrievalSummary(msg.metadata) && (
+                                    <Badge
+                                      variant="outline"
+                                      className="gap-1 rounded-full border-brand-border bg-white text-xs text-gray-600"
+                                      title={getRetrievalSummary(msg.metadata) ?? undefined}
+                                    >
+                                      <BookOpenCheck className="h-3 w-3" />
+                                      Có nguồn
+                                    </Badge>
+                                  )}
                               </div>
 
                               <div className="prose prose-sm max-w-none leading-relaxed text-gray-700 prose-p:my-1">
                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                               </div>
-
-                              {msg.role === "assistant" &&
-                                Array.isArray(msg.metadata?.quick_replies) &&
-                                (msg.metadata.quick_replies as QuickReply[]).length > 0 && (
-                                  <QuickReplyChips
-                                    replies={msg.metadata.quick_replies as QuickReply[]}
-                                    onSelect={(text) => void sendUserMessage(text)}
-                                    disabled={isTyping || isChatPaused}
-                                  />
-                                )}
 
                               {msg.role === "assistant" &&
                                 msg.metadata?.show_micro_feedback &&
@@ -578,12 +612,11 @@ export default function TherapyPage() {
                               {msg.role === "assistant" && msg.metadata?.message_type !== "crisis" &&
                                 (() => {
                                   const activityIds = getSuggestedActivities(msg.metadata);
+                                  // Use metadata only — keyword scan duplicated CTAs already in prose.
                                   const canShowBreathing =
-                                    activityIds.includes("breathing_box") ||
-                                    hasBreathingSuggestion(msg.content);
+                                    activityIds.includes("breathing_box");
                                   const canShowOcean =
-                                    activityIds.includes("ocean_sound") ||
-                                    hasOceanSuggestion(msg.content);
+                                    activityIds.includes("ocean_sound");
                                   if (!canShowBreathing && !canShowOcean) return null;
                                   return (
                                     <div className="mt-3 flex flex-wrap gap-2">
@@ -615,21 +648,7 @@ export default function TherapyPage() {
                       ))}
                     </AnimatePresence>
 
-                    {isTyping && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex gap-4 bg-brand-light/40 px-6 py-6"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium text-gray-800">Luna AI</p>
-                          <p className="text-sm text-gray-500">Đang soạn...</p>
-                        </div>
-                      </motion.div>
-                    )}
+                    {isTyping && <LunaTypingIndicator />}
                     <div ref={messagesEndRef} />
                   </div>
                 </div>
@@ -694,7 +713,15 @@ export default function TherapyPage() {
                   </div>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="relative mx-auto max-w-3xl">
+                <div className="mx-auto max-w-3xl space-y-3">
+                  {inputQuickReplies.length > 0 && (
+                    <QuickReplyChips
+                      replies={inputQuickReplies}
+                      onSelect={(text) => void sendUserMessage(text)}
+                      disabled={isTyping || isChatPaused}
+                    />
+                  )}
+                <form onSubmit={handleSubmit} className="relative">
                   <textarea
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
@@ -722,6 +749,7 @@ export default function TherapyPage() {
                     <Send className="h-5 w-5" />
                   </button>
                 </form>
+                </div>
               )}
 
               <p className="mx-auto mt-4 max-w-3xl text-center text-[10px] italic text-gray-400">

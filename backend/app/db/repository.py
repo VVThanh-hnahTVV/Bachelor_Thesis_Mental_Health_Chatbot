@@ -11,6 +11,7 @@ ACTIVITY_COMPLETIONS = "activity_completions"
 USER_PROFILES = "user_profiles"
 MESSAGE_FEEDBACK = "message_feedback"
 SCREENING_RESPONSES = "screening_responses"
+KNOWLEDGE_CHUNKS = "knowledge_chunks"
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
@@ -24,6 +25,8 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         [("assistant_message_id", 1), ("session_id", 1)], unique=True
     )
     await db[SCREENING_RESPONSES].create_index([("session_id", 1), ("created_at", -1)])
+    await db[KNOWLEDGE_CHUNKS].create_index([("id", 1)], unique=True)
+    await db[KNOWLEDGE_CHUNKS].create_index([("topic", 1)])
 
 
 async def create_conversation(
@@ -325,3 +328,45 @@ async def get_mood_trend(
     if delta <= -1:
         return "declining"
     return "stable"
+
+
+# ---------------------------------------------------------------------------
+# Knowledge chunks — optional Mongo-backed vector RAG
+# ---------------------------------------------------------------------------
+
+async def upsert_knowledge_chunk(
+    db: AsyncIOMotorDatabase,
+    *,
+    chunk_id: str,
+    text: str,
+    topic: str = "",
+    embedding: list[float] | None = None,
+    source: str = "chunks.json",
+) -> None:
+    now = datetime.now(UTC)
+    doc: dict[str, Any] = {
+        "id": chunk_id,
+        "text": text,
+        "topic": topic,
+        "source": source,
+        "updated_at": now,
+    }
+    if embedding is not None:
+        doc["embedding"] = embedding
+    await db[KNOWLEDGE_CHUNKS].update_one(
+        {"id": chunk_id},
+        {
+            "$set": doc,
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+
+
+async def list_knowledge_chunks(
+    db: AsyncIOMotorDatabase,
+    *,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    cursor = db[KNOWLEDGE_CHUNKS].find({}).limit(limit)
+    return [doc async for doc in cursor]

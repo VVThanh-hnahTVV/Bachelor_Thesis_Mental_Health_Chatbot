@@ -60,7 +60,7 @@ import {
 
 import { ActivityLogger } from "@/components/activities/activity-logger";
 import { useSession } from "@/lib/contexts/session-context";
-import { getAllChatSessions } from "@/lib/api/chat";
+import { getDashboardStats } from "@/lib/api/dashboard";
 
 // Add this type definition
 type ActivityLevel = "none" | "low" | "medium" | "high";
@@ -95,47 +95,30 @@ interface Activity {
 // Add this interface for stats
 interface DailyStats {
   moodScore: number | null;
+  moodSource: "chat" | "form" | "none";
+  dominantEmotion: string | null;
   completionRate: number;
   mindfulnessCount: number;
   totalActivities: number;
+  chatTurnsToday: number;
   lastUpdated: Date;
 }
 
-// Update the calculateDailyStats function to show correct stats
-const calculateDailyStats = (activities: Activity[]): DailyStats => {
-  const today = startOfDay(new Date());
-  const todaysActivities = activities.filter((activity) =>
-    isWithinInterval(new Date(activity.timestamp), {
-      start: today,
-      end: addDays(today, 1),
-    })
-  );
-
-  // Calculate mood score (average of today's mood entries)
-  const moodEntries = todaysActivities.filter(
-    (a) => a.type === "mood" && a.moodScore !== null
-  );
-  const averageMood =
-    moodEntries.length > 0
-      ? Math.round(
-          moodEntries.reduce((acc, curr) => acc + (curr.moodScore || 0), 0) /
-            moodEntries.length
-        )
-      : null;
-
-  // Count therapy sessions (all sessions ever)
-  const therapySessions = activities.filter((a) => a.type === "therapy").length;
-
-  return {
-    moodScore: averageMood,
-    completionRate: 100, // Always 100% as requested
-    mindfulnessCount: therapySessions, // Total number of therapy sessions
-    totalActivities: todaysActivities.length,
-    lastUpdated: new Date(),
-  };
+const EMOTION_LABELS: Record<string, string> = {
+  joy: "Vui",
+  neutral: "Bình thường",
+  anxiety: "Lo âu",
+  sadness: "Buồn",
+  anger: "Tức giận",
+  hopeless: "Vô vọng",
+  overwhelmed: "Quá tải",
+  lonely: "Cô đơn",
+  grief: "Đau buồn",
+  fear: "Sợ hãi",
+  shame: "Xấu hổ",
+  guilt: "Tội lỗi",
 };
 
-// Rename the function
 const generateInsights = (activities: Activity[]) => {
   const insights: {
     title: string;
@@ -291,11 +274,15 @@ export default function Dashboard() {
   const [isSavingMood, setIsSavingMood] = useState(false);
   const [dailyStats, setDailyStats] = useState<DailyStats>({
     moodScore: null,
-    completionRate: 100,
+    moodSource: "none",
+    dominantEmotion: null,
+    completionRate: 0,
     mindfulnessCount: 0,
     totalActivities: 0,
+    chatTurnsToday: 0,
     lastUpdated: new Date(),
   });
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   // Add this function to transform activities into day activity format
   const transformActivitiesToDayActivity = (
@@ -354,13 +341,6 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Add this effect to update stats when activities change
-  useEffect(() => {
-    if (activities.length > 0) {
-      setDailyStats(calculateDailyStats(activities));
-    }
-  }, [activities]);
-
   // Update the effect
   useEffect(() => {
     if (activities.length > 0) {
@@ -368,40 +348,24 @@ export default function Dashboard() {
     }
   }, [activities]);
 
-  // Add function to fetch daily stats
   const fetchDailyStats = useCallback(async () => {
+    setIsLoadingStats(true);
     try {
-      // Fetch therapy sessions using the chat API
-      const sessions = await getAllChatSessions();
-
-      // Fetch today's activities
-      const activitiesResponse = await fetch("/api/activities/today");
-      if (!activitiesResponse.ok) throw new Error("Failed to fetch activities");
-      const activities = await activitiesResponse.json();
-
-      // Calculate mood score from activities
-      const moodEntries = activities.filter(
-        (a: Activity) => a.type === "mood" && a.moodScore !== null
-      );
-      const averageMood =
-        moodEntries.length > 0
-          ? Math.round(
-              moodEntries.reduce(
-                (acc: number, curr: Activity) => acc + (curr.moodScore || 0),
-                0
-              ) / moodEntries.length
-            )
-          : null;
-
+      const stats = await getDashboardStats();
       setDailyStats({
-        moodScore: averageMood,
-        completionRate: 100,
-        mindfulnessCount: sessions.length, // Total number of therapy sessions
-        totalActivities: activities.length,
-        lastUpdated: new Date(),
+        moodScore: stats.mood_score,
+        moodSource: stats.mood_source,
+        dominantEmotion: stats.dominant_emotion,
+        completionRate: stats.completion_rate,
+        mindfulnessCount: stats.therapy_sessions,
+        totalActivities: stats.total_activities_today,
+        chatTurnsToday: stats.chat_turns_today,
+        lastUpdated: new Date(stats.last_updated),
       });
     } catch (error) {
       console.error("Error fetching daily stats:", error);
+    } finally {
+      setIsLoadingStats(false);
     }
   }, []);
 
@@ -412,23 +376,34 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchDailyStats]);
 
-  // Update wellness stats to reflect the changes
+  const moodDescription =
+    dailyStats.moodSource === "chat" && dailyStats.dominantEmotion
+      ? `Từ chat hôm nay · ${EMOTION_LABELS[dailyStats.dominantEmotion] ?? dailyStats.dominantEmotion}`
+      : dailyStats.moodSource === "form"
+        ? "Từ mood check-in hôm nay"
+        : dailyStats.chatTurnsToday > 0
+          ? "Chat hôm nay — chưa có emotion"
+          : "Chưa có dữ liệu hôm nay";
+
   const wellnessStats = [
     {
       title: "Mood Score",
-      value: dailyStats.moodScore ? `${dailyStats.moodScore}%` : "No data",
+      value: dailyStats.moodScore != null ? `${dailyStats.moodScore}%` : "No data",
       icon: Brain,
       color: "text-purple-500",
       bgColor: "bg-purple-500/10",
-      description: "Today's average mood",
+      description: moodDescription,
     },
     {
       title: "Completion Rate",
-      value: "100%",
+      value: `${dailyStats.completionRate}%`,
       icon: Trophy,
       color: "text-yellow-500",
       bgColor: "bg-yellow-500/10",
-      description: "Perfect completion rate",
+      description:
+        dailyStats.completionRate > 0
+          ? "Có tương tác wellness hôm nay"
+          : "Chưa có hoạt động hôm nay",
     },
     {
       title: "Therapy Sessions",
@@ -436,7 +411,7 @@ export default function Dashboard() {
       icon: Heart,
       color: "text-rose-500",
       bgColor: "bg-rose-500/10",
-      description: "Total sessions completed",
+      description: "Cuộc hội thoại trị liệu",
     },
     {
       title: "Total Activities",
@@ -444,7 +419,7 @@ export default function Dashboard() {
       icon: Activity,
       color: "text-blue-500",
       bgColor: "bg-blue-500/10",
-      description: "Planned for today",
+      description: `Wellness hôm nay · ${dailyStats.chatTurnsToday} tin chat`,
     },
   ];
 
@@ -646,9 +621,15 @@ export default function Dashboard() {
                     variant="ghost"
                     size="icon"
                     onClick={fetchDailyStats}
+                    disabled={isLoadingStats}
                     className="h-8 w-8"
                   >
-                    <Loader2 className={cn("h-4 w-4", "animate-spin")} />
+                    <Loader2
+                      className={cn(
+                        "h-4 w-4",
+                        isLoadingStats && "animate-spin"
+                      )}
+                    />
                   </Button>
                 </div>
               </CardHeader>
@@ -748,7 +729,12 @@ export default function Dashboard() {
               Move the slider to track your current mood
             </DialogDescription>
           </DialogHeader>
-          <MoodForm onSuccess={() => setShowMoodModal(false)} />
+          <MoodForm
+            onSuccess={() => {
+              setShowMoodModal(false);
+              fetchDailyStats();
+            }}
+          />
         </DialogContent>
       </Dialog>
 

@@ -1,4 +1,5 @@
 import { getOrCreateSessionId } from "@/lib/session";
+import { getAuthToken } from "@/lib/auth-token";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -33,6 +34,14 @@ export interface ChatMessage {
     quick_replies?: QuickReply[];
     show_micro_feedback?: boolean;
     prompt_screening?: string | null;
+    retrieval_mode?: "vector" | "lexical" | "hybrid" | "none";
+    retrieved_chunks?: Array<{
+      id: string;
+      topic: string;
+      score: number;
+      source: string;
+    }>;
+    safety_fallback_used?: boolean;
     [key: string]: unknown;
   };
 }
@@ -64,9 +73,12 @@ export async function submitMessageFeedback(
   assistantMessageId: string,
   value: "yes" | "a_bit" | "no"
 ): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}/api/v1/chat/feedback`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       session_id: sessionId,
       assistant_message_id: assistantMessageId,
@@ -89,9 +101,12 @@ export const sendChatMessage = async (
   sessionId: string,
   message: string
 ): Promise<ApiResponse> => {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}/api/v1/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ message, session_id: sessionId }),
   });
   if (!response.ok) {
@@ -122,7 +137,11 @@ export const getChatHistory = async (
   sessionId: string
 ): Promise<ChatMessage[]> => {
   const q = new URLSearchParams({ session_id: sessionId });
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}/api/v1/messages?${q.toString()}`, {
+    headers,
     cache: "no-store",
   });
   if (!response.ok) {
@@ -143,7 +162,11 @@ export const getChatHistory = async (
 export const getAllChatSessions = async (): Promise<ChatSession[]> => {
   const sessionId = getOrCreateSessionId();
   const q = new URLSearchParams({ session_id: sessionId });
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}/api/v1/conversations?${q.toString()}`, {
+    headers,
     cache: "no-store",
   });
   if (!response.ok) {

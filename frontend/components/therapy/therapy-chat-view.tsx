@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Phone,
   AlertTriangle,
+  BookOpenCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,23 @@ function getSessionTitle(session: ChatSession): string {
   const trimmed = first.trim();
   if (trimmed.length <= 36) return trimmed;
   return `${trimmed.slice(0, 36)}…`;
+}
+
+function getRetrievalSummary(metadata: ChatMessage["metadata"]) {
+  const chunks = metadata?.retrieved_chunks;
+  if (!Array.isArray(chunks) || chunks.length === 0) return null;
+  const mode = metadata?.retrieval_mode;
+  if (!mode || mode === "none") return null;
+  const topics = Array.from(
+    new Set(
+      chunks
+        .map((chunk: any) => String(chunk?.topic ?? "").trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 2);
+  return topics.length > 0
+    ? `Dựa trên kiến thức: ${topics.join(", ")}`
+    : "Dựa trên kiến thức đã tuyển chọn";
 }
 
 export interface TherapyChatViewProps {
@@ -245,6 +263,17 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                               {EMOTION_LABELS[msg.metadata.emotion as string] ?? msg.metadata.emotion}
                             </Badge>
                           )}
+                          {msg.metadata?.message_type !== "crisis" &&
+                            getRetrievalSummary(msg.metadata) && (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 rounded-full px-2 py-0 text-[10px]"
+                                title={getRetrievalSummary(msg.metadata) ?? undefined}
+                              >
+                                <BookOpenCheck className="h-3 w-3" />
+                                Có nguồn
+                              </Badge>
+                            )}
                         </div>
                       )}
 

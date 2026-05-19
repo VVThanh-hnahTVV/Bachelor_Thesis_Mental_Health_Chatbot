@@ -24,6 +24,13 @@ CRISIS_CHOICES_VI = [
     "Tôi cảm thấy đỡ hơn một chút rồi",
 ]
 
+CRISIS_CHOICES_EN = [
+    "I want to try a breathing exercise",
+    "Play calming ocean sounds",
+    "Show me support numbers",
+    "I feel a little safer now",
+]
+
 CRISIS_REPLY_VI = (
     "Mình rất lo lắng khi nghe điều bạn vừa chia sẻ. "
     "Bạn không đơn độc trong lúc này.\n\n"
@@ -32,6 +39,21 @@ CRISIS_REPLY_VI = (
     "- 📞 **1800 599 920** — Đường dây hỗ trợ sức khỏe tâm thần (miễn phí, 24/7)\n\n"
     "Mình ở đây với bạn. Bạn có thể chọn một trong các bước nhỏ bên dưới để mình cùng đồng hành."
 )
+
+CRISIS_REPLY_EN = (
+    "I'm really concerned by what you just shared. "
+    "You do not have to go through this alone.\n\n"
+    "**If you are in immediate danger right now, call your local emergency number now.**\n"
+    "- In the United States or Canada: **988** — Suicide & Crisis Lifeline\n"
+    "- If you are elsewhere: contact emergency services or a trusted person nearby immediately.\n\n"
+    "I'm here with you. You can choose one small next step below."
+)
+
+
+def crisis_reply_for_language(lang: str) -> tuple[str, list[str]]:
+    if lang == "en":
+        return CRISIS_REPLY_EN, CRISIS_CHOICES_EN
+    return CRISIS_REPLY_VI, CRISIS_CHOICES_VI
 
 _SAFETY_SYSTEM = """\
 You are a mental-health safety classifier. Analyse the user message for crisis signals.
@@ -72,6 +94,43 @@ _FALLBACK: SafetyResult = {
     "emergency_mode": False,
 }
 
+_CRISIS_KEYWORDS = (
+    "tôi muốn chết",
+    "muốn chết",
+    "tự tử",
+    "không muốn sống",
+    "i want to die",
+    "want to die",
+    "kill myself",
+    "suicide",
+    "end my life",
+)
+
+_SUSPICIOUS_KEYWORDS = (
+    "chết", "tự làm đau", "không còn lý do", "vô nghĩa", "cắt",
+    "nhảy", "uống thuốc quá liều", "die", "kill", "hurt myself",
+    "harm", "overdose", "hopeless", "end it",
+)
+
+
+def _keyword_risk(text: str) -> SafetyResult | None:
+    low = text.lower()
+    if any(kw in low for kw in _CRISIS_KEYWORDS):
+        return SafetyResult(
+            risk_level="high",
+            confidence=0.98,
+            triggers=["keyword_crisis"],
+            emergency_mode=True,
+        )
+    if any(kw in low for kw in _SUSPICIOUS_KEYWORDS):
+        return SafetyResult(
+            risk_level="medium",
+            confidence=0.75,
+            triggers=["keyword_suspicious"],
+            emergency_mode=False,
+        )
+    return None
+
 
 def _parse_safety_json(raw: str) -> SafetyResult:
     m = re.search(r"\{[^{}]+\}", raw, re.DOTALL)
@@ -102,18 +161,10 @@ async def run_safety_engine(
 ) -> SafetyResult:
     """Call LLM safety classifier. Always returns a SafetyResult."""
     # Fast keyword pre-screen to avoid LLM call on clearly safe messages
-    _LOW_RISK_FAST = (
-        len(user_input) < 5
-        or not any(
-            kw in user_input.lower()
-            for kw in (
-                "chết", "tự tử", "tự làm đau", "không muốn sống",
-                "die", "kill", "suicide", "hurt myself", "harm",
-                "cắt", "nhảy", "uống thuốc quá liều", "overdose",
-                "vô nghĩa", "hopeless", "end it",
-            )
-        )
-    )
+    keyword_result = _keyword_risk(user_input)
+    if keyword_result and keyword_result["emergency_mode"]:
+        return keyword_result
+    _LOW_RISK_FAST = len(user_input) < 5 or keyword_result is None
     if _LOW_RISK_FAST:
         return SafetyResult(
             risk_level="low",
@@ -140,5 +191,10 @@ async def run_safety_engine(
         raw = msg.content if isinstance(msg.content, str) else str(msg.content)
         return _parse_safety_json(raw)
     except Exception as exc:
+        if keyword_result:
+            logger.warning("safety_engine LLM failed, using conservative keyword result: %s", exc)
+            conservative = dict(keyword_result)
+            conservative["triggers"] = [*conservative["triggers"], "llm_failure"]
+            return conservative
         logger.warning("safety_engine LLM failed, defaulting to low: %s", exc)
         return dict(_FALLBACK)

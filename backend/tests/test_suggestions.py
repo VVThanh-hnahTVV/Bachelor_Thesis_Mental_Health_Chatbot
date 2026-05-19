@@ -55,6 +55,28 @@ def test_align_reply_skips_ocean_when_already_aligned():
     assert align_assistant_reply_with_suggestions(base, sug) == base.strip()
 
 
+def test_align_skips_when_behavioral_walk_in_reply():
+    base = (
+        "Mình rất cảm thông. Bạn có thể ra ngoài đi dạo 10 phút. "
+        "Bạn muốn thử ngay bây giờ không?"
+    )
+    sug = [
+        {"id": "ocean_sound", "title": "Âm sóng nhẹ", "description": "x"},
+        {"id": "breathing_box", "title": "Hít thở", "description": "y"},
+    ]
+    assert align_assistant_reply_with_suggestions(base, sug) == base.strip()
+
+
+def test_align_at_most_one_bridge():
+    base = "Hãy nghỉ một chút."
+    sug = [
+        {"id": "ocean_sound", "title": "Âm sóng nhẹ", "description": "x"},
+        {"id": "breathing_box", "title": "Hít thở", "description": "y"},
+    ]
+    out = align_assistant_reply_with_suggestions(base, sug)
+    assert out.count("\n\n") == 1
+
+
     text = '```json\n{"activity_ids": ["ocean_sound", "breathing_box"]}\n```'
     assert _parse_activity_id_list(text) == ["ocean_sound", "breathing_box"]
 

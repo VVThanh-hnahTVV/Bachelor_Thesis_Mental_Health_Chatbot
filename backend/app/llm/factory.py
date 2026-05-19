@@ -13,7 +13,20 @@ from langchain_openai import ChatOpenAI
 from app.config import ProviderName, get_settings
 
 logger = logging.getLogger(__name__)
-PREFERRED_PROVIDER_ORDER: tuple[ProviderName, ...] = ("modal", "openai", "gemini", "groq")
+PREFERRED_PROVIDER_ORDER: tuple[ProviderName, ...] = ("local", "groq", "openai", "gemini")
+
+
+def _chat_local() -> BaseChatModel:
+    s = get_settings()
+    if not s.local_base_url:
+        raise ValueError("LOCAL_BASE_URL is not set")
+    return ChatOpenAI(
+        base_url=s.local_base_url.rstrip("/"),
+        api_key=s.local_api_key or "ollama",
+        model=s.local_model,
+        temperature=0.4,
+        timeout=60,
+    )
 
 
 def _chat_openai_modal() -> BaseChatModel:
@@ -65,6 +78,8 @@ def _chat_gemini() -> BaseChatModel:
 
 
 def get_chat_model(provider: ProviderName) -> BaseChatModel:
+    if provider == "local":
+        return _chat_local()
     if provider == "modal":
         return _chat_openai_modal()
     if provider == "groq":
@@ -80,13 +95,15 @@ def parse_fallback_chain(chain: str) -> list[ProviderName]:
     order: list[ProviderName] = []
     for part in chain.split(","):
         p = part.strip().lower()
-        if p in ("modal", "groq", "openai", "gemini"):
+        if p in ("local", "modal", "groq", "openai", "gemini"):
             order.append(p)  # type: ignore[arg-type]
     return order
 
 
 def is_provider_configured(provider: ProviderName) -> bool:
     s = get_settings()
+    if provider == "local":
+        return bool(s.local_base_url)
     if provider == "modal":
         return bool(s.modal_base_url)
     if provider == "openai":
@@ -100,7 +117,8 @@ def is_provider_configured(provider: ProviderName) -> bool:
 
 def build_provider_chain(primary: ProviderName) -> list[ProviderName]:
     """Return configured providers in code-defined priority, keeping `primary` first."""
-    configured = [p for p in PREFERRED_PROVIDER_ORDER if is_provider_configured(p)]
+    preferred = parse_fallback_chain(get_settings().llm_fallback_chain) or list(PREFERRED_PROVIDER_ORDER)
+    configured = [p for p in preferred if is_provider_configured(p)]
     if primary in configured:
         return [primary] + [p for p in configured if p != primary]
     return [primary] + configured
@@ -131,7 +149,7 @@ def resolve_provider(requested: str | None, default: ProviderName = "openai") ->
     if not requested:
         return default
     r = requested.strip().lower()
-    if r in ("modal", "groq", "openai", "gemini"):
+    if r in ("local", "modal", "groq", "openai", "gemini"):
         return r  # type: ignore[return-value]
     return default
 
@@ -140,4 +158,4 @@ def default_provider() -> ProviderName:
     for p in PREFERRED_PROVIDER_ORDER:
         if is_provider_configured(p):
             return p
-    return "openai"
+    return "local"

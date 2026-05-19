@@ -20,6 +20,8 @@ dependencies = [
     "PyJWT>=2.9.0",
     "email-validator>=2.2.0",
     "redis[asyncio]>=5.0.0",
+    "mcp>=1.27.1",
+    "langchain-mcp-adapters>=0.2.2",
 ]
 
 [project.optional-dependencies]

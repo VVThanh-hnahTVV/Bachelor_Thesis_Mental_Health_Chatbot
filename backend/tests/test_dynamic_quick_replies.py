@@ -52,6 +52,18 @@ def test_skip_quick_replies_on_objection():
     )
 
 
+def test_skip_quick_replies_when_activity_buttons_present():
+    assert should_skip_quick_replies(
+        user_input="tôi buồn",
+        intent="venting",
+        therapy_strategy="reflective_listening",
+        objection_detected=False,
+        chat_blocked=False,
+        message_type="normal",
+        suggested_activities=[{"id": "ocean_sound"}],
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_returns_empty_when_llm_declines():
     mock_msg = MagicMock()

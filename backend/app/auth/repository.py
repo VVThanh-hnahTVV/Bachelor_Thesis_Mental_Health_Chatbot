@@ -30,6 +30,26 @@ async def get_user_by_id(db: AsyncIOMotorDatabase, user_id: ObjectId) -> dict[st
     return await db[USERS].find_one({"_id": user_id})
 
 
+async def get_session_link_by_session_id(
+    db: AsyncIOMotorDatabase,
+    session_id: str,
+) -> dict[str, Any] | None:
+    return await db[SESSION_LINKS].find_one({"session_id": session_id})
+
+
+async def is_session_owned_by_user(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    user_id: ObjectId,
+) -> bool:
+    doc = await get_session_link_by_session_id(db, session_id)
+    if not doc:
+        return False
+    owner = doc.get("user_id")
+    return isinstance(owner, ObjectId) and owner == user_id
+
+
 async def create_user(
     db: AsyncIOMotorDatabase,
     *,

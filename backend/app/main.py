@@ -6,12 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth_routes import router as auth_router
+from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router as api_router
 from app.auth.repository import ensure_auth_indexes
 from app.cache.redis_client import close_redis_client, get_redis_client
 from app.config import get_settings
 from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
+from app.mcp.server import create_mcp_asgi_app
 
 
 @asynccontextmanager
@@ -59,6 +61,13 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(auth_router)
+    app.include_router(mcp_router)
+
+    if s.enable_internal_mcp_server:
+        mcp_asgi_app = create_mcp_asgi_app(
+            db_getter=lambda: getattr(app.state, "db", None),
+        )
+        app.mount("/mcp", mcp_asgi_app)
     return app
 
 

@@ -29,7 +29,7 @@ def load_chunks() -> list[dict[str, str]]:
 
 def _tokens(s: str) -> set[str]:
     s = s.lower()
-    return {t for t in re.split(r"[^a-z0-9]+", s) if len(t) > 2}
+    return {t for t in re.split(r"[^\w]+", s, flags=re.UNICODE) if len(t) > 1}
 
 
 def lexical_scores(

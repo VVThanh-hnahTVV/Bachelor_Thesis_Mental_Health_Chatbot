@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db_name: str = "mental_health"
 
-    # OpenAI (chat + optional embeddings for seed script)
+    # Local OpenAI-compatible chat server (Ollama exposes /v1 by default)
+    local_base_url: str | None = "http://localhost:11434/v1"
+    local_api_key: str = "ollama"
+    local_model: str = "llama3.1"
+
+    # OpenAI (chat + optional embeddings)
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 
@@ -32,7 +37,7 @@ class Settings(BaseSettings):
     modal_model: str = "default"
 
     # Fallback order when primary fails (comma-separated provider names)
-    llm_fallback_chain: str = "modal,openai,gemini,groq"
+    llm_fallback_chain: str = "local,groq,openai,gemini"
 
     redis_url: str = "redis://localhost:6379/0"
     session_ttl_seconds: int = 7200  # 2 hours
@@ -41,6 +46,27 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "change-me-in-production"
     jwt_expire_hours: int = 168
+
+    enable_internal_mcp_server: bool = False
+    enable_external_mcp_gateway: bool = False
+    enable_graph_external_enrichment: bool = False
+    external_mcp_servers_json: str = "{}"
+    external_mcp_allowed_tools: str = ""
+    external_mcp_timeout_seconds: float = 6.0
+    external_mcp_max_response_chars: int = 2000
+    personalization_recent_mood_limit: int = 5
+    personalization_recent_note_limit: int = 3
+    graph_external_mcp_server: str | None = None
+    graph_external_mcp_tool: str | None = None
+
+    enable_vector_rag: bool = True
+    embedding_provider: str = "ollama"
+    embedding_model: str = "nomic-embed-text-v2-moe"
+    ollama_base_url: str = "http://localhost:11434"
+    rag_top_k: int = 3
+    rag_min_score: float = 0.15
+    llm_judge_provider: str = "openai"
+    llm_judge_model: str = "gpt-4o-mini"
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -52,4 +78,4 @@ def get_settings() -> Settings:
     return Settings()
 
 
-ProviderName = Literal["modal", "groq", "openai", "gemini"]
+ProviderName = Literal["local", "modal", "groq", "openai", "gemini"]

@@ -267,6 +267,14 @@ def evaluate_recommendation(signals: RecommendationSignals) -> RecommendationDec
     if signals.user_turn_count < MIN_TURNS_FOR_PROACTIVE:
         return RecommendationDecision(False, reason="too_early_in_session")
 
+    # In-chat behavioral CTA (walk, small step) — do not stack app tools the same turn
+    from app.graph.conversation_ui import reply_has_in_chat_wellness_cta
+
+    if signals.therapy_strategy == "behavioral_activation":
+        return RecommendationDecision(False, reason="behavioral_activation_turn")
+    if reply_has_in_chat_wellness_cta(signals.assistant_reply):
+        return RecommendationDecision(False, reason="in_chat_cta_already")
+
     # ── Not during active wellness session ───────────────────────────────────
     if signals.conv_state == ConvState.REFLECTION and signals.turns_since_last_suggestion is not None:
         # After a completed activity, give breathing room
@@ -367,7 +375,8 @@ def should_show_activity_micro_feedback(
         return False
     if user_turn_count < MIN_TURNS_WHILE_VENTING:
         return False
-    if not suggested_activities:
+    # Same turn already has activity buttons — avoid a second feedback row
+    if suggested_activities:
         return False
     # Never interrupt early venting phase
     if conv_state == ConvState.VENTING and user_turn_count < MIN_TURNS_WHILE_VENTING + 2:

@@ -114,12 +114,23 @@ def test_micro_feedback_not_on_first_vent():
     )
 
 
-def test_micro_feedback_after_intervention():
-    assert should_show_activity_micro_feedback(
+def test_micro_feedback_skipped_when_activity_buttons_shown():
+    assert not should_show_activity_micro_feedback(
         user_turn_count=6,
         intent="seeking_advice",
         therapy_strategy="CBT",
         reply="A" * 120,
         suggested_activities=[{"id": "breathing_box"}],
+        objection_detected=False,
+    )
+
+
+def test_micro_feedback_on_substantive_reply_without_buttons():
+    assert should_show_activity_micro_feedback(
+        user_turn_count=6,
+        intent="seeking_advice",
+        therapy_strategy="CBT",
+        reply="A" * 120,
+        suggested_activities=[],
         objection_detected=False,
     )

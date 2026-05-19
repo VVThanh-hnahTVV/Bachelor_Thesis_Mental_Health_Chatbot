@@ -23,15 +23,45 @@ VALID_STRATEGIES = frozenset({
     "stabilization",
 })
 
+_RELATIONSHIP_KEYWORDS = (
+    "yêu",
+    "thích",
+    "crush",
+    "người yêu",
+    "không yêu",
+    "từ chối",
+    "bỏ rơi",
+    "chia tay",
+    "unrequited",
+    "rejected",
+    "breakup",
+    "relationship",
+    "tình cảm",
+)
+
+_POST_STABILIZATION_USER_MARKERS = (
+    "rồi sao",
+    "xong rồi",
+    "làm xong",
+    "tiếp theo",
+    "sau đó",
+    "what now",
+    "what next",
+    "done now",
+    "chán",
+    "không giúp",
+    "vô ích",
+    "vòng vo",
+)
+
 # Rule-based fast-path (avoids LLM call for clear cases)
 _FAST_PATH: list[tuple[set[str], set[str], str]] = [
-    # (emotions, intents, strategy)
-    (set(), {"casual"}, "reflective_listening"),          # greetings/small talk → warm reply
+    (set(), {"casual"}, "reflective_listening"),
     ({"anxiety", "overwhelmed", "fear"}, {"panic_support"}, "grounding"),
     ({"lonely", "grief", "sadness"}, {"venting", "loneliness"}, "reflective_listening"),
-    ({"hopeless"}, set(), "stabilization"),
     (set(), {"sleep_issues"}, "psychoeducation"),
     (set(), {"journaling"}, "reflective_listening"),
+    (set(), {"relationship_stress"}, "reflective_listening"),
 ]
 
 _SYSTEM = """\
@@ -50,6 +80,38 @@ Reply ONLY with valid JSON: {"strategy": "<strategy>"}
 """
 
 
+def _user_blob(state: dict[str, Any]) -> str:
+    history: list[dict[str, str]] = state.get("history") or []
+    user_lines = [m.get("content", "") for m in history if m.get("role") == "user"][-3:]
+    return " ".join(user_lines + [state.get("user_input", "")]).lower()
+
+
+def has_relationship_context(state: dict[str, Any]) -> bool:
+    blob = _user_blob(state)
+    return any(kw in blob for kw in _RELATIONSHIP_KEYWORDS)
+
+
+def is_post_stabilization_followup(user_input: str) -> bool:
+    t = user_input.lower().strip()
+    return any(m in t for m in _POST_STABILIZATION_USER_MARKERS)
+
+
+def resolve_hopeless_strategy(state: dict[str, Any]) -> str:
+    """First hopeless turn → stabilization; later → post_stabilization or CBT."""
+    flags: dict[str, Any] = state.get("therapy_flags") or {}
+    user_input: str = state.get("user_input", "")
+    if flags.get("stabilization_turn") and (
+        is_post_stabilization_followup(user_input)
+        or flags.get("last_strategy") == "stabilization"
+    ):
+        if has_relationship_context(state):
+            return "post_stabilization"
+        return "CBT"
+    if not flags.get("stabilization_turn"):
+        return "stabilization"
+    return "post_stabilization"
+
+
 def _fast_path_strategy(emotion: str, intent: str) -> str | None:
     for emotions, intents, strategy in _FAST_PATH:
         emotion_match = not emotions or emotion in emotions
@@ -65,6 +127,7 @@ async def node_therapy_router(state: dict[str, Any]) -> dict[str, Any]:
     user_input: str = state.get("user_input", "")
     provider: ProviderName = state.get("provider", "openai")
     long_term: dict[str, Any] = state.get("long_term_context") or {}
+    flags: dict[str, Any] = state.get("therapy_flags") or {}
 
     if state.get("objection_detected"):
         return {"therapy_strategy": "reflective_listening"}
@@ -72,12 +135,22 @@ async def node_therapy_router(state: dict[str, Any]) -> dict[str, Any]:
     if intent == "casual" or is_meta_conversation(user_input):
         return {"therapy_strategy": "reflective_listening"}
 
-    # Try fast path first (no LLM needed)
+    if intent == "relationship_stress" or has_relationship_context(state):
+        if emotion == "hopeless":
+            return {"therapy_strategy": resolve_hopeless_strategy(state)}
+        return {"therapy_strategy": "reflective_listening"}
+
+    if emotion == "hopeless":
+        return {"therapy_strategy": resolve_hopeless_strategy(state)}
+
+    # Post-stabilization without hopeless label
+    if flags.get("stabilization_turn") and is_post_stabilization_followup(user_input):
+        return {"therapy_strategy": "post_stabilization"}
+
     fast = _fast_path_strategy(emotion, intent)
     if fast:
         return {"therapy_strategy": fast}
 
-    # LLM-assisted routing for ambiguous cases
     user_ctx = (
         f"emotion: {emotion}\n"
         f"intent: {intent}\n"
