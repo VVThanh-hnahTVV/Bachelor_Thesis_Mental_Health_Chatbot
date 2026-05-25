@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, X, Minus, Plus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
+import { getDefaultLunaGreeting } from "@/lib/luna-greeting";
+import { fetchCurrentUser } from "@/lib/api/auth";
 
 export function FixedChat() {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,10 +20,24 @@ export function FixedChat() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "Hi! I'm Luna. How are you feeling today?",
+      content: getDefaultLunaGreeting(),
       timestamp: new Date(),
     },
   ]);
+
+  useEffect(() => {
+    void fetchCurrentUser().then((user) => {
+      if (user?.name) {
+        setMessages([
+          {
+            role: "assistant",
+            content: getDefaultLunaGreeting(user.name),
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    });
+  }, []);
 
   const router = useRouter();
 

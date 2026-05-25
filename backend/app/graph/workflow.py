@@ -91,17 +91,30 @@ class GraphState(TypedDict, total=False):
 async def node_off_topic_reply(state: GraphState) -> dict[str, Any]:
     """Generate a natural, context-aware explanation + health redirect."""
     user_input: str = state.get("user_input", "")
+    history: list[dict[str, str]] = state.get("history") or []
     provider: ProviderName = state.get("provider", "openai")
+    mid_chat = any(turn.get("role") == "assistant" for turn in history)
     fallback = (
-        "I'm Luna — a mental wellness companion. "
-        "That topic is a bit outside my area, but I'm always here if you'd like to talk "
-        "about how you're feeling or anything on your mind."
+        "That one's a bit outside what I focus on — feelings, stress, and emotional wellbeing. "
+        "If you'd like to share how you're doing or what's on your mind, I'm here."
+        if mid_chat
+        else (
+            "I'm Luna — a mental wellness companion. "
+            "That topic is a bit outside my area, but I'm always here if you'd like to talk "
+            "about how you're feeling or anything on your mind."
+        )
     )
+    human_content = user_input
+    if mid_chat:
+        human_content = (
+            "(Continuing conversation — do not greet or re-introduce Luna.)\n\n"
+            f"{user_input}"
+        )
     try:
         llm = get_chat_model(provider)
         msg = await invoke_with_fallback(
             llm,
-            [SystemMessage(content=_OFF_TOPIC_SYSTEM), HumanMessage(content=user_input)],
+            [SystemMessage(content=_OFF_TOPIC_SYSTEM), HumanMessage(content=human_content)],
             primary=provider,
         )
         reply = msg.content if isinstance(msg.content, str) else str(msg.content)

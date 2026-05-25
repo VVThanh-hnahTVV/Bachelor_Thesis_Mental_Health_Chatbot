@@ -42,6 +42,8 @@ import { LunaAvatar } from "@/components/therapy/luna-avatar";
 import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
 import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
 import type { QuickReply } from "@/lib/api/chat";
+import { fetchCurrentUser, linkChatSession } from "@/lib/api/auth";
+import { getDefaultLunaGreeting } from "@/lib/luna-greeting";
 
 const SUGGESTED_QUESTIONS = [
   { text: "Làm thế nào để quản lý lo lắng tốt hơn?" },
@@ -64,6 +66,17 @@ const EMOTION_LABELS: Record<string, string> = {
   guilt: "Tội lỗi",
   joy: "Vui vẻ",
 };
+
+async function welcomeMessages(): Promise<ChatMessage[]> {
+  const user = await fetchCurrentUser();
+  return [
+    {
+      role: "assistant",
+      content: getDefaultLunaGreeting(user?.name),
+      timestamp: new Date(),
+    },
+  ];
+}
 
 function quickRepliesFromMessages(msgs: ChatMessage[]): QuickReply[] {
   const last = [...msgs].reverse().find((m) => m.role === "assistant");
@@ -141,7 +154,12 @@ export default function TherapyPage() {
       };
       setSessions((prev) => [newSession, ...prev]);
       setSessionId(newSessionId);
-      setMessages([]);
+      try {
+        await linkChatSession(newSessionId);
+      } catch {
+        /* optional — chat still links on first message */
+      }
+      setMessages(await welcomeMessages());
       setInputQuickReplies([]);
       setIsChatPaused(false);
       setCrisisChoices([]);
@@ -157,33 +175,39 @@ export default function TherapyPage() {
     const initChat = async () => {
       try {
         setIsLoading(true);
-        if (!sessionId || sessionId === "new") {
-          const newSessionId = await createChatSession();
-          setSessionId(newSessionId);
-          window.history.pushState({}, "", `/therapy/${newSessionId}`);
-        } else {
-          try {
-            const history = await getChatHistory(sessionId);
-            if (Array.isArray(history)) {
-              const mapped = history.map((msg) => ({
-                ...msg,
-                timestamp: new Date(msg.timestamp),
-              }));
-              setMessages(mapped);
-              setInputQuickReplies(quickRepliesFromMessages(mapped));
-              const last = [...history].reverse().find((m) => m.role === "assistant");
-              if (last?.metadata?.chat_blocked) {
-                setIsChatPaused(true);
-                setCrisisChoices((last.metadata.crisis_choices as string[]) ?? []);
-                setInputQuickReplies([]);
-              }
-            } else {
-              setMessages([]);
+        let activeSessionId = sessionId;
+        if (!activeSessionId || activeSessionId === "new") {
+          activeSessionId = await createChatSession();
+          setSessionId(activeSessionId);
+          window.history.pushState({}, "", `/therapy/${activeSessionId}`);
+        }
+        try {
+          await linkChatSession(activeSessionId);
+        } catch {
+          /* optional */
+        }
+        try {
+          const history = await getChatHistory(activeSessionId);
+          if (Array.isArray(history) && history.length > 0) {
+            const mapped = history.map((msg) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp),
+            }));
+            setMessages(mapped);
+            setInputQuickReplies(quickRepliesFromMessages(mapped));
+            const last = [...history].reverse().find((m) => m.role === "assistant");
+            if (last?.metadata?.chat_blocked) {
+              setIsChatPaused(true);
+              setCrisisChoices((last.metadata.crisis_choices as string[]) ?? []);
               setInputQuickReplies([]);
             }
-          } catch {
-            setMessages([]);
+          } else {
+            setMessages(await welcomeMessages());
+            setInputQuickReplies([]);
           }
+        } catch {
+          setMessages(await welcomeMessages());
+          setInputQuickReplies([]);
         }
       } catch {
         setMessages([
@@ -324,55 +348,29 @@ export default function TherapyPage() {
 
   const openBreathing = async () => {
     if (!sessionId) return;
-    try {
-      const { reply, assistant_message_id } = await startWellnessSession(
-        sessionId,
-        "breathing_box"
-      );
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistant_message_id,
-          role: "assistant",
-          content: reply,
-          timestamp: new Date(),
-          metadata: { suggested_activities: [{ id: "breathing_box", title: "", description: "" }] },
-        },
-      ]);
-    } catch {
-      // still open popup
-    }
     setShowBreathingPopup(true);
+    try {
+      await startWellnessSession(sessionId, "breathing_box", { quiet: true, lang: "en" });
+    } catch {
+      /* popup still opens */
+    }
   };
 
   const openOcean = async () => {
     if (!sessionId) return;
-    try {
-      const { reply, assistant_message_id } = await startWellnessSession(
-        sessionId,
-        "ocean_sound"
-      );
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistant_message_id,
-          role: "assistant",
-          content: reply,
-          timestamp: new Date(),
-          metadata: { suggested_activities: [{ id: "ocean_sound", title: "", description: "" }] },
-        },
-      ]);
-    } catch {
-      // still open
-    }
     setShowOceanPopup(true);
+    try {
+      await startWellnessSession(sessionId, "ocean_sound", { quiet: true, lang: "en" });
+    } catch {
+      /* popup still opens */
+    }
   };
 
   const handleWellnessComplete = async () => {
     if (!sessionId) return;
     try {
       const { checkin_message, show_micro_feedback } =
-        await completeWellnessSession(sessionId);
+        await completeWellnessSession(sessionId, { lang: "en" });
       if (checkin_message) {
         setMessages((prev) => [
           ...prev,

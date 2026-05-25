@@ -71,6 +71,39 @@ _EXPLICIT_CALM_AUDIO = (
     "calming sound", "relaxing music",
 )
 
+# User wants conversation / exploration — do not push in-app tools the same turn.
+_PREFERS_CONVERSATION_MARKERS = (
+    "prefer to talk",
+    "rather talk",
+    "want to talk",
+    "wanna talk",
+    "just talk",
+    "talk about what",
+    "talk about why",
+    "what's causing",
+    "what is causing",
+    "what caused",
+    "why am i",
+    "why do i",
+    "root cause",
+    "explore what",
+    "discuss what",
+    "not ready for",
+    "don't want to breathe",
+    "do not want to breathe",
+    "just listen",
+    "hear me out",
+    "muốn nói",
+    "muốn trò chuyện",
+    "thà nói",
+    "nguyên nhân",
+    "tại sao",
+    "vì sao",
+    "chưa muốn thở",
+    "không muốn thở",
+    "đừng bảo thở",
+)
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -121,6 +154,14 @@ class RecommendationDecision:
 
 def _norm(text: str) -> str:
     return text.lower().strip()
+
+
+def user_prefers_conversation_over_tools(text: str) -> bool:
+    """True when the user wants to talk/explore rather than open an app exercise."""
+    t = _norm(text)
+    if not t:
+        return False
+    return any(m in t for m in _PREFERS_CONVERSATION_MARKERS)
 
 
 def _explicit_activity_ids(user_input: str) -> list[str]:
@@ -240,6 +281,9 @@ def evaluate_recommendation(signals: RecommendationSignals) -> RecommendationDec
     if signals.conv_state == ConvState.CRISIS:
         return RecommendationDecision(False, reason="crisis_state")
 
+    if user_prefers_conversation_over_tools(signals.user_input):
+        return RecommendationDecision(False, reason="user_prefers_conversation")
+
     # ── Explicit user request (always honour) ───────────────────────────────
     explicit = _explicit_activity_ids(signals.user_input)
     if explicit:
@@ -327,13 +371,15 @@ def evaluate_recommendation(signals: RecommendationSignals) -> RecommendationDec
             )
             return RecommendationDecision(True, activity_ids=ids, intensity=adj_intensity, reason="sustained_low_mood")
 
-    # Advice-seeking with anxiety — try LLM planner with medium confidence
+    # Advice-seeking with anxiety — listen first; tools only after explicit ask or regulation
     if intent in ("seeking_advice", "general_health") and intensity_val >= 0.55:
         if emotion in ("anxiety", "overwhelmed", "fear") and state != ConvState.VENTING:
+            if strategy in ("reflective_listening", "CBT", "psychoeducation"):
+                return RecommendationDecision(False, reason="explore_before_tools")
             return RecommendationDecision(
                 True,
                 use_llm_planner=True,
-                intensity=SuggestionIntensity.MEDIUM,
+                intensity=SuggestionIntensity.SOFT,
                 reason="advice_seeking_anxiety_llm",
             )
 

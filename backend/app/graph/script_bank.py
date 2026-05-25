@@ -17,10 +17,9 @@ logger = logging.getLogger(__name__)
 
 _BANK_PATH = Path(__file__).resolve().parent.parent / "content" / "script_bank.json"
 
-# Fixed scripts for greetings, safety, explicit tool requests — never broad emotion keywords.
+# Fixed scripts for safety, explicit tool requests — never broad emotion keywords.
+# greeting/capability are only for the opening turn (see should_use_script_for_turn).
 _ALWAYS_SCRIPT_IDS = frozenset({
-    "greeting",
-    "capability",
     "objection_apology",
     "refuse_breathing",
     "hopeless_hint",
@@ -122,10 +121,16 @@ def _prior_user_turns(history: list[dict[str, str]]) -> int:
     return sum(1 for turn in history if turn.get("role") == "user")
 
 
+def conversation_has_assistant_reply(history: list[dict[str, str]]) -> bool:
+    return any(turn.get("role") == "assistant" for turn in history)
+
+
 def should_use_script_for_turn(scenario: Scenario, history: list[dict[str, str]]) -> bool:
     """Topic scripts only on the first user message; later turns need full LLM context."""
     if scenario.objection_only or scenario.id in _ALWAYS_SCRIPT_IDS:
         return True
+    if scenario.id in ("greeting", "capability"):
+        return not conversation_has_assistant_reply(history)
     return _prior_user_turns(history) < 1
 
 

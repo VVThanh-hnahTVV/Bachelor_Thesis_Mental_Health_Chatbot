@@ -76,6 +76,22 @@ export async function loginUser(
   return data;
 }
 
+export async function linkChatSession(sessionId: string): Promise<void> {
+  const token = getAuthToken();
+  if (!token) return;
+  const res = await fetch(`${API_BASE}/api/v1/auth/link-session`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!res.ok && res.status !== 401) {
+    throw new Error("Failed to link chat session");
+  }
+}
+
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
   const token = getAuthToken();
   if (!token) return null;

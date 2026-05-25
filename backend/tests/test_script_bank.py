@@ -49,8 +49,21 @@ def test_topic_script_skipped_after_first_user_turn():
     assert not should_use_script_for_turn(sc, history)
 
 
-def test_greeting_script_allowed_with_history():
+def test_greeting_script_skipped_after_assistant_reply():
     sc = match_scenario("xin chào bạn", intent="casual")
     assert sc is not None
-    history = [{"role": "user", "content": "old"}]
-    assert should_use_script_for_turn(sc, history)
+    history = [
+        {"role": "user", "content": "fdsaf"},
+        {"role": "assistant", "content": "I'm here for feelings and wellbeing."},
+    ]
+    assert not should_use_script_for_turn(sc, history)
+
+
+def test_capability_script_skipped_mid_conversation():
+    sc = match_scenario("what can you help me", intent="casual")
+    assert sc is not None
+    history = [
+        {"role": "user", "content": "fdsaf"},
+        {"role": "assistant", "content": "I'm here for feelings and wellbeing."},
+    ]
+    assert not should_use_script_for_turn(sc, history)

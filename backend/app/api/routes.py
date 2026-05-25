@@ -124,10 +124,13 @@ class MessageFeedbackRequest(BaseModel):
 class WellnessStartRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
     activity_id: str = Field(..., pattern="^(breathing_box|ocean_sound)$")
+    quiet: bool = False
+    lang: str | None = Field(None, pattern="^(vi|en)$")
 
 
 class WellnessCompleteRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
+    lang: str | None = Field(None, pattern="^(vi|en)$")
 
 
 class ScreeningSubmitRequest(BaseModel):
@@ -368,6 +371,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
                 suggested_activities,
                 suggestion_intensity,
                 therapy_strategy=therapy_strategy,
+                reply_language=_lang,
+                user_input=req.message,
             )
         else:
             suggested_activities = []
@@ -532,7 +537,7 @@ async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatRe
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
-    lang = "vi"
+    lang = body.lang if body.lang in ("vi", "en") else "vi"
     _, intro = await start_session(redis, session_id=body.session_id, activity_id=body.activity_id, lang=lang)
     await set_active(redis, body.session_id)
 
@@ -540,30 +545,28 @@ async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatRe
         "wellness_session": {"activity_id": body.activity_id, "step": "active"},
         "show_micro_feedback": False,
     }
-    assistant_doc = await append_message(
-        db,
-        conversation_id=cid,
-        role="assistant",
-        content=intro,
-        metadata=meta_out,
-    )
-    aid = assistant_doc.get("_id")
-    if redis is not None:
-        await push_turn(redis, body.session_id, "assistant", intro)
+    aid: ObjectId | None = None
+    if not body.quiet and intro:
+        assistant_doc = await append_message(
+            db,
+            conversation_id=cid,
+            role="assistant",
+            content=intro,
+            metadata=meta_out,
+        )
+        raw_aid = assistant_doc.get("_id")
+        if isinstance(raw_aid, ObjectId):
+            aid = raw_aid
+        if redis is not None:
+            await push_turn(redis, body.session_id, "assistant", intro)
 
     return ChatResponse(
-        reply=intro,
+        reply="" if body.quiet else intro,
         session_id=body.session_id,
         conversation_id=str(cid),
         assistant_message_id=str(aid) if aid else None,
         provider=default_provider(),
-        suggested_activities=[
-            ActivitySuggestionOut(
-                id=body.activity_id,
-                title="Bài tập" if body.activity_id == "breathing_box" else "Âm sóng",
-                description="",
-            )
-        ],
+        suggested_activities=[],
         metadata=meta_out,
     )
 
@@ -573,7 +576,8 @@ async def wellness_complete(body: WellnessCompleteRequest, request: Request) -> 
     from app.wellness.session import clear_session, complete_session
 
     redis = get_redis(request)
-    state, checkin_msg = await complete_session(redis, session_id=body.session_id, lang="vi")
+    lang = body.lang if body.lang in ("vi", "en") else "vi"
+    state, checkin_msg = await complete_session(redis, session_id=body.session_id, lang=lang)
     await clear_session(redis, body.session_id)
     return {
         "checkin_message": checkin_msg,

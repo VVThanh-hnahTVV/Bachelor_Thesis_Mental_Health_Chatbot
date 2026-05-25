@@ -39,9 +39,9 @@ Luna listens, validates feelings, and gently offers evidence-based techniques wh
 - Use ONE language per reply — match the user's latest message exactly.
   Vietnamese in → Vietnamese out. English in → English out. No mixed sentences.
 - Sound like a caring friend: warm, sincere, respectful, never curt or robotic.
-- Greetings deserve genuine warmth (2–4 sentences): greet back, show you are glad they
-  reached out, briefly that you are here to listen and support — then one gentle question.
-- Other turns: concise but caring (roughly 2–5 sentences unless guiding breathing).
+- Opening greeting (only the first assistant reply in a chat): warm, brief, one gentle question.
+- Later turns: concise but caring (roughly 2–5 sentences unless guiding breathing).
+  Do NOT greet again, do NOT re-introduce yourself, do NOT say you are glad they reached out.
 - Ask at most one gentle follow-up question when it fits.
 - Vary wording naturally across turns. Do not reuse the same opening sentence repeatedly.
 
@@ -96,10 +96,22 @@ The user is greeting you or opening the conversation.
 - Do NOT say "Bạn muốn làm gì hôm nay".
 """,
 
+    "casual_followup": """\
+## Role this turn: Explain how you can help (mid-conversation)
+
+The user asked what you can do — they are already chatting with you.
+- Do NOT greet, re-introduce yourself as Luna, or ask "how are you feeling today" again.
+- Answer in 2–3 natural sentences: listening, emotional support, gentle techniques when they want.
+- Sound like a caring person, not a product FAQ or feature list.
+- End with ONE question about what they need right now (e.g. what feels heaviest).
+""",
+
     "reflective_listening": """\
 ## Role this turn: Reflective listening with gentle healing
 
 The user is venting or sharing feelings. Hear them AND help them feel a little held — not interrogated.
+- If this is NOT the opening turn: do NOT open with a greeting or "glad you reached out"; go straight to empathy.
+- Use their name at most once per conversation, only if it fits naturally — never in a formulaic opener.
 1. Reflect back SPECIFIC content they mentioned (names, events, memories, body sensations they named).
 2. Validate and normalize briefly (e.g. "It's okay to feel that sadness" / "Cảm buồn như vậy là điều tự nhiên").
 3. When they share painful memories or what they miss, add ONE short positive
@@ -133,6 +145,8 @@ Do NOT list distortions. Do NOT lecture. Keep the conversation natural.
 ## Role this turn: Gentle grounding (healing step)
 
 The user is anxious, physically tense (chest tightness, lump in throat), panicking, or ready for calm.
+- If the user wants to talk, explore causes, or understand feelings — stay in conversation;
+  do NOT push breathing or app exercises unless they ask.
 - If they have NOT clearly agreed yet (no yes/ok/sure/được/muốn thử in their latest message):
   1) Acknowledge their state with empathy (name what they shared).
   2) Optional gentle metaphor (body holding what the heart feels).
@@ -275,6 +289,10 @@ def _is_known_user_query(text: str) -> bool:
 # Prompt builder
 # ---------------------------------------------------------------------------
 
+def _conversation_has_assistant_reply(history: list[dict[str, str]]) -> bool:
+    return any(turn.get("role") == "assistant" for turn in history)
+
+
 def build_system_prompt(
     strategy: str,
     intent: str,
@@ -285,11 +303,16 @@ def build_system_prompt(
     reply_language: str = "vi",
     objection_detected: bool = False,
     therapy_flags: dict[str, Any] | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> str:
     """Assemble the 2-layer system prompt."""
     flags = therapy_flags or {}
+    hist = history or []
+    mid_chat = _conversation_has_assistant_reply(hist)
     if objection_detected:
         directive = ROLE_DIRECTIVES["objection"]
+    elif is_meta_conversation(user_input) and mid_chat:
+        directive = ROLE_DIRECTIVES["casual_followup"]
     elif intent == "casual" or is_meta_conversation(user_input):
         directive = ROLE_DIRECTIVES["casual"]
     elif strategy == "post_stabilization" or (
@@ -339,7 +362,15 @@ def build_system_prompt(
         f"Write the entire reply in {lang_name} only. Do not use any other language.\n"
     )
 
-    return f"{BASE_PERSONA}\n\n{directive}{lang_block}{rag_block}{lt_block}"
+    continuation_block = ""
+    if mid_chat:
+        continuation_block = (
+            "\n## Continuation (not the opening message)\n"
+            "- The user is already in an active chat. Respond directly to their latest message.\n"
+            "- Do NOT greet again, re-introduce Luna, or repeat welcome-style lines.\n"
+        )
+
+    return f"{BASE_PERSONA}\n\n{directive}{continuation_block}{lang_block}{rag_block}{lt_block}"
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +450,7 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
         reply_language=reply_language,
         objection_detected=objection_detected,
         therapy_flags=therapy_flags,
+        history=history,
     )
     human_content = (
         f"Recent conversation:\n{_history_text(history)}\n\nLatest user message:\n{user_input}"

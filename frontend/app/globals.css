@@ -40,7 +40,9 @@
     --serene-accent: 115 20% 48%;
     --serene-bg: 80 20% 98%;
 
-    --radius: 9999px;
+    /* Use a real length: mapping sm/md/lg to var(--radius) turns huge values into "pill"
+       corners on short boxes and clips long text awkwardly at the curves. */
+    --radius: 0.75rem;
   }
 
   .dark {

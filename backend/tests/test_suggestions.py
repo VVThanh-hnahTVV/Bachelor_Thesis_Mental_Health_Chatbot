@@ -67,6 +67,30 @@ def test_align_skips_when_behavioral_walk_in_reply():
     assert align_assistant_reply_with_suggestions(base, sug) == base.strip()
 
 
+def test_align_skips_when_user_prefers_conversation():
+    base = "That makes sense — tell me more about what feels overwhelming."
+    sug = [{"id": "breathing_box", "title": "Hít thở", "description": "x"}]
+    out = align_assistant_reply_with_suggestions(
+        base,
+        sug,
+        user_input="I'd prefer to talk about what's causing my anxiety",
+    )
+    assert out == base.strip()
+
+
+def test_align_english_bridge():
+    base = "Anxiety often spikes when something important feels uncertain."
+    sug = [{"id": "breathing_box", "title": "Box breathing", "description": "x"}]
+    out = align_assistant_reply_with_suggestions(
+        base,
+        sug,
+        reply_language="en",
+        user_input="I feel anxious",
+    )
+    assert "box breathing" in out.lower()
+    assert "hít thở" not in out.lower()
+
+
 def test_align_at_most_one_bridge():
     base = "Hãy nghỉ một chút."
     sug = [

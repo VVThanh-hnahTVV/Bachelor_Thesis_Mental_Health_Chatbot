@@ -120,34 +120,70 @@ def _tool_get_activity(activity_id: str) -> dict[str, str] | None:
 # soft: low-key mention, medium: question, strong: direct invitation
 from app.wellness.recommendation_engine import SuggestionIntensity
 
-_REPLY_ALIGN: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
+_REPLY_ALIGN: dict[str, dict[str, dict[str, tuple[str, tuple[str, ...]]]]] = {
     "ocean_sound": {
-        SuggestionIntensity.SOFT: (
-            "Đôi khi âm sóng nhẹ trong app có thể giúp thư giãn một chút — nếu bạn muốn thử.",
-            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
-        ),
-        SuggestionIntensity.MEDIUM: (
-            "Bạn có muốn thử mở âm sóng nhẹ trong app không? Nó có thể giúp thư giãn lúc này.",
-            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
-        ),
-        SuggestionIntensity.STRONG: (
-            "Mình nghĩ âm sóng nhẹ có thể giúp bạn ngay lúc này — bạn có thể mở trong app.",
-            ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
-        ),
+        SuggestionIntensity.SOFT: {
+            "vi": (
+                "Đôi khi âm sóng nhẹ trong app có thể giúp thư giãn một chút — nếu bạn muốn thử.",
+                ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+            ),
+            "en": (
+                "Gentle wave sounds in the app can help you unwind a little — only if you'd like to try.",
+                ("wave sound", "ocean", "ambient", "in the app", "open the"),
+            ),
+        },
+        SuggestionIntensity.MEDIUM: {
+            "vi": (
+                "Bạn có muốn thử mở âm sóng nhẹ trong app không? Nó có thể giúp thư giãn lúc này.",
+                ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+            ),
+            "en": (
+                "Would you like to try the gentle wave sounds in the app? They can help you relax for a few minutes.",
+                ("wave sound", "ocean", "ambient", "in the app", "open the"),
+            ),
+        },
+        SuggestionIntensity.STRONG: {
+            "vi": (
+                "Mình nghĩ âm sóng nhẹ có thể giúp bạn ngay lúc này — bạn có thể mở trong app.",
+                ("âm sóng", "sóng nhẹ", "âm nền", "mở âm", "trong app", "ambient", "ocean", "sóng biển"),
+            ),
+            "en": (
+                "Gentle wave sounds might help right now — you can open them in the app when you're ready.",
+                ("wave sound", "ocean", "ambient", "in the app", "open the"),
+            ),
+        },
     },
     "breathing_box": {
-        SuggestionIntensity.SOFT: (
-            "Đôi khi một vài nhịp thở đều có thể giúp — trong app có bài hít thở hộp (4-4-4-4) nếu bạn muốn thử.",
-            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
-        ),
-        SuggestionIntensity.MEDIUM: (
-            "Bạn có muốn thử bài hít thở hộp (4-4-4-4) trong app không? Chỉ vài phút thôi.",
-            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
-        ),
-        SuggestionIntensity.STRONG: (
-            "Mình nghĩ bài hít thở hộp sẽ giúp bạn ổn định hơn ngay bây giờ — bạn có thể mở trong app.",
-            ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
-        ),
+        SuggestionIntensity.SOFT: {
+            "vi": (
+                "Đôi khi một vài nhịp thở đều có thể giúp — trong app có bài hít thở hộp (4-4-4-4) nếu bạn muốn thử.",
+                ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+            ),
+            "en": (
+                "A few steady breaths can sometimes help — there's box breathing (4-4-4-4) in the app if you'd like to try.",
+                ("breath", "breathing", "4-4-4", "box breathing", "in the app"),
+            ),
+        },
+        SuggestionIntensity.MEDIUM: {
+            "vi": (
+                "Bạn có muốn thử bài hít thở hộp (4-4-4-4) trong app không? Chỉ vài phút thôi.",
+                ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+            ),
+            "en": (
+                "Would you like to try box breathing (4-4-4-4) in the app? Just a few minutes.",
+                ("breath", "breathing", "4-4-4", "box breathing", "in the app"),
+            ),
+        },
+        SuggestionIntensity.STRONG: {
+            "vi": (
+                "Mình nghĩ bài hít thở hộp sẽ giúp bạn ổn định hơn ngay bây giờ — bạn có thể mở trong app.",
+                ("hít thở", "nhịp thở", "4-4-4", "thở hộp", "trong app", "hơi thở"),
+            ),
+            "en": (
+                "Box breathing might help you steady yourself — you can open it in the app when you're ready.",
+                ("breath", "breathing", "4-4-4", "box breathing", "in the app"),
+            ),
+        },
     },
 }
 
@@ -158,6 +194,8 @@ def align_assistant_reply_with_suggestions(
     intensity: SuggestionIntensity = SuggestionIntensity.MEDIUM,
     *,
     therapy_strategy: str | None = None,
+    reply_language: str = "vi",
+    user_input: str = "",
 ) -> str:
     """Append at most one CTA bridge when the reply doesn't already mention the activity.
 
@@ -165,12 +203,16 @@ def align_assistant_reply_with_suggestions(
     so buttons/chips are not duplicated in prose.
     """
     from app.graph.conversation_ui import reply_has_in_chat_wellness_cta
+    from app.wellness.recommendation_engine import user_prefers_conversation_over_tools
 
     if not suggestions or not (reply or "").strip():
         return reply
+    if user_prefers_conversation_over_tools(user_input):
+        return reply.strip()
     if therapy_strategy == "behavioral_activation" or reply_has_in_chat_wellness_cta(reply):
         return reply.strip()
 
+    lang = "en" if reply_language == "en" else "vi"
     out = reply.strip()
     low = out.lower()
     # One in-app tool mention per turn — UI shows the matching button(s).
@@ -179,7 +221,11 @@ def align_assistant_reply_with_suggestions(
         if sid not in _REPLY_ALIGN:
             continue
         intensity_variants = _REPLY_ALIGN[sid]
-        bridge, cues = intensity_variants.get(intensity, intensity_variants[SuggestionIntensity.MEDIUM])
+        level = intensity_variants.get(intensity, intensity_variants[SuggestionIntensity.MEDIUM])
+        localized = level.get(lang, level.get("vi", level.get("en")))
+        if not localized:
+            continue
+        bridge, cues = localized
         if any(c in low for c in cues):
             break
         out = f"{out}\n\n{bridge}".strip()
@@ -243,6 +289,7 @@ Schema: {"activity_ids": []}
 Each string must be exactly "breathing_box" or "ocean_sound". At most 2 items.
 
 Rules:
+- If the user wants to talk, explore causes, or understand feelings — return {"activity_ids": []}.
 - breathing_box: only if breath/grounding genuinely helps and the user did NOT refuse breathing.
 - ocean_sound: music, ambient waves, sleep wind-down, gentle relaxation without breath focus.
 - For breakup, grief, anger, or pure venting with no in-app tool need, use [].

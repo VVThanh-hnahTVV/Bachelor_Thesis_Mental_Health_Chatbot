@@ -41,6 +41,36 @@ def test_turn2_greeting_no_activity():
     assert not d.eligible
 
 
+def test_reflective_anxiety_explore_before_tools():
+    d = evaluate_recommendation(
+        _signals(
+            user_input="I keep worrying about work deadlines",
+            intent="seeking_advice",
+            primary_emotion="anxiety",
+            emotion_intensity=0.65,
+            therapy_strategy="reflective_listening",
+            user_turn_count=5,
+        )
+    )
+    assert not d.eligible
+    assert d.reason == "explore_before_tools"
+
+
+def test_prefer_talk_blocks_proactive_tools():
+    d = evaluate_recommendation(
+        _signals(
+            user_input="I'd prefer to talk about what's causing my anxiety",
+            intent="seeking_advice",
+            primary_emotion="anxiety",
+            emotion_intensity=0.7,
+            therapy_strategy="reflective_listening",
+            user_turn_count=4,
+        )
+    )
+    assert not d.eligible
+    assert d.reason == "user_prefers_conversation"
+
+
 def test_explicit_breathing_request():
     d = evaluate_recommendation(
         _signals(

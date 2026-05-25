@@ -93,7 +93,11 @@ def should_skip_wellness_suggestions(
     therapy_strategy: str | None,
     reply: str,
 ) -> bool:
+    from app.wellness.recommendation_engine import user_prefers_conversation_over_tools
+
     if is_casual_or_meta(intent, user_input) or is_learn_exploration(user_input):
+        return True
+    if user_prefers_conversation_over_tools(user_input):
         return True
     if therapy_strategy == "psychoeducation" and not is_substantive_reply(reply, min_chars=120):
         return True

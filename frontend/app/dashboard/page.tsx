@@ -639,16 +639,22 @@ export default function Dashboard() {
                     <div
                       key={stat.title}
                       className={cn(
-                        "p-4 rounded-lg transition-all duration-200 hover:scale-[1.02]",
+                        "min-w-0 overflow-hidden p-4 rounded-lg transition-all duration-200 hover:scale-[1.02]",
                         stat.bgColor
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <stat.icon className={cn("w-5 h-5", stat.color)} />
-                        <p className="text-sm font-medium">{stat.title}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <stat.icon
+                          className={cn("h-5 w-5 shrink-0", stat.color)}
+                        />
+                        <p className="min-w-0 break-words text-sm font-medium">
+                          {stat.title}
+                        </p>
                       </div>
-                      <p className="text-2xl font-bold mt-2">{stat.value}</p>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="mt-2 break-words text-2xl font-bold">
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 break-words text-sm leading-snug text-muted-foreground">
                         {stat.description}
                       </p>
                     </div>
@@ -678,7 +684,7 @@ export default function Dashboard() {
                       <div
                         key={index}
                         className={cn(
-                          "p-4 rounded-lg space-y-2 transition-all hover:scale-[1.02]",
+                          "min-w-0 space-y-2 overflow-hidden p-4 rounded-lg transition-all hover:scale-[1.02]",
                           insight.priority === "high"
                             ? "bg-primary/10"
                             : insight.priority === "medium"
@@ -686,11 +692,13 @@ export default function Dashboard() {
                             : "bg-muted"
                         )}
                       >
-                        <div className="flex items-center gap-2">
-                          <insight.icon className="w-5 h-5 text-primary" />
-                          <p className="font-medium">{insight.title}</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <insight.icon className="h-5 w-5 shrink-0 text-primary" />
+                          <p className="min-w-0 break-words font-medium">
+                            {insight.title}
+                          </p>
                         </div>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="break-words text-sm leading-snug text-muted-foreground">
                           {insight.description}
                         </p>
                       </div>

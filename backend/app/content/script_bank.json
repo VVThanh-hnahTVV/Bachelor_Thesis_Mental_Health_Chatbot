@@ -18,11 +18,11 @@
       "keywords": ["bạn là ai", "bạn là gì", "giúp gì", "làm được gì", "what can you", "who are you"],
       "intents": ["casual"],
       "templates": {
-        "vi": "Mình là Luna — người bạn đồng hành về sức khỏe tâm lý. Mình ở đây để lắng nghe, đồng hành và gợi ý nhẹ những cách chăm sóc bản thân khi bạn cần. Hôm nay bạn đang cảm thấy thế nào?",
-        "en": "I'm Luna — your mental wellness companion. I'm here to listen, support you, and gently suggest self-care when you need it. How are you feeling today?"
+        "vi": "Mình có thể lắng nghe khi bạn thấy nặng lòng, đồng hành qua lo âu hay buồn bã, và gợi ý nhẹ nhàng những cách thư giãn — chỉ khi bạn muốn, không ép buộc. Điều gì đang làm bạn bận tâm nhất lúc này?",
+        "en": "I can listen when things feel heavy, talk through worry or low mood with you, and suggest gentle calming exercises only when you want them — no pressure. What's on your mind most right now?"
       },
       "allow_llm_paraphrase": false,
-      "max_sentences": 4
+      "max_sentences": 3
     },
     {
       "id": "objection_apology",

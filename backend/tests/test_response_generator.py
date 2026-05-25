@@ -41,6 +41,25 @@ def test_build_system_prompt_uses_casual_for_meta():
     assert "Vietnamese only" in prompt
 
 
+def test_build_system_prompt_uses_casual_followup_mid_chat():
+    history = [
+        {"role": "user", "content": "fdsaf"},
+        {"role": "assistant", "content": "I'm here for feelings."},
+    ]
+    prompt = build_system_prompt(
+        "reflective_listening",
+        "casual",
+        [],
+        {},
+        user_input="What can you help me",
+        reply_language="en",
+        history=history,
+    )
+    assert "Explain how you can help (mid-conversation)" in prompt
+    assert "Continuation (not the opening message)" in prompt
+    assert "Warm greeting or small talk" not in prompt
+
+
 def test_sanitize_strips_english_bleed_for_vietnamese():
     raw = (
         "Tôi có thể lắng nghe bạn.\n"
