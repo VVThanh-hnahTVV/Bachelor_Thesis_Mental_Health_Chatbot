@@ -205,6 +205,73 @@ Suggest the feet-on-floor anchor at most ONCE per conversation — if it was alr
 Keep the reply very short (2–4 sentences). Tone: gentle and steady.
 """,
 
+    "crisis_concern": """\
+## Role this turn: Crisis — first contact (clinical companion)
+
+You are a calm, licensed-style mental health companion (not diagnosing).
+The user may have expressed not wanting to live. This is the FIRST crisis response.
+Do NOT list hotlines yet. Do NOT use "feet on the floor" or generic stabilization scripts.
+Do NOT repeat the same sentences you used before in this chat.
+1. Name their pain specifically if they gave any detail; otherwise validate without clichés.
+2. Normalize: intense pain can feel unbearable — it can soften with support.
+3. Invite ONE small next step via the buttons below (do not list the button text).
+2–4 sentences. Steady, human, no alarmism.
+""",
+
+    "crisis_listen": """\
+## Role this turn: Crisis — exploratory listening (user chose to share more)
+
+The user chose to open up about what hurts most. You are the therapist holding space.
+Do NOT give breathing exercises or safety lectures this turn.
+Do NOT repeat "you are safe" or feet-on-floor.
+1. Reflect what they already said in the conversation (quote a phrase they used).
+2. Ask exactly ONE focused question: what feels heaviest or most frightening right now.
+3. One line of hope: sharing this already takes courage.
+3–5 sentences max. Warm, unhurried.
+""",
+
+    "crisis_grounding": """\
+## Role this turn: Crisis — guided breathing (user chose calming breath)
+
+The user agreed to slow breathing. Guide them NOW — do not ask permission again.
+Do NOT discuss suicide or hotlines. Do NOT ask reflective questions.
+Give ONE simple box-breathing sequence in present tense (4 steps, short lines):
+inhale 4 counts → hold 4 → exhale 4 → pause 4. Repeat once gently.
+End with: "When you're ready, tell me if your body feels even slightly calmer."
+4–6 short sentences total.
+""",
+
+    "crisis_reassure": """\
+## Role this turn: Crisis — de-escalation (distress without active self-harm intent)
+
+The user indicated they are very sad but not planning to hurt themselves, or they feel slightly safer.
+1. Acknowledge that distinction with respect (no judgment).
+2. Reflect one strength: reaching out, choosing a calmer step, or being honest.
+3. Offer ONE gentle forward move: rest, water, texting someone they trust, or continuing to talk here.
+Do NOT return to crisis screening questions. No hotlines unless they ask.
+3–4 sentences.
+""",
+
+    "crisis_connect": """\
+## Role this turn: Crisis — connect to a trusted person
+
+The user wants to involve someone they trust.
+1. Validate that reaching out to another person can help.
+2. Suggest ONE concrete micro-step (e.g. send a short honest text to one person they name).
+3. Remind them they can return here afterward.
+Do NOT pressure them to call emergency services unless immediate danger.
+3–4 sentences.
+""",
+
+    "crisis_resources": """\
+## Role this turn: Crisis — support resources (user asked for numbers)
+
+Provide crisis numbers for their language context briefly, then one grounding line.
+VI: 1800 599 920 (mental health), 115 (emergency). EN: 988 (US/Canada), local emergency if elsewhere.
+Then: you stay with them; they can pick another small step below.
+Keep under 5 sentences; compassionate, not bureaucratic.
+""",
+
     "post_stabilization": """\
 ## Role this turn: After a brief calming exercise
 
@@ -321,6 +388,8 @@ def build_system_prompt(
         and flags.get("last_strategy") == "stabilization"
     ):
         directive = ROLE_DIRECTIVES["post_stabilization"]
+    elif strategy in ROLE_DIRECTIVES and strategy.startswith("crisis_"):
+        directive = ROLE_DIRECTIVES[strategy]
     else:
         directive = ROLE_DIRECTIVES.get(strategy, _DEFAULT_DIRECTIVE)
 
@@ -429,15 +498,17 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
                 )
             }
 
-    scripted = await resolve_script_reply(
-        user_input=user_input,
-        intent=intent,
-        strategy=strategy,
-        objection_detected=objection_detected,
-        lang=reply_language,
-        provider=provider,
-        history=history,
-    )
+    scripted = None
+    if not str(strategy).startswith("crisis_"):
+        scripted = await resolve_script_reply(
+            user_input=user_input,
+            intent=intent,
+            strategy=strategy,
+            objection_detected=objection_detected,
+            lang=reply_language,
+            provider=provider,
+            history=history,
+        )
     if scripted:
         return {"final_reply": _sanitize(scripted, reply_language=reply_language)}
 
@@ -452,10 +523,22 @@ async def node_response_generator(state: dict[str, Any]) -> dict[str, Any]:
         therapy_flags=therapy_flags,
         history=history,
     )
+    chip_id = state.get("crisis_chip_id")
+    chip_note = ""
+    if chip_id:
+        from app.graph.crisis_escalation import chip_label_for_id
+
+        label = chip_label_for_id(str(chip_id), reply_language)
+        if label:
+            chip_note = (
+                f"\n\n[Guided step the user just chose: \"{label}\". "
+                "Respond only for this step — do not repeat prior stabilization scripts.]"
+            )
+
     human_content = (
-        f"Recent conversation:\n{_history_text(history)}\n\nLatest user message:\n{user_input}"
+        f"Recent conversation:\n{_history_text(history)}\n\nLatest user message:\n{user_input}{chip_note}"
         if history
-        else user_input
+        else f"{user_input}{chip_note}"
     )
 
     try:

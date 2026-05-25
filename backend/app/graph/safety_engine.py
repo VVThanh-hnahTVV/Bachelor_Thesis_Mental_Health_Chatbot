@@ -32,21 +32,25 @@ CRISIS_CHOICES_EN = [
 ]
 
 CRISIS_REPLY_VI = (
-    "Mình rất lo lắng khi nghe điều bạn vừa chia sẻ. "
-    "Bạn không đơn độc trong lúc này.\n\n"
-    "**Nếu bạn đang trong nguy hiểm ngay lúc này, hãy gọi ngay:**\n"
+    "Bạn xứng đáng được sống, dù lúc này có thể bạn không cảm thấy như vậy.\n\n"
+    "Là một AI, mình không phải người phù hợp nhất để đồng hành với bạn trong khoảnh khắc này — "
+    "bạn xứng đáng được nhận sự hỗ trợ từ một con người thực sự.\n\n"
+    "**Hãy liên hệ với một trong những đường dây dưới đây ngay bây giờ:**\n"
+    "- 📞 **1800 599 920** — Sức khỏe tâm thần (miễn phí, 24/7)\n"
     "- 🆘 **115** — Cấp cứu\n"
-    "- 📞 **1800 599 920** — Đường dây hỗ trợ sức khỏe tâm thần (miễn phí, 24/7)\n\n"
-    "Mình ở đây với bạn. Bạn có thể chọn một trong các bước nhỏ bên dưới để mình cùng đồng hành."
+    "- 📞 **1800 599 920** — Đường dây hỗ trợ tâm lý học đường\n\n"
+    "Mình ở đây với bạn. Bạn có thể chọn một bước nhỏ bên dưới trong khi chờ đợi."
 )
 
 CRISIS_REPLY_EN = (
-    "I'm really concerned by what you just shared. "
-    "You do not have to go through this alone.\n\n"
-    "**If you are in immediate danger right now, call your local emergency number now.**\n"
-    "- In the United States or Canada: **988** — Suicide & Crisis Lifeline\n"
-    "- If you are elsewhere: contact emergency services or a trusted person nearby immediately.\n\n"
-    "I'm here with you. You can choose one small next step below."
+    "You are worth your life, even if it might not feel that way to you right now.\n\n"
+    "As a bot, I'm not best suited to provide the support you deserve in this moment — "
+    "you deserve to speak with a real person who is trained to help.\n\n"
+    "**Please reach out to one of these right now:**\n"
+    "- 🇺🇸/🇨🇦 **988** — Suicide & Crisis Lifeline (call or text, 24/7)\n"
+    "- 🌍 **findahelpline.com** — Find a crisis line anywhere in the world\n"
+    "- 🆘 **Emergency services** — Call your local emergency number if you are in immediate danger\n\n"
+    "I'm here with you. You can choose one small next step below while you reach out."
 )
 
 
@@ -85,6 +89,7 @@ class SafetyResult(TypedDict):
     confidence: float
     triggers: list[str]
     emergency_mode: bool
+    suggested_stage: str  # "none" | "concern" | "confirm" | "sos"
 
 
 _FALLBACK: SafetyResult = {
@@ -92,9 +97,10 @@ _FALLBACK: SafetyResult = {
     "confidence": 0.0,
     "triggers": [],
     "emergency_mode": False,
+    "suggested_stage": "none",
 }
 
-_CRISIS_KEYWORDS = (
+_EXPLICIT_CRISIS_KEYWORDS = (
     "tôi muốn chết",
     "muốn chết",
     "tự tử",
@@ -106,6 +112,22 @@ _CRISIS_KEYWORDS = (
     "end my life",
 )
 
+_IMMINENT_KEYWORDS = (
+    "tối nay",
+    "ngay bây giờ",
+    "right now",
+    "tonight",
+    "đã uống thuốc",
+    "đã cắt",
+    "already took",
+    "overdose now",
+    "going to kill",
+    "sẽ tự tử",
+    "will kill myself",
+    "have a plan",
+    "có kế hoạch",
+)
+
 _SUSPICIOUS_KEYWORDS = (
     "chết", "tự làm đau", "không còn lý do", "vô nghĩa", "cắt",
     "nhảy", "uống thuốc quá liều", "die", "kill", "hurt myself",
@@ -113,21 +135,48 @@ _SUSPICIOUS_KEYWORDS = (
 )
 
 
+def _make_result(
+    *,
+    risk_level: str,
+    confidence: float,
+    triggers: list[str],
+    emergency_mode: bool,
+    suggested_stage: str,
+) -> SafetyResult:
+    return SafetyResult(
+        risk_level=risk_level,
+        confidence=confidence,
+        triggers=triggers,
+        emergency_mode=emergency_mode,
+        suggested_stage=suggested_stage,
+    )
+
+
 def _keyword_risk(text: str) -> SafetyResult | None:
     low = text.lower()
-    if any(kw in low for kw in _CRISIS_KEYWORDS):
-        return SafetyResult(
+    if any(kw in low for kw in _IMMINENT_KEYWORDS):
+        return _make_result(
+            risk_level="high",
+            confidence=0.99,
+            triggers=["keyword_imminent"],
+            emergency_mode=True,
+            suggested_stage="sos",
+        )
+    if any(kw in low for kw in _EXPLICIT_CRISIS_KEYWORDS):
+        return _make_result(
             risk_level="high",
             confidence=0.98,
             triggers=["keyword_crisis"],
-            emergency_mode=True,
+            emergency_mode=False,
+            suggested_stage="concern",
         )
     if any(kw in low for kw in _SUSPICIOUS_KEYWORDS):
-        return SafetyResult(
+        return _make_result(
             risk_level="medium",
             confidence=0.75,
             triggers=["keyword_suspicious"],
             emergency_mode=False,
+            suggested_stage="concern",
         )
     return None
 
@@ -146,11 +195,41 @@ def _parse_safety_json(raw: str) -> SafetyResult:
         level = "low"
     confidence = float(data.get("confidence", 0.0))
     triggers: list[str] = [str(t) for t in data.get("triggers", [])]
-    return SafetyResult(
-        risk_level=level,
+
+    if level == "high":
+        imminent = any(
+            t in triggers
+            for t in ("imminent", "plan", "immediate", "overdose", "self_harm_plan")
+        )
+        if imminent:
+            return _make_result(
+                risk_level="high",
+                confidence=confidence,
+                triggers=triggers,
+                emergency_mode=True,
+                suggested_stage="sos",
+            )
+        return _make_result(
+            risk_level="high",
+            confidence=confidence,
+            triggers=triggers,
+            emergency_mode=False,
+            suggested_stage="concern",
+        )
+    if level == "medium":
+        return _make_result(
+            risk_level="medium",
+            confidence=confidence,
+            triggers=triggers,
+            emergency_mode=False,
+            suggested_stage="concern",
+        )
+    return _make_result(
+        risk_level="low",
         confidence=confidence,
         triggers=triggers,
-        emergency_mode=(level == "high"),
+        emergency_mode=False,
+        suggested_stage="none",
     )
 
 
@@ -160,17 +239,17 @@ async def run_safety_engine(
     provider: ProviderName,
 ) -> SafetyResult:
     """Call LLM safety classifier. Always returns a SafetyResult."""
-    # Fast keyword pre-screen to avoid LLM call on clearly safe messages
     keyword_result = _keyword_risk(user_input)
     if keyword_result and keyword_result["emergency_mode"]:
         return keyword_result
     _LOW_RISK_FAST = len(user_input) < 5 or keyword_result is None
     if _LOW_RISK_FAST:
-        return SafetyResult(
+        return _make_result(
             risk_level="low",
             confidence=0.95,
             triggers=[],
             emergency_mode=False,
+            suggested_stage="none",
         )
 
     try:
@@ -189,7 +268,10 @@ async def run_safety_engine(
             primary=provider,
         )
         raw = msg.content if isinstance(msg.content, str) else str(msg.content)
-        return _parse_safety_json(raw)
+        parsed = _parse_safety_json(raw)
+        if keyword_result and parsed["risk_level"] == "low":
+            return keyword_result
+        return parsed
     except Exception as exc:
         if keyword_result:
             logger.warning("safety_engine LLM failed, using conservative keyword result: %s", exc)

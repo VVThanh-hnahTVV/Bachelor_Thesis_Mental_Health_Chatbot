@@ -10,7 +10,6 @@ import {
   Moon,
   MessageSquare,
   PlusCircle,
-  Phone,
   AlertTriangle,
   BookOpenCheck,
 } from "lucide-react";
@@ -41,7 +40,12 @@ import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
 import { LunaAvatar } from "@/components/therapy/luna-avatar";
 import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
 import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
-import type { QuickReply } from "@/lib/api/chat";
+import type { QuickReply, CrisisChoice } from "@/lib/api/chat";
+import {
+  CRISIS_CHIP_PREFIX,
+  formatMessageForDisplay,
+  normalizeCrisisChoices,
+} from "@/lib/api/chat";
 import { fetchCurrentUser, linkChatSession } from "@/lib/api/auth";
 import { getDefaultLunaGreeting } from "@/lib/luna-greeting";
 
@@ -108,8 +112,7 @@ export default function TherapyPage() {
   const [showBreathingPopup, setShowBreathingPopup] = useState(false);
   const [showOceanPopup, setShowOceanPopup] = useState(false);
   // Crisis state
-  const [isChatPaused, setIsChatPaused] = useState(false);
-  const [crisisChoices, setCrisisChoices] = useState<string[]>([]);
+  const [crisisChoices, setCrisisChoices] = useState<CrisisChoice[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(
     params.sessionId as string
   );
@@ -161,7 +164,6 @@ export default function TherapyPage() {
       }
       setMessages(await welcomeMessages());
       setInputQuickReplies([]);
-      setIsChatPaused(false);
       setCrisisChoices([]);
       window.history.pushState({}, "", `/therapy/${newSessionId}`);
     } catch (error) {
@@ -196,10 +198,17 @@ export default function TherapyPage() {
             setMessages(mapped);
             setInputQuickReplies(quickRepliesFromMessages(mapped));
             const last = [...history].reverse().find((m) => m.role === "assistant");
-            if (last?.metadata?.chat_blocked) {
-              setIsChatPaused(true);
-              setCrisisChoices((last.metadata.crisis_choices as string[]) ?? []);
+            const restoredChoices = normalizeCrisisChoices(
+              last?.metadata?.crisis_choices
+            );
+            if (
+              last?.metadata?.chat_blocked &&
+              restoredChoices.length > 0
+            ) {
+              setCrisisChoices(restoredChoices);
               setInputQuickReplies([]);
+            } else {
+              setCrisisChoices([]);
             }
           } else {
             setMessages(await welcomeMessages());
@@ -255,40 +264,55 @@ export default function TherapyPage() {
     setMounted(true);
   }, []);
 
-  const sendUserMessage = async (text: string) => {
+  const sendUserMessage = async (
+    text: string,
+    options?: { displayContent?: string }
+  ) => {
     const currentMessage = text.trim();
     if (!currentMessage || isTyping || !sessionId) return;
+    const displayContent = formatMessageForDisplay(
+      options?.displayContent?.trim() || currentMessage
+    );
 
     setIsTyping(true);
     setInputQuickReplies([]);
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: currentMessage, timestamp: new Date() },
+      { role: "user", content: displayContent, timestamp: new Date() },
     ]);
     scrollToBottom();
 
     try {
       const response = await sendChatMessage(sessionId, currentMessage);
 
-      // Handle crisis state from backend
-      if (response.chat_blocked) {
-        setIsChatPaused(true);
-        setCrisisChoices(response.crisis_choices ?? []);
+      const nextCrisisChoices = response.crisis_choices ?? [];
+      const blocked = Boolean(
+        response.chat_blocked ?? response.metadata?.chat_blocked
+      );
+      let quickReplies: QuickReply[] = [];
+      if (blocked && nextCrisisChoices.length > 0) {
+        setCrisisChoices(nextCrisisChoices);
+        setInputQuickReplies([]);
       } else {
-        setIsChatPaused(false);
         setCrisisChoices([]);
+        quickReplies = (
+          (response.quick_replies as QuickReply[] | undefined) ||
+          (response.metadata?.quick_replies as QuickReply[] | undefined) ||
+          []
+        ).slice(0, 3);
+        setInputQuickReplies(quickReplies);
       }
 
-      const quickReplies = (
-        (response.quick_replies as QuickReply[] | undefined) ||
-        (response.metadata?.quick_replies as QuickReply[] | undefined) ||
-        []
-      ).slice(0, 3);
-
-      if (!response.chat_blocked) {
-        setInputQuickReplies(quickReplies);
-      } else {
-        setInputQuickReplies([]);
+      // Auto-open the appropriate wellness popup when an activity is chosen.
+      if (response.crisis_stage === "overwhelm_doing") {
+        const activityChip =
+          (response.metadata?.crisis_chip_id as string | undefined) ?? "";
+        if (activityChip === "crisis:calming_music") {
+          void openOcean();
+        } else {
+          // slow_breathing or grounding_exercise — open breathing popup
+          void openBreathing();
+        }
       }
 
       setMessages((prev) => [
@@ -305,6 +329,7 @@ export default function TherapyPage() {
             message_type: response.message_type,
             chat_blocked: response.chat_blocked,
             crisis_choices: response.crisis_choices,
+            crisis_stage: response.crisis_stage,
             emotion: response.emotion,
             therapy_strategy: response.therapy_strategy,
             quick_replies: quickReplies,
@@ -332,7 +357,7 @@ export default function TherapyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentMessage = message.trim();
-    if (!currentMessage || isTyping || isChatPaused) return;
+    if (!currentMessage || isTyping || crisisChoices.length > 0) return;
     setMessage("");
     await sendUserMessage(currentMessage);
   };
@@ -342,8 +367,10 @@ export default function TherapyPage() {
     void sendUserMessage(text);
   };
 
-  const handleCrisisChoice = (choice: string) => {
-    void sendUserMessage(choice);
+  const handleCrisisChoice = (choice: CrisisChoice) => {
+    void sendUserMessage(`${CRISIS_CHIP_PREFIX}${choice.id}`, {
+      displayContent: choice.label,
+    });
   };
 
   const openBreathing = async () => {
@@ -398,10 +425,23 @@ export default function TherapyPage() {
           timestamp: new Date(msg.timestamp),
         }));
         setMessages(mapped);
-        setInputQuickReplies(quickRepliesFromMessages(mapped));
         setSessionId(selectedSessionId);
-        setIsChatPaused(false);
-        setCrisisChoices([]);
+        const lastAssistant = [...mapped]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        const restoredChoices = normalizeCrisisChoices(
+          lastAssistant?.metadata?.crisis_choices
+        );
+        if (
+          lastAssistant?.metadata?.chat_blocked &&
+          restoredChoices.length > 0
+        ) {
+          setCrisisChoices(restoredChoices);
+          setInputQuickReplies([]);
+        } else {
+          setCrisisChoices([]);
+          setInputQuickReplies(quickRepliesFromMessages(mapped));
+        }
         window.history.pushState({}, "", `/therapy/${selectedSessionId}`);
       }
     } catch (error) {
@@ -521,7 +561,7 @@ export default function TherapyPage() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.08 }}
                         onClick={() => handleSuggestedQuestion(q.text)}
-                        disabled={isTyping || isChatPaused}
+                        disabled={isTyping}
                         className="prompt-chip w-full rounded-full border border-brand-border/80 bg-brand-light px-6 py-4 text-left text-gray-700 transition-all duration-300 hover:bg-white/80 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {q.text}
@@ -641,7 +681,9 @@ export default function TherapyPage() {
                                     : "max-w-none text-gray-700"
                                 )}
                               >
-                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                <ReactMarkdown>
+                                  {formatMessageForDisplay(msg.content)}
+                                </ReactMarkdown>
                               </motion.div>
 
                               {msg.role === "assistant" &&
@@ -710,51 +752,19 @@ export default function TherapyPage() {
                   : "border-t border-brand-border/40"
               )}
             >
-              {/* Crisis hotline banner */}
-              <AnimatePresence>
-                {isChatPaused && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    className="mx-auto mb-4 max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-3"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Phone className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                      <div>
-                        <p className="text-sm font-semibold text-red-700">
-                          Đường dây hỗ trợ khẩn cấp
-                        </p>
-                        <p className="mt-0.5 text-sm text-red-600">
-                          <span className="font-bold">1800 599 920</span> — Sức khỏe tâm thần (miễn phí, 24/7)
-                          &nbsp;·&nbsp;
-                          <span className="font-bold">115</span> — Cấp cứu
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Crisis choice buttons OR normal textarea */}
-              {isChatPaused && crisisChoices.length > 0 ? (
+              {crisisChoices.length > 0 ? (
                 <div className="mx-auto max-w-3xl">
-                  <p className="mb-3 text-center text-xs text-gray-400">
-                    Chọn một bước nhỏ để mình cùng đồng hành với bạn:
-                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     {crisisChoices.map((choice) => (
-                      <motion.button
-                        key={choice}
+                      <button
+                        key={choice.id}
                         type="button"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
                         disabled={isTyping}
                         onClick={() => handleCrisisChoice(choice)}
                         className="rounded-xl border border-brand-border/80 bg-white px-4 py-3 text-sm text-gray-700 transition-colors hover:border-brand/40 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {choice}
-                      </motion.button>
+                        {choice.label}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -764,37 +774,37 @@ export default function TherapyPage() {
                     <QuickReplyChips
                       replies={inputQuickReplies}
                       onSelect={(text) => void sendUserMessage(text)}
-                      disabled={isTyping || isChatPaused}
+                      disabled={isTyping}
                     />
                   )}
-                <form onSubmit={handleSubmit} className="relative">
-                  <textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Chia sẻ điều bạn đang nghĩ..."
-                    rows={1}
-                    disabled={isTyping || isChatPaused}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit(e);
-                      }
-                    }}
-                    className={cn(
-                      "w-full resize-none rounded-full border-2 border-brand-border/80 bg-brand-light py-4 pl-8 pr-16 text-gray-700 outline-none transition-all placeholder:text-gray-400 focus:border-brand focus:ring-0",
-                      "min-h-[56px] max-h-[120px]",
-                      (isTyping || isChatPaused) && "cursor-not-allowed opacity-50"
-                    )}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isTyping || isChatPaused || !message.trim()}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-brand/80 p-3 text-white transition-all hover:bg-brand disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Send message"
-                  >
-                    <Send className="h-5 w-5" />
-                  </button>
-                </form>
+                  <form onSubmit={handleSubmit} className="relative">
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="Chia sẻ điều bạn đang nghĩ..."
+                      rows={1}
+                      disabled={isTyping}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSubmit(e);
+                        }
+                      }}
+                      className={cn(
+                        "w-full resize-none rounded-full border-2 border-brand-border/80 bg-brand-light py-4 pl-8 pr-16 text-gray-700 outline-none transition-all placeholder:text-gray-400 focus:border-brand focus:ring-0",
+                        "min-h-[56px] max-h-[120px]",
+                        isTyping && "cursor-not-allowed opacity-50"
+                      )}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isTyping || !message.trim()}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-brand/80 p-3 text-white transition-all hover:bg-brand disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Send message"
+                    >
+                      <Send className="h-5 w-5" />
+                    </button>
+                  </form>
                 </div>
               )}
 

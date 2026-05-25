@@ -85,6 +85,7 @@ async def advance_conv_state(
     user_turn_count: int,
     wellness_activity_just_completed: bool = False,
     therapy_flags: dict[str, Any] | None = None,
+    crisis_stage: str = "none",
 ) -> ConvState:
     """Compute next state and persist it. Returns the new state."""
     flags = therapy_flags or {}
@@ -99,6 +100,7 @@ async def advance_conv_state(
             user_turn_count=user_turn_count,
             wellness_activity_just_completed=wellness_activity_just_completed,
             therapy_flags=flags,
+            crisis_stage=crisis_stage,
         )
 
     current = await get_conv_state(redis, session_id)
@@ -112,6 +114,7 @@ async def advance_conv_state(
         user_turn_count=user_turn_count,
         wellness_activity_just_completed=wellness_activity_just_completed,
         therapy_flags=flags,
+        crisis_stage=crisis_stage,
     )
     if next_state != current:
         await _set_state(redis, session_id, next_state)
@@ -129,14 +132,23 @@ def _transition_pure(
     user_turn_count: int,
     wellness_activity_just_completed: bool,
     therapy_flags: dict[str, Any] | None = None,
+    crisis_stage: str = "none",
 ) -> ConvState:
     """Pure transition function — no I/O, fully testable."""
 
-    # CRISIS overrides everything
-    if risk_level == "high":
+    # Full SOS crisis overrides everything
+    if crisis_stage == "sos":
         return ConvState.CRISIS
 
-    # Recover from CRISIS only when risk drops
+    # Gradual concern/confirm: regulate, do not lock into CRISIS conv state
+    if crisis_stage in ("concern", "confirm"):
+        if current == ConvState.CRISIS and risk_level in ("low", "medium"):
+            return ConvState.REGULATION
+        if current in (ConvState.OPENING, ConvState.VENTING) or risk_level in ("medium", "high"):
+            return ConvState.REGULATION
+        return current if current != ConvState.CRISIS else ConvState.REGULATION
+
+    # Recover from CRISIS only when risk drops and not in active crisis stage
     if current == ConvState.CRISIS:
         if risk_level in ("low", "medium"):
             return ConvState.REGULATION

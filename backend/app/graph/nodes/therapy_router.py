@@ -23,6 +23,16 @@ VALID_STRATEGIES = frozenset({
     "stabilization",
 })
 
+_CRISIS_STRATEGIES = frozenset({
+    "crisis_concern",
+    "crisis_listen",
+    "crisis_grounding",
+    "crisis_safety_check",
+    "crisis_reassure",
+    "crisis_connect",
+    "crisis_resources",
+})
+
 _RELATIONSHIP_KEYWORDS = (
     "yêu",
     "thích",
@@ -212,6 +222,10 @@ async def node_therapy_router(state: dict[str, Any]) -> dict[str, Any]:
     provider: ProviderName = state.get("provider", "openai")
     long_term: dict[str, Any] = state.get("long_term_context") or {}
     flags: dict[str, Any] = state.get("therapy_flags") or {}
+
+    forced = state.get("force_therapy_strategy")
+    if forced in VALID_STRATEGIES or forced in _CRISIS_STRATEGIES:
+        return {"therapy_strategy": str(forced)}
 
     if state.get("objection_detected"):
         return {"therapy_strategy": "reflective_listening"}

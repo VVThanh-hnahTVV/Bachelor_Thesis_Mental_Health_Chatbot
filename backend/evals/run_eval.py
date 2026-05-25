@@ -16,6 +16,15 @@ if str(BACKEND_ROOT) not in sys.path:
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import get_settings
+from app.graph.crisis_escalation import (
+    CrisisStage,
+    advance_crisis_escalation,
+    confirm_reply_for_language,
+    get_crisis_escalation,
+    pre_gather_force_strategy,
+    sos_reply_and_chips,
+)
+from app.graph.nodes.response_generator import detect_language
 from app.graph.safety_engine import run_safety_engine
 from app.graph.workflow import run_turn
 from app.llm.factory import get_chat_model, invoke_with_fallback, resolve_provider
@@ -68,26 +77,43 @@ async def _judge(case: dict[str, Any], reply: str, metadata: dict[str, Any]) -> 
 
 async def _run_case(case: dict[str, Any], judge: bool) -> dict[str, Any]:
     provider = resolve_provider(None, default="openai")
+    session_id = f"eval-{case['id']}"
+    escalation_pre = await get_crisis_escalation(None, session_id)
+    force_strategy = pre_gather_force_strategy(escalation_pre, case["message"])
     state = {
         "user_input": case["message"],
         "history": [],
         "provider": provider,
-        "session_id": f"eval-{case['id']}",
+        "session_id": session_id,
         "db": None,
         "personalization_context": {},
+        "force_therapy_strategy": force_strategy,
     }
     safety, graph = await asyncio.gather(
         run_safety_engine(case["message"], [], provider),
         run_turn(state),
     )
-    if safety.get("emergency_mode"):
-        reply = "CRISIS_OVERRIDE"
+    crisis_stage, _esc = await advance_crisis_escalation(
+        None,
+        session_id,
+        safety=safety,
+        user_message=case["message"],
+    )
+    lang = detect_language(case["message"], [])
+    if crisis_stage != CrisisStage.NONE:
         message_type = "crisis"
+        if crisis_stage == CrisisStage.SOS:
+            reply, _ = sos_reply_and_chips(lang)
+        elif crisis_stage == CrisisStage.CONFIRM:
+            reply = confirm_reply_for_language(lang)
+        else:
+            reply = str(graph.get("final_reply") or "CRISIS_CONCERN")
     else:
         reply = str(graph.get("final_reply") or "")
         message_type = str(graph.get("message_type") or "normal")
     metadata = {
         "message_type": message_type,
+        "crisis_stage": crisis_stage.value,
         "safety": safety,
         "graph": {k: v for k, v in graph.items() if k != "final_reply"},
     }

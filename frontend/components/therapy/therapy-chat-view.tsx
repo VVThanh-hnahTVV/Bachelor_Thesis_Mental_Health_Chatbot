@@ -11,7 +11,6 @@ import {
   Moon,
   Plus,
   MessageSquare,
-  Phone,
   AlertTriangle,
   BookOpenCheck,
 } from "lucide-react";
@@ -19,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { ChatMessage, ChatSession } from "@/lib/api/chat";
+import type { ChatMessage, ChatSession, CrisisChoice } from "@/lib/api/chat";
+import { formatMessageForDisplay } from "@/lib/api/chat";
 
 const SUGGESTED_QUESTIONS = [
   "Làm thế nào để quản lý lo lắng tốt hơn?",
@@ -77,15 +77,14 @@ export interface TherapyChatViewProps {
   message: string;
   isLoading: boolean;
   isTyping: boolean;
-  isChatPaused: boolean;
-  crisisChoices: string[];
+  crisisChoices: CrisisChoice[];
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onMessageChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onSuggestedQuestion: (text: string) => void;
-  onCrisisChoice: (text: string) => void;
+  onCrisisChoice: (choice: CrisisChoice) => void;
   onBreathingExercise?: () => void;
   onOceanSounds?: () => void;
   getSuggestedActivities: (metadata: ChatMessage["metadata"]) => string[];
@@ -101,7 +100,6 @@ export function TherapyChatView(props: TherapyChatViewProps) {
     message,
     isLoading,
     isTyping,
-    isChatPaused,
     crisisChoices,
     messagesEndRef,
     onMessageChange,
@@ -278,7 +276,9 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                       )}
 
                       <div className="prose prose-sm max-w-none prose-p:my-1">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown>
+                          {formatMessageForDisplay(msg.content)}
+                        </ReactMarkdown>
                       </div>
 
                       {/* Wellness activity buttons */}
@@ -339,51 +339,19 @@ export function TherapyChatView(props: TherapyChatViewProps) {
 
         {/* Input area */}
         <div className="border-t border-gray-100 bg-white px-6 py-4">
-          {/* Crisis hotline banner */}
-          <AnimatePresence>
-            {isChatPaused && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="mx-auto mb-4 max-w-3xl rounded-xl border border-red-200 bg-red-50 px-4 py-3"
-              >
-                <div className="flex items-start gap-3">
-                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-700">
-                      Đường dây hỗ trợ khẩn cấp
-                    </p>
-                    <p className="mt-0.5 text-sm text-red-600">
-                      <span className="font-bold">1800 599 920</span> — Sức khỏe tâm thần (miễn phí, 24/7)
-                      &nbsp;·&nbsp;
-                      <span className="font-bold">115</span> — Cấp cứu
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Crisis choice buttons OR textarea */}
-          {isChatPaused && crisisChoices.length > 0 ? (
+          {crisisChoices.length > 0 ? (
             <div className="mx-auto max-w-3xl">
-              <p className="mb-3 text-center text-xs text-gray-400">
-                Chọn một bước nhỏ để mình cùng đồng hành với bạn:
-              </p>
               <div className="grid grid-cols-2 gap-2">
                 {crisisChoices.map((choice) => (
-                  <motion.button
-                    key={choice}
+                  <button
+                    key={choice.id}
                     type="button"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
                     disabled={isTyping}
                     onClick={() => onCrisisChoice(choice)}
                     className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition-colors hover:border-serene-green/30 hover:bg-[#F9FAF7] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {choice}
-                  </motion.button>
+                    {choice.label}
+                  </button>
                 ))}
               </div>
             </div>
@@ -396,10 +364,10 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                 className={cn(
                   "max-h-[160px] min-h-[52px] flex-1 resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800",
                   "placeholder:text-gray-400 focus:border-serene-green/40 focus:outline-none focus:ring-2 focus:ring-serene-green/30",
-                  (isTyping || isChatPaused) && "cursor-not-allowed opacity-50"
+                  isTyping && "cursor-not-allowed opacity-50"
                 )}
                 rows={1}
-                disabled={isTyping || isChatPaused}
+                disabled={isTyping}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -411,7 +379,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                 type="submit"
                 size="icon"
                 className="h-[52px] w-[52px] shrink-0 rounded-2xl bg-serene-green text-white shadow-sm hover:bg-serene-accent disabled:opacity-50"
-                disabled={isTyping || isChatPaused || !message.trim()}
+                disabled={isTyping || !message.trim()}
               >
                 <Send className="h-5 w-5" />
               </Button>

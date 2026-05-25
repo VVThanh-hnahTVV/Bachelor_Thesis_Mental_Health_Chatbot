@@ -7,8 +7,17 @@ from app.graph.safety_engine import crisis_reply_for_language, run_safety_engine
 async def test_safety_engine_keyword_crisis_high():
     out = await run_safety_engine("I want to die", [], "openai")
     assert out["risk_level"] == "high"
-    assert out["emergency_mode"] is True
+    assert out["emergency_mode"] is False
+    assert out["suggested_stage"] == "concern"
     assert "keyword_crisis" in out["triggers"]
+
+
+@pytest.mark.asyncio
+async def test_safety_engine_imminent_emergency():
+    out = await run_safety_engine("tối nay tôi sẽ tự tử", [], "openai")
+    assert out["risk_level"] == "high"
+    assert out["emergency_mode"] is True
+    assert out["suggested_stage"] == "sos"
 
 
 @pytest.mark.asyncio
@@ -22,6 +31,7 @@ async def test_safety_engine_suspicious_failure_is_conservative(monkeypatch):
     out = await run_safety_engine("Everything feels hopeless", [], "openai")
     assert out["risk_level"] == "medium"
     assert out["emergency_mode"] is False
+    assert out["suggested_stage"] == "concern"
     assert "llm_failure" in out["triggers"]
 
 
@@ -30,6 +40,7 @@ async def test_safety_engine_low_risk_fast_path():
     out = await run_safety_engine("hello", [], "openai")
     assert out["risk_level"] == "low"
     assert out["emergency_mode"] is False
+    assert out["suggested_stage"] == "none"
 
 
 def test_crisis_reply_matches_language():

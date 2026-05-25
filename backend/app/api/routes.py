@@ -19,10 +19,30 @@ from app.db.repository import (
     list_activity_completions,
     list_messages_chronological,
 )
-from app.graph.safety_engine import (
-    crisis_reply_for_language,
-    run_safety_engine,
+from app.graph.crisis_escalation import (
+    CrisisStage,
+    advance_crisis_escalation,
+    chips_for_stage,
+    confirm_reply_for_language,
+    crisis_choices_to_api,
+    get_crisis_escalation,
+    human_escalation_reply_for_language,
+    overwhelm_reply_for_language,
+    overwhelm_doing_reply_for_language,
+    overwhelm_check_reply_for_language,
+    overwhelm_not_better_reply_for_language,
+    safety_watch_reply_for_language,
+    someone_else_reply_for_language,
+    recovery_reply_for_language,
+    parse_crisis_chip_id,
+    pre_gather_force_strategy,
+    safety_result_for_chip,
+    should_block_free_text,
+    sos_reply_and_chips,
+    strategy_for_chip,
+    user_message_for_storage,
 )
+from app.graph.safety_engine import run_safety_engine
 from app.graph.conversation_ui import (
     is_learn_exploration,
     should_skip_quick_replies,
@@ -96,6 +116,11 @@ class QuickReplyOut(BaseModel):
     message: str
 
 
+class CrisisChoiceOut(BaseModel):
+    id: str
+    label: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     session_id: str
@@ -104,7 +129,8 @@ class ChatResponse(BaseModel):
     provider: str
     # Safety / routing
     chat_blocked: bool = False
-    crisis_choices: list[str] = Field(default_factory=list)
+    crisis_choices: list[CrisisChoiceOut] = Field(default_factory=list)
+    crisis_stage: str = "none"
     message_type: str = "normal"       # "normal" | "off_topic" | "crisis"
     # Emotion / therapy metadata
     emotion: str | None = None
@@ -198,17 +224,26 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
-    # Persist user message to MongoDB
-    await append_message(db, conversation_id=cid, role="user", content=req.message)
+    if redis is not None:
+        history = await get_turns(redis, req.session_id, limit=20)
+    else:
+        history = []
+
+    _crisis_lang_early = detect_language(req.message, history)
+    user_message_stored = user_message_for_storage(req.message, _crisis_lang_early)
+
+    # Persist user message to MongoDB (display-friendly text for chip taps)
+    await append_message(
+        db, conversation_id=cid, role="user", content=user_message_stored
+    )
 
     # Short-term history from Redis (fast); push user turn
     if redis is not None:
-        await push_turn(redis, req.session_id, "user", req.message)
+        await push_turn(redis, req.session_id, "user", user_message_stored)
         history = await get_turns(redis, req.session_id, limit=20)
         # Exclude the turn we just pushed (the last one) so history = prior context
         history = history[:-1]
     else:
-        # Fallback: not using Redis (dev without cache)
         history = []
 
     default_p: ProviderName = default_provider()
@@ -220,10 +255,12 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
 
     therapy_flags = await get_therapy_flags(redis, req.session_id)
+    escalation_pre = await get_crisis_escalation(redis, req.session_id)
+    crisis_chip_id = parse_crisis_chip_id(req.message)
+    force_strategy = pre_gather_force_strategy(escalation_pre, req.message)
 
     # -----------------------------------------------------------------------
     # Parallel: safety engine + main LangGraph graph
-    # Pattern from QueryWeaver: asyncio.create_task for both, then gather
     # -----------------------------------------------------------------------
     graph_state: dict[str, Any] = {
         "user_input": req.message,
@@ -233,6 +270,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         "db": db,
         "personalization_context": personalization_context,
         "therapy_flags": therapy_flags,
+        "force_therapy_strategy": force_strategy,
+        "crisis_chip_id": crisis_chip_id,
     }
 
     safety_task = asyncio.create_task(
@@ -241,35 +280,100 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     main_task = asyncio.create_task(run_turn(graph_state))
 
     safety_result, graph_out = await asyncio.gather(safety_task, main_task)
+    chip_safety = safety_result_for_chip(crisis_chip_id)
+    if chip_safety is not None:
+        safety_result = chip_safety
+
+    _crisis_lang = detect_language(req.message, history)
+    crisis_stage, _escalation_state = await advance_crisis_escalation(
+        redis,
+        req.session_id,
+        safety=safety_result,
+        user_message=req.message,
+    )
 
     # -----------------------------------------------------------------------
-    # Merge: safety overrides if emergency
+    # Merge: Wysa-style gradual crisis (concern → confirm → sos)
     # -----------------------------------------------------------------------
-    conv_state: ConvState = ConvState.CRISIS if safety_result.get("emergency_mode") else ConvState.OPENING
+    conv_state: ConvState = (
+        ConvState.CRISIS if crisis_stage == CrisisStage.SOS else ConvState.OPENING
+    )
     suggestion_intensity: SuggestionIntensity = SuggestionIntensity.MEDIUM
+    crisis_choices_out: list[CrisisChoiceOut] = []
 
-    if safety_result["emergency_mode"]:
-        _crisis_lang = detect_language(req.message, history)
-        reply, crisis_choices = crisis_reply_for_language(_crisis_lang)
-        chat_blocked = True
-        message_type = "crisis"
+    if crisis_stage != CrisisStage.NONE:
+        chat_blocked = should_block_free_text(crisis_stage)
+        message_type = "normal"
         suggested_activities: list[dict[str, Any]] = []
         emotion = graph_out.get("primary_emotion")
-        therapy_strategy = None
-        meta_out: dict[str, Any] = {
+        crisis_chips = chips_for_stage(crisis_stage, _crisis_lang)
+        crisis_choices_out = [
+            CrisisChoiceOut(**c) for c in crisis_choices_to_api(crisis_chips)
+        ]
+
+        if crisis_stage == CrisisStage.SOS:
+            reply, _sos_chips = sos_reply_and_chips(_crisis_lang)
+            therapy_strategy = None
+            conv_state = ConvState.CRISIS
+        elif crisis_stage == CrisisStage.CONFIRM:
+            reply = confirm_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_concern"
+        elif crisis_stage == CrisisStage.HUMAN_ESCALATION:
+            reply = human_escalation_reply_for_language(_crisis_lang, crisis_chip_id)
+            therapy_strategy = "crisis_safety_check"
+            conv_state = ConvState.CRISIS
+        elif crisis_stage == CrisisStage.OVERWHELM:
+            reply = overwhelm_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_grounding"
+        elif crisis_stage == CrisisStage.OVERWHELM_DOING:
+            reply = overwhelm_doing_reply_for_language(_crisis_lang, crisis_chip_id)
+            message_type = "wellness_activity"
+            therapy_strategy = "crisis_grounding"
+        elif crisis_stage == CrisisStage.OVERWHELM_CHECK:
+            reply = overwhelm_check_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_grounding"
+        elif crisis_stage == CrisisStage.OVERWHELM_NOT_BETTER:
+            reply = overwhelm_not_better_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_safety_check"
+        elif crisis_stage == CrisisStage.SAFETY_WATCH:
+            reply = safety_watch_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_reassure"
+        elif crisis_stage in (CrisisStage.SOMEONE_ELSE, CrisisStage.SOMEONE_ELSE_FOLLOWUP):
+            reply = someone_else_reply_for_language(_crisis_lang, crisis_chip_id)
+            therapy_strategy = "crisis_resources"
+        elif crisis_stage == CrisisStage.RECOVERY:
+            reply = recovery_reply_for_language(_crisis_lang)
+            therapy_strategy = "crisis_reassure"
+        else:
+            reply = str(graph_out.get("final_reply") or "").strip()
+            if not reply:
+                reply = (
+                    "I'm here with you. You are not alone right now."
+                    if _crisis_lang == "en"
+                    else "Mình ở đây với bạn. Bạn không đơn độc trong lúc này."
+                )
+            therapy_strategy = (
+                strategy_for_chip(crisis_chip_id)
+                or str(graph_out.get("therapy_strategy") or "crisis_concern")
+            )
+
+        meta_out = {
             "risk_level": safety_result["risk_level"],
             "safety_confidence": safety_result["confidence"],
             "safety_triggers": safety_result["triggers"],
             "safety_fallback_used": "llm_failure" in safety_result["triggers"],
-            "conv_state": ConvState.CRISIS.value,
+            "crisis_stage": crisis_stage.value,
+            "crisis_chip_id": crisis_chip_id,
+            "conv_state": conv_state.value,
             "suggestion_intensity": SuggestionIntensity.MEDIUM.value,
+            "emotion": emotion,
+            "therapy_strategy": therapy_strategy,
         }
     else:
         reply = str(graph_out.get("final_reply") or "").strip()
         if not reply:
             reply = "Mình ở đây với bạn. Bạn có thể chia sẻ thêm không?"
         chat_blocked = False
-        crisis_choices = []
         message_type = str(graph_out.get("message_type") or "normal")
         emotion = graph_out.get("primary_emotion")
         therapy_strategy = graph_out.get("therapy_strategy")
@@ -321,6 +425,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             risk_level=_risk,
             user_turn_count=user_turn_count,
             therapy_flags=therapy_flags,
+            crisis_stage="none",
         )
 
         await update_therapy_flags_after_turn(
@@ -441,6 +546,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             "risk_level": safety_result["risk_level"],
             "safety_confidence": safety_result["confidence"],
             "safety_fallback_used": "llm_failure" in safety_result["triggers"],
+            "crisis_stage": "none",
             "emotion": emotion,
             "emotion_intensity": _emotion_intensity,
             "intent": _intent,
@@ -464,7 +570,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         metadata={
             "message_type": message_type,
             "chat_blocked": chat_blocked,
-            "crisis_choices": crisis_choices,
+            "crisis_stage": crisis_stage.value,
+            "crisis_choices": [c.model_dump() for c in crisis_choices_out],
             **meta_out,
         },
     )
@@ -500,7 +607,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         assistant_message_id=assistant_message_id,
         provider=provider,
         chat_blocked=chat_blocked,
-        crisis_choices=crisis_choices,
+        crisis_choices=crisis_choices_out,
+        crisis_stage=crisis_stage.value,
         message_type=message_type,
         emotion=emotion,
         therapy_strategy=therapy_strategy,
