@@ -3,6 +3,12 @@ import { getAuthToken } from "@/lib/auth-token";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+export type ChatMode = "psychologist" | "medical";
+
+export function chatModeStorageKey(sessionId: string): string {
+  return `chat_mode:${sessionId}`;
+}
+
 export interface QuickReply {
   id: string;
   label: string;
@@ -175,7 +181,7 @@ export interface ChatMessage {
     goal?: string;
     progress?: any[];
     // Safety / routing
-    message_type?: "normal" | "off_topic" | "crisis";
+    message_type?: "normal" | "off_topic" | "crisis" | "medical";
     chat_blocked?: boolean;
     crisis_stage?: CrisisStage;
     crisis_choices?: CrisisChoice[] | string[];
@@ -199,6 +205,10 @@ export interface ChatMessage {
       source: string;
     }>;
     safety_fallback_used?: boolean;
+    chat_mode?: ChatMode;
+    agent_name?: string;
+    needs_validation?: boolean;
+    result_image?: string;
     [key: string]: unknown;
   };
 }
@@ -208,6 +218,7 @@ export interface ChatSession {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
+  chatMode?: ChatMode;
 }
 
 export interface ApiResponse {
@@ -218,7 +229,7 @@ export interface ApiResponse {
   chat_blocked?: boolean;
   crisis_stage?: CrisisStage;
   crisis_choices?: CrisisChoice[];
-  message_type?: "normal" | "off_topic" | "crisis";
+  message_type?: "normal" | "off_topic" | "crisis" | "medical";
   // Emotion / therapy
   emotion?: string;
   therapy_strategy?: string;
@@ -257,7 +268,8 @@ export const createChatSession = async (): Promise<string> => {
 
 export const sendChatMessage = async (
   sessionId: string,
-  message: string
+  message: string,
+  chatMode: ChatMode = "psychologist"
 ): Promise<ApiResponse> => {
   const token = getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -265,7 +277,11 @@ export const sendChatMessage = async (
   const response = await fetch(`${API_BASE}/api/v1/chat`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message, session_id: sessionId }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      chat_mode: chatMode,
+    }),
   });
   if (!response.ok) {
     const errorText = await response.text();
@@ -345,5 +361,69 @@ export const getAllChatSessions = async (): Promise<ChatSession[]> => {
     messages: [],
     createdAt: new Date(session.updated_at),
     updatedAt: new Date(session.updated_at),
+    chatMode: (session.chat_mode as ChatMode) || "psychologist",
   }));
 };
+
+export async function uploadMedicalImage(
+  sessionId: string,
+  file: File,
+  text: string = ""
+): Promise<ApiResponse> {
+  const token = getAuthToken();
+  const form = new FormData();
+  form.append("session_id", sessionId);
+  form.append("image", file);
+  form.append("text", text);
+  form.append("chat_mode", "medical");
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE}/api/v1/chat/upload`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to upload image");
+  }
+  const data = await response.json();
+  return {
+    message: data.reply,
+    response: data.reply,
+    assistant_message_id: data.assistant_message_id ?? undefined,
+    message_type: data.message_type ?? "medical",
+    metadata: data.metadata,
+  };
+}
+
+export async function validateMedicalOutput(
+  sessionId: string,
+  validationResult: "yes" | "no",
+  comments?: string
+): Promise<ApiResponse> {
+  const token = getAuthToken();
+  const form = new FormData();
+  form.append("session_id", sessionId);
+  form.append("validation_result", validationResult);
+  if (comments) form.append("comments", comments);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE}/api/v1/chat/validate`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to submit validation");
+  }
+  const data = await response.json();
+  return {
+    message: data.reply,
+    response: data.reply,
+    assistant_message_id: data.assistant_message_id ?? undefined,
+    message_type: data.message_type ?? "medical",
+    metadata: data.metadata,
+  };
+}

@@ -22,12 +22,29 @@ dependencies = [
     "redis[asyncio]>=5.0.0",
     "mcp>=1.27.1",
     "langchain-mcp-adapters>=0.2.2",
+    "matplotlib>=3.10.9",
+    "gdown>=6.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+]
+medical = [
+    "qdrant-client>=1.13.0",
+    "langchain-qdrant>=0.2.0",
+    "langchain-classic>=1.0.0",
+    "langchain-community>=0.3.0",
+    "docling>=2.31.0,<3",
+    "torch>=2.5.0",
+    "torchvision>=0.20.0",
+    "opencv-python-headless>=4.11.0",
+    "sentence-transformers>=3.4.0",
+    "python-multipart>=0.0.9",
+    "Pillow>=11.0.0",
+    "pypdf>=5.0.0",
+    "beautifulsoup4>=4.13.0",
 ]
 
 [tool.pytest.ini_options]

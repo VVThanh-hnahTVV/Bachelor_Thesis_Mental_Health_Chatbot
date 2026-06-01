@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.auth_routes import router as auth_router
 from app.api.mcp_routes import router as mcp_router
@@ -62,6 +64,14 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(auth_router)
     app.include_router(mcp_router)
+
+    uploads_medical = Path(__file__).resolve().parents[1] / "uploads" / "medical"
+    uploads_medical.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/uploads/medical",
+        StaticFiles(directory=str(uploads_medical)),
+        name="uploads_medical",
+    )
 
     if s.enable_internal_mcp_server:
         mcp_asgi_app = create_mcp_asgi_app(

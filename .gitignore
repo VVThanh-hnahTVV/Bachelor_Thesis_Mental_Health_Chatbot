@@ -11,3 +11,13 @@ dist/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+backend/data/medical/qdrant_db/
+backend/data/medical/parsed_docs/
+backend/data/medical/docs_db/
+backend/uploads/medical/
+backend/data/medical/raw/
+*.pt *.pth
+*.pth.tar
+*.pt
+*.ckpt
+backend/app/medical/agents/image_analysis_agent/*/models/

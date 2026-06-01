@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db_name: str = "mental_health"
 
-    # Local OpenAI-compatible chat server (Ollama exposes /v1 by default)
+    # Local OpenAI-compatible chat (Ollama /v1). Off by default — use Ollama for embeddings only.
+    enable_local_chat: bool = False
     local_base_url: str | None = "http://localhost:11434/v1"
     local_api_key: str = "ollama"
     local_model: str = "llama3.1"
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
 
     # Groq
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     # Gemini
     google_api_key: str | None = None
@@ -37,7 +38,7 @@ class Settings(BaseSettings):
     modal_model: str = "default"
 
     # Fallback order when primary fails (comma-separated provider names)
-    llm_fallback_chain: str = "local,groq,openai,gemini"
+    llm_fallback_chain: str = "groq,openai,gemini"
 
     redis_url: str = "redis://localhost:6379/0"
     session_ttl_seconds: int = 7200  # 2 hours
@@ -67,6 +68,11 @@ class Settings(BaseSettings):
     rag_min_score: float = 0.15
     llm_judge_provider: str = "openai"
     llm_judge_model: str = "gpt-4o-mini"
+
+    enable_medical_mode: bool = True
+    medical_cv_enabled: bool = True
+    tavily_api_key: str | None = None
+    huggingface_token: str | None = None
 
     @property
     def cors_origins_list(self) -> list[str]:

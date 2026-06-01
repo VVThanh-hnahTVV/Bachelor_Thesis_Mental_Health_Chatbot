@@ -46,3 +46,14 @@ pytest
 ## Lexical RAG
 
 Curated snippets live in `app/data/knowledge/chunks.json`. Runtime retrieval is keyword overlap (no embedding dependency). Extend `scripts/seed_vectorstore.py` if you add Chroma/OpenAI embeddings later.
+
+## Medical mode (dual chat)
+
+Vendored workflow under `app/medical/` (from `Clone/Multi-Agent-Medical-Assistant`). Install extras and ingest PDFs:
+
+```bash
+pip install -e ".[medical]"
+python -m app.medical.ingest --dir data/medical/raw
+```
+
+API: `POST /api/v1/chat` with `"chat_mode": "medical"`, plus `/api/v1/chat/upload` and `/api/v1/chat/validate`. Static segmentation images: `/uploads/medical/...`.

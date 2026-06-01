@@ -2,7 +2,10 @@
 
 import { RefObject } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import ReactMarkdown from "react-markdown";
+import {
+  AssistantMessageBubble,
+  ChatMessageMarkdown,
+} from "@/components/therapy/chat-message-markdown";
 import {
   Send,
   Bot,
@@ -19,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ChatSession, CrisisChoice } from "@/lib/api/chat";
-import { formatMessageForDisplay } from "@/lib/api/chat";
 
 const SUGGESTED_QUESTIONS = [
   "Làm thế nào để quản lý lo lắng tốt hơn?",
@@ -240,16 +242,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                       )}
                     </div>
 
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                        msg.role === "assistant"
-                          ? msg.metadata?.message_type === "crisis"
-                            ? "bg-red-50 text-gray-700"
-                            : "bg-[#F9FAF7] text-gray-700"
-                          : "bg-serene-green text-white"
-                      )}
-                    >
+                    <div className="max-w-[85%]">
                       {/* Emotion badge (therapy strategy hidden from users) */}
                       {msg.role === "assistant" && (
                         <div className="mb-2 flex flex-wrap gap-1">
@@ -275,11 +268,22 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                         </div>
                       )}
 
-                      <div className="prose prose-sm max-w-none prose-p:my-1">
-                        <ReactMarkdown>
-                          {formatMessageForDisplay(msg.content)}
-                        </ReactMarkdown>
-                      </div>
+                      {msg.role === "user" ? (
+                        <div className="rounded-2xl bg-serene-green px-4 py-3 text-white">
+                          <ChatMessageMarkdown
+                            content={msg.content}
+                            className="text-white [&_a]:text-white [&_p]:text-white [&_strong]:text-white"
+                          />
+                        </div>
+                      ) : (
+                        <AssistantMessageBubble
+                          variant={
+                            msg.metadata?.message_type === "crisis" ? "crisis" : "default"
+                          }
+                        >
+                          <ChatMessageMarkdown content={msg.content} />
+                        </AssistantMessageBubble>
+                      )}
 
                       {/* Wellness activity buttons */}
                       {msg.role === "assistant" && msg.metadata?.message_type !== "crisis" &&

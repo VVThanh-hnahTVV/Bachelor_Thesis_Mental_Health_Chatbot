@@ -34,11 +34,13 @@ async def create_conversation(
     *,
     session_id: str,
     title: str | None = None,
+    chat_mode: str = "psychologist",
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     doc = {
         "session_id": session_id,
         "title": title or "New chat",
+        "chat_mode": chat_mode,
         "created_at": now,
         "updated_at": now,
     }

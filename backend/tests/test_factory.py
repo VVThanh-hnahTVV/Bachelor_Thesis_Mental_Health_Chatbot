@@ -22,6 +22,7 @@ def test_resolve_provider():
 def test_build_provider_chain_uses_settings_fallback_order(monkeypatch):
     class Settings:
         llm_fallback_chain = "local,groq,openai,gemini"
+        enable_local_chat = True
         local_base_url = "http://localhost:11434/v1"
         groq_api_key = "g"
         openai_api_key = "o"

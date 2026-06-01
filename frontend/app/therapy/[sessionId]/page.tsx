@@ -12,10 +12,14 @@ import {
   PlusCircle,
   AlertTriangle,
   BookOpenCheck,
+  ImagePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import ReactMarkdown from "react-markdown";
+import {
+  AssistantMessageBubble,
+  ChatMessageMarkdown,
+} from "@/components/therapy/chat-message-markdown";
 import { BreathingGame } from "@/components/games/breathing-game";
 import { OceanWaves } from "@/components/games/ocean-waves";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +37,12 @@ import {
   ChatMessage,
   getAllChatSessions,
   ChatSession,
+  uploadMedicalImage,
+  validateMedicalOutput,
+  chatModeStorageKey,
+  type ChatMode,
 } from "@/lib/api/chat";
+import { ChatModeToggle } from "@/components/therapy/chat-mode-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageFeedback } from "@/components/therapy/message-feedback";
 import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
@@ -47,7 +56,15 @@ import {
   normalizeCrisisChoices,
 } from "@/lib/api/chat";
 import { fetchCurrentUser, linkChatSession } from "@/lib/api/auth";
-import { getDefaultLunaGreeting } from "@/lib/luna-greeting";
+import { getDefaultLunaGreeting, getDefaultMedicalGreeting } from "@/lib/luna-greeting";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+const MEDICAL_SUGGESTED_QUESTIONS = [
+  { text: "What are common symptoms of brain tumors?" },
+  { text: "Explain chest X-ray findings for COVID-19" },
+  { text: "How is skin lesion analysis performed?" },
+];
 
 const SUGGESTED_QUESTIONS = [
   { text: "Làm thế nào để quản lý lo lắng tốt hơn?" },
@@ -71,15 +88,34 @@ const EMOTION_LABELS: Record<string, string> = {
   joy: "Vui vẻ",
 };
 
-async function welcomeMessages(): Promise<ChatMessage[]> {
+async function welcomeMessages(mode: ChatMode): Promise<ChatMessage[]> {
+  if (mode === "medical") {
+    return [
+      {
+        role: "assistant",
+        content: getDefaultMedicalGreeting(),
+        timestamp: new Date(),
+        metadata: { chat_mode: "medical", message_type: "medical" },
+      },
+    ];
+  }
   const user = await fetchCurrentUser();
   return [
     {
       role: "assistant",
       content: getDefaultLunaGreeting(user?.name),
       timestamp: new Date(),
+      metadata: { chat_mode: "psychologist" },
     },
   ];
+}
+
+function resolveChatModeFromHistory(history: ChatMessage[]): ChatMode {
+  for (const msg of history) {
+    const m = msg.metadata?.chat_mode;
+    if (m === "medical" || m === "psychologist") return m;
+  }
+  return "psychologist";
 }
 
 function quickRepliesFromMessages(msgs: ChatMessage[]): QuickReply[] {
@@ -118,6 +154,12 @@ export default function TherapyPage() {
   );
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [inputQuickReplies, setInputQuickReplies] = useState<QuickReply[]>([]);
+  const [chatMode, setChatMode] = useState<ChatMode>("psychologist");
+  const [pendingMedicalValidation, setPendingMedicalValidation] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const hasUserMessages = messages.some((m) => m.role === "user");
+  const isMedicalMode = chatMode === "medical";
 
   const getSuggestedActivities = (metadata: ChatMessage["metadata"]) => {
     if (!metadata || !Array.isArray((metadata as any).suggested_activities)) {
@@ -162,9 +204,17 @@ export default function TherapyPage() {
       } catch {
         /* optional — chat still links on first message */
       }
-      setMessages(await welcomeMessages());
+      setChatMode("psychologist");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          chatModeStorageKey(newSessionId),
+          "psychologist"
+        );
+      }
+      setMessages(await welcomeMessages("psychologist"));
       setInputQuickReplies([]);
       setCrisisChoices([]);
+      setPendingMedicalValidation(false);
       window.history.pushState({}, "", `/therapy/${newSessionId}`);
     } catch (error) {
       console.error("Failed to create new session:", error);
@@ -195,27 +245,54 @@ export default function TherapyPage() {
               ...msg,
               timestamp: new Date(msg.timestamp),
             }));
+            const restoredMode = resolveChatModeFromHistory(mapped);
+            setChatMode(restoredMode);
+            if (typeof window !== "undefined" && activeSessionId) {
+              window.localStorage.setItem(
+                chatModeStorageKey(activeSessionId),
+                restoredMode
+              );
+            }
             setMessages(mapped);
-            setInputQuickReplies(quickRepliesFromMessages(mapped));
-            const last = [...history].reverse().find((m) => m.role === "assistant");
-            const restoredChoices = normalizeCrisisChoices(
-              last?.metadata?.crisis_choices
+            const last = [...mapped].reverse().find((m) => m.role === "assistant");
+            setPendingMedicalValidation(
+              Boolean(last?.metadata?.needs_validation)
             );
-            if (
-              last?.metadata?.chat_blocked &&
-              restoredChoices.length > 0
-            ) {
-              setCrisisChoices(restoredChoices);
+            if (restoredMode === "medical") {
+              setCrisisChoices([]);
               setInputQuickReplies([]);
             } else {
-              setCrisisChoices([]);
+              setInputQuickReplies(quickRepliesFromMessages(mapped));
+              const restoredChoices = normalizeCrisisChoices(
+                last?.metadata?.crisis_choices
+              );
+              if (
+                last?.metadata?.chat_blocked &&
+                restoredChoices.length > 0
+              ) {
+                setCrisisChoices(restoredChoices);
+                setInputQuickReplies([]);
+              } else {
+                setCrisisChoices([]);
+              }
             }
           } else {
-            setMessages(await welcomeMessages());
+            const stored =
+              typeof window !== "undefined" && activeSessionId
+                ? (window.localStorage.getItem(
+                    chatModeStorageKey(activeSessionId)
+                  ) as ChatMode | null)
+                : null;
+            const mode: ChatMode =
+              stored === "medical" ? "medical" : "psychologist";
+            setChatMode(mode);
+            setMessages(await welcomeMessages(mode));
             setInputQuickReplies([]);
+            setPendingMedicalValidation(false);
           }
         } catch {
-          setMessages(await welcomeMessages());
+          setMessages(await welcomeMessages("psychologist"));
+          setChatMode("psychologist");
           setInputQuickReplies([]);
         }
       } catch {
@@ -283,28 +360,37 @@ export default function TherapyPage() {
     scrollToBottom();
 
     try {
-      const response = await sendChatMessage(sessionId, currentMessage);
+      const response = await sendChatMessage(sessionId, currentMessage, chatMode);
 
-      const nextCrisisChoices = response.crisis_choices ?? [];
-      const blocked = Boolean(
-        response.chat_blocked ?? response.metadata?.chat_blocked
-      );
       let quickReplies: QuickReply[] = [];
-      if (blocked && nextCrisisChoices.length > 0) {
-        setCrisisChoices(nextCrisisChoices);
-        setInputQuickReplies([]);
-      } else {
+      if (chatMode === "medical") {
         setCrisisChoices([]);
-        quickReplies = (
-          (response.quick_replies as QuickReply[] | undefined) ||
-          (response.metadata?.quick_replies as QuickReply[] | undefined) ||
-          []
-        ).slice(0, 3);
-        setInputQuickReplies(quickReplies);
+        setInputQuickReplies([]);
+        setPendingMedicalValidation(
+          Boolean(response.metadata?.needs_validation)
+        );
+      } else {
+        const nextCrisisChoices = response.crisis_choices ?? [];
+        const blocked = Boolean(
+          response.chat_blocked ?? response.metadata?.chat_blocked
+        );
+        if (blocked && nextCrisisChoices.length > 0) {
+          setCrisisChoices(nextCrisisChoices);
+          setInputQuickReplies([]);
+        } else {
+          setCrisisChoices([]);
+          quickReplies = (
+            (response.quick_replies as QuickReply[] | undefined) ||
+            (response.metadata?.quick_replies as QuickReply[] | undefined) ||
+            []
+          ).slice(0, 3);
+          setInputQuickReplies(quickReplies);
+        }
+        setPendingMedicalValidation(false);
       }
 
       // Auto-open the appropriate wellness popup when an activity is chosen.
-      if (response.crisis_stage === "overwhelm_doing") {
+      if (chatMode === "psychologist" && response.crisis_stage === "overwhelm_doing") {
         const activityChip =
           (response.metadata?.crisis_chip_id as string | undefined) ?? "";
         if (activityChip === "crisis:calming_music") {
@@ -315,6 +401,13 @@ export default function TherapyPage() {
         }
       }
 
+      const resultImage = response.metadata?.result_image as string | undefined;
+      const imageUrl = resultImage
+        ? resultImage.startsWith("http")
+          ? resultImage
+          : `${API_BASE}${resultImage}`
+        : undefined;
+
       setMessages((prev) => [
         ...prev,
         {
@@ -323,7 +416,9 @@ export default function TherapyPage() {
           content:
             response.response ||
             response.message ||
-            "Mình ở đây với bạn. Bạn có thể chia sẻ thêm không?",
+            (chatMode === "medical"
+              ? "I could not generate a response. Please try again."
+              : "Mình ở đây với bạn. Bạn có thể chia sẻ thêm không?"),
           timestamp: new Date(),
           metadata: {
             message_type: response.message_type,
@@ -333,7 +428,9 @@ export default function TherapyPage() {
             emotion: response.emotion,
             therapy_strategy: response.therapy_strategy,
             quick_replies: quickReplies,
+            chat_mode: chatMode,
             ...(response.metadata || {}),
+            ...(imageUrl ? { result_image: imageUrl } : {}),
           },
         },
       ]);
@@ -357,9 +454,111 @@ export default function TherapyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentMessage = message.trim();
-    if (!currentMessage || isTyping || crisisChoices.length > 0) return;
+    if (!currentMessage || isTyping) return;
+    if (!isMedicalMode && crisisChoices.length > 0) return;
     setMessage("");
     await sendUserMessage(currentMessage);
+  };
+
+  const handleChatModeChange = (mode: ChatMode) => {
+    if (hasUserMessages) return;
+    setChatMode(mode);
+    if (sessionId && typeof window !== "undefined") {
+      window.localStorage.setItem(chatModeStorageKey(sessionId), mode);
+    }
+    void (async () => {
+      setMessages(await welcomeMessages(mode));
+      setCrisisChoices([]);
+      setInputQuickReplies([]);
+      setPendingMedicalValidation(false);
+    })();
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!sessionId || isTyping || chatMode !== "medical") return;
+    setIsTyping(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: `[Uploaded image: ${file.name}]`,
+        timestamp: new Date(),
+      },
+    ]);
+    try {
+      const response = await uploadMedicalImage(sessionId, file, message.trim());
+      setMessage("");
+      const resultImage = response.metadata?.result_image as string | undefined;
+      const imageUrl = resultImage
+        ? resultImage.startsWith("http")
+          ? resultImage
+          : `${API_BASE}${resultImage}`
+        : undefined;
+      setPendingMedicalValidation(
+        Boolean(response.metadata?.needs_validation)
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: response.assistant_message_id,
+          role: "assistant",
+          content: response.response || response.message || "",
+          timestamp: new Date(),
+          metadata: {
+            chat_mode: "medical",
+            message_type: "medical",
+            ...(response.metadata || {}),
+            ...(imageUrl ? { result_image: imageUrl } : {}),
+          },
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, image analysis failed. Please try again.",
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleMedicalValidation = async (result: "yes" | "no", comments?: string) => {
+    if (!sessionId || isTyping) return;
+    setIsTyping(true);
+    setPendingMedicalValidation(false);
+    try {
+      const response = await validateMedicalOutput(sessionId, result, comments);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "user",
+          content: result === "yes" ? "Yes, confirmed." : `No. ${comments || ""}`.trim(),
+          timestamp: new Date(),
+        },
+        {
+          id: response.assistant_message_id,
+          role: "assistant",
+          content: response.response || response.message || "",
+          timestamp: new Date(),
+          metadata: { chat_mode: "medical", ...(response.metadata || {}) },
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Validation could not be processed. Please try again.",
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleSuggestedQuestion = (text: string) => {
@@ -424,23 +623,39 @@ export default function TherapyPage() {
           ...msg,
           timestamp: new Date(msg.timestamp),
         }));
+        const restoredMode = resolveChatModeFromHistory(mapped);
+        setChatMode(restoredMode);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(
+            chatModeStorageKey(selectedSessionId),
+            restoredMode
+          );
+        }
         setMessages(mapped);
         setSessionId(selectedSessionId);
         const lastAssistant = [...mapped]
           .reverse()
           .find((m) => m.role === "assistant");
-        const restoredChoices = normalizeCrisisChoices(
-          lastAssistant?.metadata?.crisis_choices
+        setPendingMedicalValidation(
+          Boolean(lastAssistant?.metadata?.needs_validation)
         );
-        if (
-          lastAssistant?.metadata?.chat_blocked &&
-          restoredChoices.length > 0
-        ) {
-          setCrisisChoices(restoredChoices);
+        if (restoredMode === "medical") {
+          setCrisisChoices([]);
           setInputQuickReplies([]);
         } else {
-          setCrisisChoices([]);
-          setInputQuickReplies(quickRepliesFromMessages(mapped));
+          const restoredChoices = normalizeCrisisChoices(
+            lastAssistant?.metadata?.crisis_choices
+          );
+          if (
+            lastAssistant?.metadata?.chat_blocked &&
+            restoredChoices.length > 0
+          ) {
+            setCrisisChoices(restoredChoices);
+            setInputQuickReplies([]);
+          } else {
+            setCrisisChoices([]);
+            setInputQuickReplies(quickRepliesFromMessages(mapped));
+          }
         }
         window.history.pushState({}, "", `/therapy/${selectedSessionId}`);
       }
@@ -549,11 +764,17 @@ export default function TherapyPage() {
                     <div className="mb-2 flex justify-center text-brand/40">
                       <Moon className="h-16 w-16 stroke-[1.25]" />
                     </div>
-                    <h3 className="text-4xl font-bold text-gray-800">Luna AI</h3>
-                    <p className="text-lg text-gray-500">Mình có thể giúp gì cho bạn hôm nay?</p>
+                    <h3 className="text-4xl font-bold text-gray-800">
+                      {isMedicalMode ? "Medical Assistant" : "Luna AI"}
+                    </h3>
+                    <p className="text-lg text-gray-500">
+                      {isMedicalMode
+                        ? "Ask a medical question or upload an image for analysis."
+                        : "Mình có thể giúp gì cho bạn hôm nay?"}
+                    </p>
                   </div>
                   <div className="w-full space-y-3">
-                    {SUGGESTED_QUESTIONS.map((q, index) => (
+                    {(isMedicalMode ? MEDICAL_SUGGESTED_QUESTIONS : SUGGESTED_QUESTIONS).map((q, index) => (
                       <motion.button
                         key={q.text}
                         type="button"
@@ -575,7 +796,9 @@ export default function TherapyPage() {
                 <div className="flex items-center gap-3 border-b border-brand-border/50 px-6 py-4">
                   <LunaAvatar size="md" />
                   <div>
-                    <h2 className="font-bold text-gray-800">Luna AI</h2>
+                    <h2 className="font-bold text-gray-800">
+                      {isMedicalMode ? "Medical Assistant" : "Luna AI"}
+                    </h2>
                     <p className="text-xs text-gray-500">
                       {messages.length} tin nhắn
                     </p>
@@ -595,11 +818,11 @@ export default function TherapyPage() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.25 }}
                           className={cn(
-                            "px-6 py-6",
+                            "px-6 py-4",
                             msg.role === "assistant"
                               ? msg.metadata?.message_type === "crisis"
-                                ? "bg-red-50/60"
-                                : "bg-brand-light/40"
+                                ? "bg-red-50/40"
+                                : ""
                               : "flex justify-end"
                           )}
                         >
@@ -648,10 +871,27 @@ export default function TherapyPage() {
                                 )}
                               >
                                 <p className="text-sm font-medium text-gray-800">
-                                  {msg.role === "assistant" ? "Luna AI" : "Bạn"}
+                                  {msg.role === "assistant"
+                                    ? msg.metadata?.chat_mode === "medical" ||
+                                      isMedicalMode
+                                      ? "Medical AI"
+                                      : "Luna AI"
+                                    : "Bạn"}
                                 </p>
+                                {msg.role === "assistant" &&
+                                  msg.metadata?.agent_name && (
+                                    <Badge
+                                      variant="outline"
+                                      className="rounded-full text-xs text-gray-600"
+                                    >
+                                      {String(msg.metadata.agent_name)}
+                                    </Badge>
+                                  )}
                                 {/* Emotion badge */}
-                                {msg.role === "assistant" && msg.metadata?.emotion && msg.metadata.emotion !== "neutral" && (
+                                {!isMedicalMode &&
+                                  msg.role === "assistant" &&
+                                  msg.metadata?.emotion &&
+                                  msg.metadata.emotion !== "neutral" && (
                                   <Badge
                                     variant="secondary"
                                     className="rounded-full border-brand-border bg-brand-light text-xs text-brand"
@@ -673,18 +913,36 @@ export default function TherapyPage() {
                                   )}
                               </div>
 
-                              <motion.div
-                                className={cn(
-                                  "prose prose-sm leading-relaxed prose-p:my-1",
-                                  msg.role === "user"
-                                    ? "inline-block w-fit max-w-full rounded-2xl bg-brand px-4 py-3 text-left text-white [&_p]:m-0 [&_p]:w-auto [&_p]:text-white [&_strong]:text-white"
-                                    : "max-w-none text-gray-700"
+                              {msg.role === "user" ? (
+                                <motion.div className="inline-block w-fit max-w-full rounded-2xl bg-brand px-4 py-3 text-left text-white">
+                                  <ChatMessageMarkdown
+                                    content={msg.content}
+                                    className="text-white [&_a]:text-white [&_p]:text-white [&_strong]:text-white"
+                                  />
+                                </motion.div>
+                              ) : (
+                                <AssistantMessageBubble
+                                  variant={
+                                    msg.metadata?.message_type === "crisis"
+                                      ? "crisis"
+                                      : msg.metadata?.chat_mode === "medical" ||
+                                          isMedicalMode
+                                        ? "medical"
+                                        : "default"
+                                  }
+                                >
+                                  <ChatMessageMarkdown content={msg.content} />
+                                </AssistantMessageBubble>
+                              )}
+
+                              {msg.role === "assistant" &&
+                                typeof msg.metadata?.result_image === "string" && (
+                                  <img
+                                    src={msg.metadata.result_image}
+                                    alt="Analysis result"
+                                    className="mt-2 max-h-64 rounded-lg border border-gray-200 object-contain"
+                                  />
                                 )}
-                              >
-                                <ReactMarkdown>
-                                  {formatMessageForDisplay(msg.content)}
-                                </ReactMarkdown>
-                              </motion.div>
 
                               {msg.role === "assistant" &&
                                 msg.metadata?.show_micro_feedback &&
@@ -697,7 +955,9 @@ export default function TherapyPage() {
                                 )}
 
                               {/* Wellness activity buttons */}
-                              {msg.role === "assistant" && msg.metadata?.message_type !== "crisis" &&
+                              {!isMedicalMode &&
+                                msg.role === "assistant" &&
+                                msg.metadata?.message_type !== "crisis" &&
                                 (() => {
                                   const activityIds = getSuggestedActivities(msg.metadata);
                                   // Use metadata only — keyword scan duplicated CTAs already in prose.
@@ -752,7 +1012,30 @@ export default function TherapyPage() {
                   : "border-t border-brand-border/40"
               )}
             >
-              {crisisChoices.length > 0 ? (
+              {pendingMedicalValidation && isMedicalMode ? (
+                <div className="mx-auto max-w-3xl space-y-2">
+                  <p className="text-center text-sm text-gray-600">
+                    Human validation required — confirm the analysis result:
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button
+                      type="button"
+                      disabled={isTyping}
+                      onClick={() => void handleMedicalValidation("yes")}
+                    >
+                      Yes, confirm
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isTyping}
+                      onClick={() => void handleMedicalValidation("no", "Needs review")}
+                    >
+                      No, needs review
+                    </Button>
+                  </div>
+                </div>
+              ) : !isMedicalMode && crisisChoices.length > 0 ? (
                 <div className="mx-auto max-w-3xl">
                   <div className="grid grid-cols-2 gap-2">
                     {crisisChoices.map((choice) => (
@@ -770,47 +1053,90 @@ export default function TherapyPage() {
                 </div>
               ) : (
                 <div className="mx-auto max-w-3xl space-y-3">
-                  {inputQuickReplies.length > 0 && (
+                  {!isMedicalMode && inputQuickReplies.length > 0 && (
                     <QuickReplyChips
                       replies={inputQuickReplies}
                       onSelect={(text) => void sendUserMessage(text)}
                       disabled={isTyping}
                     />
                   )}
-                  <form onSubmit={handleSubmit} className="relative">
-                    <textarea
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Chia sẻ điều bạn đang nghĩ..."
-                      rows={1}
-                      disabled={isTyping}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSubmit(e);
-                        }
-                      }}
-                      className={cn(
-                        "w-full resize-none rounded-full border-2 border-brand-border/80 bg-brand-light py-4 pl-8 pr-16 text-gray-700 outline-none transition-all placeholder:text-gray-400 focus:border-brand focus:ring-0",
-                        "min-h-[56px] max-h-[120px]",
-                        isTyping && "cursor-not-allowed opacity-50"
-                      )}
+                  <form onSubmit={handleSubmit} className="flex items-end gap-2">
+                    <ChatModeToggle
+                      value={chatMode}
+                      onChange={handleChatModeChange}
+                      disabled={hasUserMessages || isTyping}
                     />
-                    <button
-                      type="submit"
-                      disabled={isTyping || !message.trim()}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-brand/80 p-3 text-white transition-all hover:bg-brand disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="Send message"
-                    >
-                      <Send className="h-5 w-5" />
-                    </button>
+                    {isMedicalMode && (
+                      <>
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void handleImageUpload(file);
+                            e.target.value = "";
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={isTyping || pendingMedicalValidation}
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          aria-label="Upload medical image"
+                        >
+                          <ImagePlus className="h-5 w-5" />
+                        </button>
+                      </>
+                    )}
+                    <div className="relative min-w-0 flex-1">
+                      <textarea
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder={
+                          isMedicalMode
+                            ? "Ask a medical question..."
+                            : "Chia sẻ điều bạn đang nghĩ..."
+                        }
+                        rows={1}
+                        disabled={isTyping || pendingMedicalValidation}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSubmit(e);
+                          }
+                        }}
+                        className={cn(
+                          "w-full resize-none rounded-full border-2 border-brand-border/80 bg-brand-light py-4 pl-6 pr-14 text-gray-700 outline-none transition-all placeholder:text-gray-400 focus:border-brand focus:ring-0",
+                          "min-h-[52px] max-h-[120px]",
+                          isTyping && "cursor-not-allowed opacity-50"
+                        )}
+                      />
+                      <button
+                        type="submit"
+                        disabled={
+                          isTyping || !message.trim() || pendingMedicalValidation
+                        }
+                        className={cn(
+                          "absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-3 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                          isMedicalMode
+                            ? "bg-slate-700 hover:bg-slate-800"
+                            : "bg-brand/80 hover:bg-brand"
+                        )}
+                        aria-label="Send message"
+                      >
+                        <Send className="h-5 w-5" />
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}
 
               <p className="mx-auto mt-4 max-w-3xl text-center text-[10px] italic text-gray-400">
-                Luna AI hỗ trợ tinh thần, không thay thế chẩn đoán y tế.
-                Nếu bạn đang trong khủng hoảng, hãy liên hệ chuyên gia ngay.
+                {isMedicalMode
+                  ? "Medical mode provides educational information only — not medical diagnosis. Always consult a licensed healthcare professional."
+                  : "Luna AI hỗ trợ tinh thần, không thay thế chẩn đoán y tế. Nếu bạn đang trong khủng hoảng, hãy liên hệ chuyên gia ngay."}
               </p>
             </div>
           </section>

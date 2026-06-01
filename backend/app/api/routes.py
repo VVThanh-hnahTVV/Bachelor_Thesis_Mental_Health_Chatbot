@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import resolve_optional_current_user
@@ -96,12 +96,14 @@ class ConversationSummary(BaseModel):
     session_id: str
     title: str
     updated_at: str
+    chat_mode: str = "psychologist"
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     session_id: str = Field(..., min_length=8, max_length=128)
     provider: str | None = None
+    chat_mode: Literal["psychologist", "medical"] | None = None
 
 
 class ActivitySuggestionOut(BaseModel):
@@ -217,10 +219,18 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
                 personalization_context,
             )
 
-    # Ensure conversation exists in MongoDB (persistent store)
+    from app.api.medical_handlers import (
+        handle_medical_chat_turn,
+        resolve_conversation_mode,
+    )
+
     conv = await get_conversation_by_session(db, req.session_id)
-    if not conv:
-        conv = await create_conversation(db, session_id=req.session_id)
+    conv, chat_mode = await resolve_conversation_mode(
+        db,
+        session_id=req.session_id,
+        requested_mode=req.chat_mode,
+        conv=conv,
+    )
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
@@ -234,8 +244,32 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
     # Persist user message to MongoDB (display-friendly text for chip taps)
     await append_message(
-        db, conversation_id=cid, role="user", content=user_message_stored
+        db,
+        conversation_id=cid,
+        role="user",
+        content=user_message_stored,
+        metadata={"chat_mode": chat_mode},
     )
+
+    if chat_mode == "medical":
+        reply, meta, assistant_message_id = await handle_medical_chat_turn(
+            db,
+            session_id=req.session_id,
+            conversation_id=cid,
+            message=req.message,
+        )
+        return ChatResponse(
+            reply=reply,
+            session_id=req.session_id,
+            conversation_id=str(cid),
+            assistant_message_id=assistant_message_id,
+            provider="groq",
+            chat_blocked=False,
+            crisis_choices=[],
+            crisis_stage="none",
+            message_type="medical",
+            metadata=meta,
+        )
 
     # Short-term history from Redis (fast); push user turn
     if redis is not None:
@@ -618,6 +652,121 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
 
 
+@router.post("/chat/upload", response_model=ChatResponse)
+async def chat_upload(
+    request: Request,
+    session_id: str = Form(...),
+    image: UploadFile = File(...),
+    text: str = Form(""),
+    chat_mode: str = Form("medical"),
+) -> ChatResponse:
+    from app.api.medical_handlers import (
+        handle_medical_upload_turn,
+        resolve_conversation_mode,
+    )
+
+    db = get_db(request)
+    conv = await get_conversation_by_session(db, session_id)
+    conv, mode = await resolve_conversation_mode(
+        db,
+        session_id=session_id,
+        requested_mode=chat_mode,
+        conv=conv,
+    )
+    if mode != "medical":
+        raise HTTPException(400, detail="Image upload is only available in medical mode")
+    cid = conv["_id"]
+    assert isinstance(cid, ObjectId)
+
+    user_content = text.strip() or "[Medical image upload]"
+    await append_message(
+        db,
+        conversation_id=cid,
+        role="user",
+        content=user_content,
+        metadata={"chat_mode": "medical", "has_image": True},
+    )
+
+    reply, meta, assistant_message_id = await handle_medical_upload_turn(
+        db,
+        session_id=session_id,
+        conversation_id=cid,
+        image=image,
+        text=text,
+    )
+    return ChatResponse(
+        reply=reply,
+        session_id=session_id,
+        conversation_id=str(cid),
+        assistant_message_id=assistant_message_id,
+        provider="groq",
+        chat_blocked=False,
+        crisis_choices=[],
+        crisis_stage="none",
+        message_type="medical",
+        metadata=meta,
+    )
+
+
+@router.post("/chat/validate", response_model=ChatResponse)
+async def chat_validate(
+    request: Request,
+    session_id: str = Form(...),
+    validation_result: str = Form(...),
+    comments: str | None = Form(None),
+) -> ChatResponse:
+    from app.api.medical_handlers import (
+        handle_medical_validation_turn,
+        resolve_conversation_mode,
+    )
+
+    db = get_db(request)
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        raise HTTPException(404, detail="Session not found")
+    _, mode = await resolve_conversation_mode(
+        db,
+        session_id=session_id,
+        requested_mode=None,
+        conv=conv,
+    )
+    if mode != "medical":
+        raise HTTPException(400, detail="Validation is only for medical sessions")
+    cid = conv["_id"]
+    assert isinstance(cid, ObjectId)
+
+    stored = f"Validation: {validation_result}"
+    if comments:
+        stored += f" — {comments}"
+    await append_message(
+        db,
+        conversation_id=cid,
+        role="user",
+        content=stored,
+        metadata={"chat_mode": "medical", "validation_input": True},
+    )
+
+    reply, meta, assistant_message_id = await handle_medical_validation_turn(
+        db,
+        session_id=session_id,
+        conversation_id=cid,
+        validation_result=validation_result,
+        comments=comments,
+    )
+    return ChatResponse(
+        reply=reply,
+        session_id=session_id,
+        conversation_id=str(cid),
+        assistant_message_id=assistant_message_id,
+        provider="groq",
+        chat_blocked=False,
+        crisis_choices=[],
+        crisis_stage="none",
+        message_type="medical",
+        metadata=meta,
+    )
+
+
 @router.post("/chat/feedback")
 async def submit_message_feedback(body: MessageFeedbackRequest, request: Request) -> dict[str, str]:
     from app.db.repository import save_message_feedback
@@ -799,6 +948,7 @@ async def conversations(
                 session_id=doc["session_id"],
                 title=str(doc.get("title") or "Chat"),
                 updated_at=updated_iso,
+                chat_mode=str(doc.get("chat_mode") or "psychologist"),
             )
         )
     return out
@@ -996,6 +1146,7 @@ async def list_messages(session_id: str, request: Request, limit: int = 100) -> 
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
     rows = await list_messages_chronological(db, conversation_id=cid, limit=limit)
+    session_chat_mode = str(conv.get("chat_mode") or "psychologist")
     out: list[MessageOut] = []
     for doc in rows:
         created = doc["created_at"]
@@ -1005,13 +1156,17 @@ async def list_messages(session_id: str, request: Request, limit: int = 100) -> 
             else str(created)
         )
         meta = doc.get("metadata")
+        if isinstance(meta, dict):
+            meta = {**meta, "chat_mode": session_chat_mode}
+        else:
+            meta = {"chat_mode": session_chat_mode}
         out.append(
             MessageOut(
                 id=str(doc["_id"]),
                 role=str(doc["role"]),
                 content=str(doc["content"]),
                 created_at=created_iso,
-                metadata=meta if isinstance(meta, dict) else None,
+                metadata=meta,
             )
         )
     return out

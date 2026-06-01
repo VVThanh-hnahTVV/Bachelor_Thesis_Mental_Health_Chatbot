@@ -103,7 +103,7 @@ def parse_fallback_chain(chain: str) -> list[ProviderName]:
 def is_provider_configured(provider: ProviderName) -> bool:
     s = get_settings()
     if provider == "local":
-        return bool(s.local_base_url)
+        return bool(s.enable_local_chat and s.local_base_url)
     if provider == "modal":
         return bool(s.modal_base_url)
     if provider == "openai":
@@ -155,7 +155,11 @@ def resolve_provider(requested: str | None, default: ProviderName = "openai") ->
 
 
 def default_provider() -> ProviderName:
+    chain = parse_fallback_chain(get_settings().llm_fallback_chain)
+    for p in chain:
+        if is_provider_configured(p):
+            return p
     for p in PREFERRED_PROVIDER_ORDER:
         if is_provider_configured(p):
             return p
-    return "local"
+    return "groq"
