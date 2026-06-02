@@ -36,11 +36,11 @@ export default function AboutPage() {
         className="text-center mb-20"
       >
         <h1 className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-          About Luna 2.0
+          About Luna & Helios
         </h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          We're revolutionizing mental health support by combining cutting-edge
-          AI technology with the security and transparency of blockchain.
+          Luna supports emotional wellness; Helios helps with medical information.
+          Together they combine thoughtful AI with a focus on privacy and trust.
         </p>
       </motion.div>
 

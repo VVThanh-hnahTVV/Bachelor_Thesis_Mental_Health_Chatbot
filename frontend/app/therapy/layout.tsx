@@ -1,3 +1,8 @@
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const metadata: Metadata = pageMetadata("Therapy Chat");
+
 export default function TherapyLayout({
   children,
 }: {

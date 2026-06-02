@@ -20,8 +20,12 @@ const notoSerif = Noto_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Luna 2.0 — Find Peace of Mind",
-  description: "Your AI mental health companion for emotional support and guidance.",
+  title: {
+    default: "Find Peace of Mind | Luna & Helios",
+    template: "%s | Luna & Helios",
+  },
+  description:
+    "Luna for emotional wellness and Helios for medical information — your AI companions for support and guidance.",
   icons: {
     icon: [{ url: "/logo.png", type: "image/png" }],
     apple: [{ url: "/logo.png", type: "image/png" }],

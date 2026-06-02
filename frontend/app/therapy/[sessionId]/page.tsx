@@ -7,7 +7,6 @@ import {
   Send,
   User,
   Loader2,
-  Moon,
   MessageSquare,
   PlusCircle,
   AlertTriangle,
@@ -46,6 +45,7 @@ import { ChatModeToggle } from "@/components/therapy/chat-mode-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageFeedback } from "@/components/therapy/message-feedback";
 import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
+import { HeliosAvatar } from "@/components/therapy/helios-avatar";
 import { LunaAvatar } from "@/components/therapy/luna-avatar";
 import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
 import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
@@ -761,15 +761,19 @@ export default function TherapyPage() {
                 <div className="bg-arc-decorator opacity-50" aria-hidden />
                 <div className="relative z-10 mb-20 w-full max-w-xl space-y-10 text-center">
                   <div className="space-y-4">
-                    <div className="mb-2 flex justify-center text-brand/40">
-                      <Moon className="h-16 w-16 stroke-[1.25]" />
+                    <div className="mb-2 flex justify-center">
+                      {isMedicalMode ? (
+                        <HeliosAvatar size="lg" />
+                      ) : (
+                        <LunaAvatar size="lg" />
+                      )}
                     </div>
                     <h3 className="text-4xl font-bold text-gray-800">
-                      {isMedicalMode ? "Medical Assistant" : "Luna AI"}
+                      {isMedicalMode ? "Helios" : "Luna AI"}
                     </h3>
                     <p className="text-lg text-gray-500">
                       {isMedicalMode
-                        ? "Ask a medical question or upload an image for analysis."
+                        ? "Ask Helios a medical question or upload an image for analysis."
                         : "Mình có thể giúp gì cho bạn hôm nay?"}
                     </p>
                   </div>
@@ -794,10 +798,14 @@ export default function TherapyPage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 border-b border-brand-border/50 px-6 py-4">
-                  <LunaAvatar size="md" />
+                  {isMedicalMode ? (
+                    <HeliosAvatar size="md" />
+                  ) : (
+                    <LunaAvatar size="md" />
+                  )}
                   <div>
                     <h2 className="font-bold text-gray-800">
-                      {isMedicalMode ? "Medical Assistant" : "Luna AI"}
+                      {isMedicalMode ? "Helios" : "Luna AI"}
                     </h2>
                     <p className="text-xs text-gray-500">
                       {messages.length} tin nhắn
@@ -834,25 +842,21 @@ export default function TherapyPage() {
                                 : "mr-auto"
                             )}
                           >
-                            <div className="mt-1 h-8 w-8 shrink-0">
+                            <div className="mt-1 h-10 w-10 shrink-0">
                               {msg.role === "assistant" ? (
-                                <div
-                                  className={cn(
-                                    "flex h-8 w-8 items-center justify-center rounded-full ring-1",
-                                    msg.metadata?.message_type === "crisis"
-                                      ? "bg-red-100 text-red-600 ring-red-200"
-                                      : "bg-brand/15 text-brand ring-brand/20"
-                                  )}
-                                >
-                                  {msg.metadata?.message_type === "crisis" ? (
-                                    <AlertTriangle className="h-4 w-4" />
-                                  ) : (
-                                    <LunaAvatar />
-                                  )}
-                                </div>
+                                msg.metadata?.message_type === "crisis" ? (
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600 ring-1 ring-red-200">
+                                    <AlertTriangle className="h-5 w-5" />
+                                  </div>
+                                ) : msg.metadata?.chat_mode === "medical" ||
+                                  isMedicalMode ? (
+                                  <HeliosAvatar />
+                                ) : (
+                                  <LunaAvatar />
+                                )
                               ) : (
-                                <motion.div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white">
-                                  <User className="h-4 w-4" />
+                                <motion.div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white">
+                                  <User className="h-5 w-5" />
                                 </motion.div>
                               )}
                             </div>
@@ -874,7 +878,7 @@ export default function TherapyPage() {
                                   {msg.role === "assistant"
                                     ? msg.metadata?.chat_mode === "medical" ||
                                       isMedicalMode
-                                      ? "Medical AI"
+                                      ? "Helios"
                                       : "Luna AI"
                                     : "Bạn"}
                                 </p>
@@ -996,7 +1000,12 @@ export default function TherapyPage() {
                       ))}
                     </AnimatePresence>
 
-                    {isTyping && <LunaTypingIndicator />}
+                    {isTyping && (
+                      <LunaTypingIndicator
+                        label={isMedicalMode ? "Helios" : "Luna AI"}
+                        variant={isMedicalMode ? "helios" : "luna"}
+                      />
+                    )}
                     <div ref={messagesEndRef} />
                   </motion.div>
                 </motion.div>
@@ -1135,7 +1144,7 @@ export default function TherapyPage() {
 
               <p className="mx-auto mt-4 max-w-3xl text-center text-[10px] italic text-gray-400">
                 {isMedicalMode
-                  ? "Medical mode provides educational information only — not medical diagnosis. Always consult a licensed healthcare professional."
+                  ? "Helios cung cấp thông tin tham khảo, không thay thế chẩn đoán y khoa. Luôn tham vấn bác sĩ có giấy phép hành nghề."
                   : "Luna AI hỗ trợ tinh thần, không thay thế chẩn đoán y tế. Nếu bạn đang trong khủng hoảng, hãy liên hệ chuyên gia ngay."}
               </p>
             </div>

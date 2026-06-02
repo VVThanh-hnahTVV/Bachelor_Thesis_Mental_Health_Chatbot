@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-interface LunaAvatarProps {
+interface HeliosAvatarProps {
   className?: string;
   size?: "sm" | "md" | "lg";
 }
@@ -20,7 +20,7 @@ const pixelMap = {
   lg: 80,
 } as const;
 
-export function LunaAvatar({ className, size = "sm" }: LunaAvatarProps) {
+export function HeliosAvatar({ className, size = "sm" }: HeliosAvatarProps) {
   const px = pixelMap[size];
   return (
     <span
@@ -31,8 +31,8 @@ export function LunaAvatar({ className, size = "sm" }: LunaAvatarProps) {
       )}
     >
       <Image
-        src="/luna.png"
-        alt="Luna"
+        src="/helios.png"
+        alt="Helios"
         width={px}
         height={px}
         className="h-full w-full object-contain"

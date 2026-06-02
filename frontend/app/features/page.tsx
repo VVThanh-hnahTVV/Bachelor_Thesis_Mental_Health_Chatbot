@@ -78,7 +78,7 @@ export default function FeaturesPage() {
           className="text-center mb-16"
         >
           <p className="text-xs uppercase tracking-widest text-serene-accent font-medium mb-4">
-            Luna 2.0
+            Luna & Helios
           </p>
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">
             What Luna Offers

@@ -14,7 +14,7 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navItems = [
     { href: "/features", label: "Features" },
-    { href: "/about", label: "About Luna" },
+    { href: "/about", label: "About" },
   ];
 
   return (
@@ -27,10 +27,10 @@ export function Header() {
           <LunaLogo className="h-14 w-14" priority />
           <div className="flex flex-col">
             <span className="text-xl font-bold tracking-tight text-gray-800">
-              Luna 2.0
+              Luna & Helios
             </span>
             <span className="text-[10px] uppercase tracking-widest text-serene-accent">
-              Your mental health companion
+              Wellness & medical AI companions
             </span>
           </div>
         </Link>

@@ -50,7 +50,7 @@ export function ChatModeToggle({
             : "text-gray-600 hover:bg-gray-100"
         )}
       >
-        Medical
+        Helios
       </button>
     </div>
   );
