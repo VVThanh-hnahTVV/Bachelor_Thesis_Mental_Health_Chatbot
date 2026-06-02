@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createChatSession,
-  sendChatMessage,
+  sendChatMessageWithStatus,
   getChatHistory,
   ChatMessage,
   getAllChatSessions,
@@ -140,6 +140,7 @@ export default function TherapyPage() {
   const params = useParams();
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [typingStatus, setTypingStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -352,6 +353,7 @@ export default function TherapyPage() {
     );
 
     setIsTyping(true);
+    setTypingStatus("Đang phân tích yêu cầu");
     setInputQuickReplies([]);
     setMessages((prev) => [
       ...prev,
@@ -360,7 +362,12 @@ export default function TherapyPage() {
     scrollToBottom();
 
     try {
-      const response = await sendChatMessage(sessionId, currentMessage, chatMode);
+      const response = await sendChatMessageWithStatus(
+        sessionId,
+        currentMessage,
+        chatMode,
+        (label) => setTypingStatus(label)
+      );
 
       let quickReplies: QuickReply[] = [];
       if (chatMode === "medical") {
@@ -436,7 +443,8 @@ export default function TherapyPage() {
       ]);
 
       // PHQ-2 is now analysed implicitly from conversation signals
-    } catch {
+    } catch (err) {
+      console.error("Chat stream failed:", err);
       setMessages((prev) => [
         ...prev,
         {
@@ -447,6 +455,7 @@ export default function TherapyPage() {
       ]);
     } finally {
       setIsTyping(false);
+      setTypingStatus(null);
       scrollToBottom();
     }
   };
@@ -477,6 +486,7 @@ export default function TherapyPage() {
   const handleImageUpload = async (file: File) => {
     if (!sessionId || isTyping || chatMode !== "medical") return;
     setIsTyping(true);
+    setTypingStatus("Đang phân tích hình ảnh");
     setMessages((prev) => [
       ...prev,
       {
@@ -523,12 +533,14 @@ export default function TherapyPage() {
       ]);
     } finally {
       setIsTyping(false);
+      setTypingStatus(null);
     }
   };
 
   const handleMedicalValidation = async (result: "yes" | "no", comments?: string) => {
     if (!sessionId || isTyping) return;
     setIsTyping(true);
+    setTypingStatus("Đang xử lý xác nhận");
     setPendingMedicalValidation(false);
     try {
       const response = await validateMedicalOutput(sessionId, result, comments);
@@ -558,6 +570,7 @@ export default function TherapyPage() {
       ]);
     } finally {
       setIsTyping(false);
+      setTypingStatus(null);
     }
   };
 
@@ -1004,6 +1017,7 @@ export default function TherapyPage() {
                       <LunaTypingIndicator
                         label={isMedicalMode ? "Helios" : "Luna AI"}
                         variant={isMedicalMode ? "helios" : "luna"}
+                        statusMessage={typingStatus}
                       />
                     )}
                     <div ref={messagesEndRef} />

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import resolve_optional_current_user
@@ -181,6 +183,11 @@ class ScreeningOut(BaseModel):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, request: Request) -> ChatResponse:
+    return await _execute_chat(req, request)
+
+
+async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
+    from app.chat_progress import emit_progress
     from app.cache.session_memory import (
         get_personalization_context,
         get_turns,
@@ -252,6 +259,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
 
     if chat_mode == "medical":
+        emit_progress("analyzing_request")
         medical_provider = default_provider()
         reply, meta, assistant_message_id = await handle_medical_chat_turn(
             db,
@@ -309,6 +317,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         "crisis_chip_id": crisis_chip_id,
     }
 
+    emit_progress("analyzing_request")
+    emit_progress("safety_check")
     safety_task = asyncio.create_task(
         run_safety_engine(req.message, history, provider)
     )
@@ -650,6 +660,111 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         suggested_activities=[ActivitySuggestionOut(**s) for s in suggested_activities],
         quick_replies=qr_out,
         metadata=meta_out,
+    )
+
+
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+@router.post("/chat/stream")
+async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
+    """SSE stream: status steps while processing, then final ChatResponse JSON."""
+    from app.chat_progress import (
+        label_for_step,
+        reset_progress_callback,
+        set_progress_callback,
+        set_thread_progress_callback,
+    )
+    from app.graph.nodes.response_generator import detect_language
+
+    lang = detect_language(req.message, [])
+
+    async def event_generator():
+        loop = asyncio.get_running_loop()
+        progress_queue: asyncio.Queue[str] = asyncio.Queue()
+        last_label: list[str | None] = [None]
+
+        def _enqueue(step: str) -> None:
+            label = label_for_step(step, lang)
+            if label == last_label[0]:
+                return
+            last_label[0] = label
+            progress_queue.put_nowait(step)
+
+        def on_progress(step: str) -> None:
+            loop.call_soon_threadsafe(_enqueue, step)
+
+        def _status_sse(step: str) -> str:
+            payload = {
+                "type": "status",
+                "step": step,
+                "label": label_for_step(step, lang),
+            }
+            return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        token = set_progress_callback(on_progress)
+        set_thread_progress_callback(on_progress)
+        chat_task = asyncio.create_task(_execute_chat(req, request))
+
+        try:
+            # Padding comment so proxies/browsers flush early SSE chunks.
+            yield ": " + " " * 2048 + "\n\n"
+
+            while True:
+                while not progress_queue.empty():
+                    yield _status_sse(progress_queue.get_nowait())
+                    await asyncio.sleep(0)
+
+                if chat_task.done():
+                    break
+
+                try:
+                    step = await asyncio.wait_for(progress_queue.get(), timeout=0.08)
+                    yield _status_sse(step)
+                    await asyncio.sleep(0)
+                except asyncio.TimeoutError:
+                    continue
+
+            while not progress_queue.empty():
+                yield _status_sse(progress_queue.get_nowait())
+                await asyncio.sleep(0)
+
+            result = await chat_task
+            done_payload = {
+                "type": "done",
+                "reply": result.reply,
+                "session_id": result.session_id,
+                "conversation_id": result.conversation_id,
+                "assistant_message_id": result.assistant_message_id,
+                "provider": result.provider,
+                "chat_blocked": result.chat_blocked,
+                "crisis_choices": [c.model_dump() for c in result.crisis_choices],
+                "crisis_stage": result.crisis_stage,
+                "message_type": result.message_type,
+                "emotion": result.emotion,
+                "therapy_strategy": result.therapy_strategy,
+                "quick_replies": [q.model_dump() for q in result.quick_replies],
+                "metadata": result.metadata,
+            }
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False, default=_json_default)}\n\n"
+        except Exception as exc:
+            err = {"type": "error", "message": str(exc)}
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+        finally:
+            set_thread_progress_callback(None)
+            reset_progress_callback(token)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

@@ -266,6 +266,143 @@ export const createChatSession = async (): Promise<string> => {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+function mapStreamDoneToApiResponse(data: Record<string, unknown>): ApiResponse {
+  return {
+    message: String(data.reply ?? ""),
+    response: String(data.reply ?? ""),
+    assistant_message_id: (data.assistant_message_id as string) ?? undefined,
+    chat_blocked: Boolean(data.chat_blocked),
+    crisis_stage: (data.crisis_stage ?? "none") as CrisisStage,
+    crisis_choices: normalizeCrisisChoices(data.crisis_choices),
+    message_type: (data.message_type as ApiResponse["message_type"]) ?? "normal",
+    emotion: (data.emotion as string) ?? undefined,
+    therapy_strategy: (data.therapy_strategy as string) ?? undefined,
+    quick_replies: (data.quick_replies as QuickReply[]) ?? [],
+    metadata: {
+      ...((data.metadata as ChatMessage["metadata"]) || {}),
+      crisis_stage: data.crisis_stage,
+      crisis_choices: normalizeCrisisChoices(data.crisis_choices),
+      quick_replies: data.quick_replies,
+    },
+  };
+}
+
+type StreamPayload = {
+  type: string;
+  label?: string;
+  step?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+function consumeSseBuffer(
+  buffer: string,
+  onEvent: (payload: StreamPayload) => void,
+  flushAll = false
+): string {
+  const parts = buffer.split("\n\n");
+  const remainder = flushAll ? "" : (parts.pop() ?? "");
+
+  for (const part of parts) {
+    const line = part.split("\n").find((l) => l.startsWith("data: "));
+    if (!line) continue;
+    try {
+      onEvent(JSON.parse(line.slice(6)) as StreamPayload);
+    } catch {
+      // ignore malformed chunks
+    }
+  }
+
+  if (flushAll && remainder.trim()) {
+    const line = remainder.split("\n").find((l) => l.startsWith("data: "));
+    if (line) {
+      try {
+        onEvent(JSON.parse(line.slice(6)) as StreamPayload);
+      } catch {
+        // ignore
+      }
+    }
+    return "";
+  }
+
+  return remainder;
+}
+
+/** Stream status steps via SSE, then return the final chat response. */
+export const sendChatMessageStream = async (
+  sessionId: string,
+  message: string,
+  chatMode: ChatMode = "psychologist",
+  onStatus?: (label: string, step: string) => void
+): Promise<ApiResponse> => {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      chat_mode: chatMode,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to send message");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Streaming not supported");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResponse: ApiResponse | null = null;
+
+  const handlePayload = (payload: StreamPayload) => {
+    if (payload.type === "status" && payload.label) {
+      onStatus?.(payload.label, String(payload.step ?? ""));
+    } else if (payload.type === "done") {
+      finalResponse = mapStreamDoneToApiResponse(payload);
+    } else if (payload.type === "error") {
+      throw new Error(payload.message || "Chat stream failed");
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+    }
+    buffer = consumeSseBuffer(buffer, handlePayload, done);
+    if (done) break;
+  }
+
+  if (!finalResponse) {
+    throw new Error("No response received from stream");
+  }
+  return finalResponse;
+};
+
+/** Prefer streaming status; fall back to standard POST if stream fails. */
+export const sendChatMessageWithStatus = async (
+  sessionId: string,
+  message: string,
+  chatMode: ChatMode = "psychologist",
+  onStatus?: (label: string, step: string) => void
+): Promise<ApiResponse> => {
+  try {
+    return await sendChatMessageStream(sessionId, message, chatMode, onStatus);
+  } catch (streamErr) {
+    console.warn("Chat stream unavailable, using standard API:", streamErr);
+    return sendChatMessage(sessionId, message, chatMode);
+  }
+};
+
 export const sendChatMessage = async (
   sessionId: string,
   message: string,

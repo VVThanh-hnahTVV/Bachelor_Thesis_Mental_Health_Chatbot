@@ -140,17 +140,40 @@ def route_after_emotion_intent(state: GraphState) -> str:
 # Graph builder
 # ---------------------------------------------------------------------------
 
+def _with_progress(step: str, fn: Any) -> Any:
+    """Emit progress when a graph node starts (not when it finishes)."""
+    import asyncio
+
+    if asyncio.iscoroutinefunction(fn):
+
+        async def async_wrapped(state: dict[str, Any]) -> dict[str, Any]:
+            from app.chat_progress import emit_progress
+
+            emit_progress(step)
+            return await fn(state)
+
+        return async_wrapped
+
+    def sync_wrapped(state: dict[str, Any]) -> dict[str, Any]:
+        from app.chat_progress import emit_progress
+
+        emit_progress(step)
+        return fn(state)
+
+    return sync_wrapped
+
+
 def build_graph() -> StateGraph:
     g = StateGraph(GraphState)
 
-    g.add_node("input_normalize", node_input_normalize)
-    g.add_node("emotion_intent", node_emotion_intent)
-    g.add_node("objection_detector", node_objection_detector)
-    g.add_node("off_topic_reply", node_off_topic_reply)
-    g.add_node("memory_retrieval", node_memory_retrieval)
-    g.add_node("therapy_router", node_therapy_router)
-    g.add_node("response_generator", node_response_generator)
-    g.add_node("response_filter", node_response_filter)
+    g.add_node("input_normalize", _with_progress("input_normalize", node_input_normalize))
+    g.add_node("emotion_intent", _with_progress("emotion_intent", node_emotion_intent))
+    g.add_node("objection_detector", _with_progress("objection_detector", node_objection_detector))
+    g.add_node("off_topic_reply", _with_progress("off_topic_reply", node_off_topic_reply))
+    g.add_node("memory_retrieval", _with_progress("memory_retrieval", node_memory_retrieval))
+    g.add_node("therapy_router", _with_progress("therapy_router", node_therapy_router))
+    g.add_node("response_generator", _with_progress("response_generator", node_response_generator))
+    g.add_node("response_filter", _with_progress("response_filter", node_response_filter))
 
     g.set_entry_point("input_normalize")
     g.add_edge("input_normalize", "emotion_intent")
@@ -187,7 +210,15 @@ def reset_compiled_graph() -> None:
 
 async def run_turn(state: dict[str, Any]) -> dict[str, Any]:
     graph = get_compiled_graph()
-    result: dict[str, Any] = await graph.ainvoke(state)
+    result: dict[str, Any] = {}
+    async for chunk in graph.astream(state):
+        if not isinstance(chunk, dict):
+            continue
+        for _node_name, node_out in chunk.items():
+            if isinstance(node_out, dict):
+                result.update(node_out)
+    if not result:
+        result = await graph.ainvoke(state)
     if "message_type" not in result:
         result["message_type"] = "normal"
     return result

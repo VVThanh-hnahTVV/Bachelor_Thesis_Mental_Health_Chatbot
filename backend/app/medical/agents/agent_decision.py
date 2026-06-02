@@ -122,6 +122,9 @@ def create_agent_graph():
     # Define graph state transformations
     def analyze_input(state: AgentState) -> AgentState:
         """Analyze the input to detect images and determine input type."""
+        from app.chat_progress import emit_progress
+
+        emit_progress("medical_analyze_input")
         current_input = state["current_input"]
         has_image = False
         image_type = None
@@ -171,6 +174,9 @@ def create_agent_graph():
     
     def route_to_agent(state: AgentState) -> Dict:
         """Make decision about which agent should handle the query."""
+        from app.chat_progress import emit_progress
+
+        emit_progress("medical_route")
         messages = state["messages"]
         current_input = state["current_input"]
         has_image = state["has_image"]
@@ -209,6 +215,9 @@ def create_agent_graph():
 
         # Decided agent
         print(f"Decision: {decision['agent']}")
+        from app.chat_progress import emit_progress
+
+        emit_progress(str(decision["agent"]))
         
         # Update state with decision
         updated_state = {
@@ -225,7 +234,9 @@ def create_agent_graph():
     # Define agent execution functions (these will be implemented in their respective modules)
     def run_conversation_agent(state: AgentState) -> AgentState:
         """Handle general conversation."""
+        from app.chat_progress import emit_progress
 
+        emit_progress("CONVERSATION_AGENT")
         print(f"Selected agent: CONVERSATION_AGENT")
 
         messages = state["messages"]
@@ -318,8 +329,9 @@ def create_agent_graph():
     
     def run_rag_agent(state: AgentState) -> AgentState:
         """Handle medical knowledge queries using RAG."""
-        # Initialize the RAG agent
+        from app.chat_progress import emit_progress
 
+        emit_progress("RAG_AGENT")
         print(f"Selected agent: RAG_AGENT")
 
         rag_agent = MedicalRAG(config)
@@ -393,7 +405,9 @@ def create_agent_graph():
     # Web Search Processor Node
     def run_web_search_processor_agent(state: AgentState) -> AgentState:
         """Handles web search results, processes them with LLM, and generates a refined response."""
+        from app.chat_progress import emit_progress
 
+        emit_progress("WEB_SEARCH_PROCESSOR_AGENT")
         print(f"Selected agent: WEB_SEARCH_PROCESSOR_AGENT")
         print("[WEB_SEARCH_PROCESSOR_AGENT] Processing Web Search Results...")
         
@@ -439,13 +453,18 @@ def create_agent_graph():
         # Redirect if confidence is low or if response indicates insufficient info
         if (state.get("retrieval_confidence", 0.0) < config.rag.min_retrieval_confidence or 
             state.get("insufficient_info", False)):
+            from app.chat_progress import emit_progress
+
+            emit_progress("WEB_SEARCH_PROCESSOR_AGENT")
             print("Re-routed to Web Search Agent due to low confidence or insufficient information...")
             return "WEB_SEARCH_PROCESSOR_AGENT"  # Correct format
         return "check_validation"  # No transition needed if confidence is high and info is sufficient
     
     def run_brain_tumor_agent(state: AgentState) -> AgentState:
         """Handle brain MRI image analysis."""
+        from app.chat_progress import emit_progress
 
+        emit_progress("BRAIN_TUMOR_AGENT")
         print(f"Selected agent: BRAIN_TUMOR_AGENT")
 
         response = AIMessage(content="This would be handled by the brain tumor agent, analyzing the MRI image.")
@@ -459,7 +478,9 @@ def create_agent_graph():
     
     def run_chest_xray_agent(state: AgentState) -> AgentState:
         """Handle chest X-ray image analysis."""
+        from app.chat_progress import emit_progress
 
+        emit_progress("CHEST_XRAY_AGENT")
         current_input = state["current_input"]
         image_path = current_input.get("image", None)
 
@@ -486,7 +507,9 @@ def create_agent_graph():
     
     def run_skin_lesion_agent(state: AgentState) -> AgentState:
         """Handle skin lesion image analysis."""
+        from app.chat_progress import emit_progress
 
+        emit_progress("SKIN_LESION_AGENT")
         current_input = state["current_input"]
         image_path = current_input.get("image", None)
 
@@ -534,6 +557,9 @@ def create_agent_graph():
     # Check output through guardrails
     def apply_output_guardrails(state: AgentState) -> AgentState:
         """Apply output guardrails to the generated response."""
+        from app.chat_progress import emit_progress
+
+        emit_progress("apply_guardrails")
         output = state["output"]
         current_input = state["current_input"]
 
@@ -709,9 +735,19 @@ def process_query(
     state["messages"] = [HumanMessage(content=message_text)]
 
     thread_config = {"configurable": {"thread_id": thread_id}}
-    result = graph.invoke(state, thread_config)
+    # Progress is emitted at node entry (not on stream chunk) so UI updates during long LLM calls.
+    for _chunk in graph.stream(state, thread_config):
+        pass
 
-    if len(result["messages"]) > config.max_conversation_history:
-        result["messages"] = result["messages"][-config.max_conversation_history :]
+    snapshot = graph.get_state(thread_config)
+    result: dict = dict(snapshot.values) if snapshot and snapshot.values else {}
+    if not result:
+        result = graph.invoke(state, thread_config)
+
+    messages = result.get("messages") or []
+    if not isinstance(messages, list):
+        messages = [messages] if messages else []
+    if len(messages) > config.max_conversation_history:
+        result["messages"] = messages[-config.max_conversation_history :]
 
     return result
