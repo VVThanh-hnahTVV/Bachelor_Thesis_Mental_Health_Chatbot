@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,14 +14,45 @@ from app.api.routes import router as api_router
 from app.auth.repository import ensure_auth_indexes
 from app.cache.redis_client import close_redis_client, get_redis_client
 from app.config import get_settings
+from app.rag.embeddings import resolve_embedding_model, resolve_embedding_provider
 from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
+from app.llm.factory import build_provider_chain, default_provider
 from app.mcp.server import create_mcp_asgi_app
+
+logger = logging.getLogger("uvicorn.error")
+
+
+def _active_model_for_provider(primary: str, settings) -> str:
+    if primary == "local":
+        return settings.local_model
+    if primary == "modal":
+        return settings.modal_model
+    if primary == "groq":
+        return settings.groq_model
+    if primary == "gemini":
+        return settings.gemini_model
+    return settings.openai_model
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
+    primary = default_provider()
+    provider_chain = build_provider_chain(primary)
+    active_model = _active_model_for_provider(primary, s)
+    emb_provider = resolve_embedding_provider()
+    emb_model = resolve_embedding_model(emb_provider)
+    logger.info(
+        "LLM config: primary=%s active_model=%s fallback_chain=%s completion_model=%s "
+        "embedding_provider=%s embedding_model=%s",
+        primary,
+        active_model,
+        ",".join(provider_chain),
+        s.completion_model,
+        emb_provider,
+        emb_model,
+    )
 
     # MongoDB
     client = get_mongo_client()

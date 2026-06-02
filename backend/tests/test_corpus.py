@@ -1,5 +1,10 @@
 from app.rag.corpus import lexical_scores
-from app.rag.embeddings import cosine_similarity, embed_documents
+from app.rag.embeddings import (
+    cosine_similarity,
+    embed_documents,
+    resolve_embedding_model,
+    resolve_embedding_provider,
+)
 from app.rag.retriever import retrieve_chunks
 
 
@@ -38,6 +43,31 @@ async def test_retrieve_chunks_falls_back_to_lexical(monkeypatch):
     chunks, mode = await retrieve_chunks(None, "anxiety panic")
     assert mode in {"lexical", "none"}
     assert isinstance(chunks, list)
+
+
+def test_resolve_embedding_provider_openai_when_key_set(monkeypatch):
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+
+    class Settings:
+        embedding_provider = None
+        openai_api_key = "sk-test"
+        embedding_model = "nomic-embed-text-v2-moe"
+        openai_embedding_model = "text-embedding-3-small"
+
+    monkeypatch.setattr("app.rag.embeddings.get_settings", lambda: Settings())
+    assert resolve_embedding_provider() == "openai"
+    assert resolve_embedding_model("openai") == "text-embedding-3-small"
+
+
+def test_resolve_embedding_provider_respects_explicit_ollama(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "ollama")
+
+    class Settings:
+        embedding_provider = "ollama"
+        openai_api_key = "sk-test"
+
+    monkeypatch.setattr("app.rag.embeddings.get_settings", lambda: Settings())
+    assert resolve_embedding_provider() == "ollama"
 
 
 async def test_ollama_embed_documents(monkeypatch):

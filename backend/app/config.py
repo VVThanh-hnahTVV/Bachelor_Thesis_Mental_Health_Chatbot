@@ -1,6 +1,8 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,24 +20,43 @@ class Settings(BaseSettings):
     enable_local_chat: bool = False
     local_base_url: str | None = "http://localhost:11434/v1"
     local_api_key: str = "ollama"
-    local_model: str = "llama3.1"
+    completion_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("COMPLETION_MODEL", "OPENAI_MODEL"),
+    )
+    local_model: str = Field(
+        default="llama3.1",
+        validation_alias=AliasChoices("LOCAL_MODEL", "COMPLETION_MODEL"),
+    )
 
     # OpenAI (chat + optional embeddings)
     openai_api_key: str | None = None
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = Field(
+        default="gpt-4o-mini",
+        validation_alias=AliasChoices("OPENAI_MODEL", "COMPLETION_MODEL"),
+    )
 
     # Groq
     groq_api_key: str | None = None
-    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    groq_model: str = Field(
+        default="meta-llama/llama-4-scout-17b-16e-instruct",
+        validation_alias=AliasChoices("GROQ_MODEL", "COMPLETION_MODEL"),
+    )
 
     # Gemini
     google_api_key: str | None = None
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = Field(
+        default="gemini-1.5-flash",
+        validation_alias=AliasChoices("GEMINI_MODEL", "COMPLETION_MODEL"),
+    )
 
     # Modal or any OpenAI-compatible custom base (fine-tuned server)
     modal_base_url: str | None = None
     modal_api_key: str = "dummy"
-    modal_model: str = "default"
+    modal_model: str = Field(
+        default="default",
+        validation_alias=AliasChoices("MODAL_MODEL", "COMPLETION_MODEL"),
+    )
 
     # Fallback order when primary fails (comma-separated provider names)
     llm_fallback_chain: str = "groq,openai,gemini"
@@ -61,8 +82,19 @@ class Settings(BaseSettings):
     graph_external_mcp_tool: str | None = None
 
     enable_vector_rag: bool = True
-    embedding_provider: str = "ollama"
-    embedding_model: str = "nomic-embed-text-v2-moe"
+    # None = auto: OpenAI embeddings when OPENAI_API_KEY is set, else Ollama
+    embedding_provider: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EMBEDDING_PROVIDER"),
+    )
+    embedding_model: str = Field(
+        default="nomic-embed-text-v2-moe",
+        validation_alias=AliasChoices("EMBEDDING_MODEL", "OLLAMA_EMBEDDING_MODEL"),
+    )
+    openai_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        validation_alias=AliasChoices("OPENAI_EMBEDDING_MODEL"),
+    )
     ollama_base_url: str = "http://localhost:11434"
     rag_top_k: int = 3
     rag_min_score: float = 0.15

@@ -8,19 +8,23 @@ from typing import List
 
 from langchain_core.embeddings import Embeddings
 
-from app.config import get_settings
-from app.rag.embeddings import embed_documents, embed_text
+from app.rag.embeddings import embed_documents, embed_text, resolve_embedding_provider
 
 
 def get_embedding_provider() -> str:
-    return (os.getenv("EMBEDDING_PROVIDER") or get_settings().embedding_provider).lower()
+    return resolve_embedding_provider()
 
 
 def get_embedding_dim(provider: str | None = None) -> int:
     provider = provider or get_embedding_provider()
     if provider == "ollama":
         return int(os.getenv("OLLAMA_EMBEDDING_DIM", "768"))
-    return int(os.getenv("AZURE_EMBEDDING_DIM", "1536"))
+    return int(
+        os.getenv(
+            "OPENAI_EMBEDDING_DIM",
+            os.getenv("AZURE_EMBEDDING_DIM", "1536"),
+        )
+    )
 
 
 def get_qdrant_collection_name(

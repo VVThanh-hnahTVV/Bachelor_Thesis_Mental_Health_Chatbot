@@ -252,6 +252,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
 
     if chat_mode == "medical":
+        medical_provider = default_provider()
         reply, meta, assistant_message_id = await handle_medical_chat_turn(
             db,
             session_id=req.session_id,
@@ -263,7 +264,7 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             session_id=req.session_id,
             conversation_id=str(cid),
             assistant_message_id=assistant_message_id,
-            provider="groq",
+            provider=medical_provider,
             chat_blocked=False,
             crisis_choices=[],
             crisis_stage="none",
@@ -694,12 +695,13 @@ async def chat_upload(
         image=image,
         text=text,
     )
+    medical_provider = default_provider()
     return ChatResponse(
         reply=reply,
         session_id=session_id,
         conversation_id=str(cid),
         assistant_message_id=assistant_message_id,
-        provider="groq",
+        provider=medical_provider,
         chat_blocked=False,
         crisis_choices=[],
         crisis_stage="none",
@@ -753,12 +755,13 @@ async def chat_validate(
         validation_result=validation_result,
         comments=comments,
     )
+    medical_provider = default_provider()
     return ChatResponse(
         reply=reply,
         session_id=session_id,
         conversation_id=str(cid),
         assistant_message_id=assistant_message_id,
-        provider="groq",
+        provider=medical_provider,
         chat_blocked=False,
         crisis_choices=[],
         crisis_stage="none",

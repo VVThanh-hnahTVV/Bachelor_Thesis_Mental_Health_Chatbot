@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import os
+from functools import lru_cache
 from typing import Iterable
 
 import httpx
@@ -11,6 +13,31 @@ from langchain_openai import OpenAIEmbeddings
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_OLLAMA_DEFAULT_MODEL = "nomic-embed-text-v2-moe"
+
+
+def resolve_embedding_provider() -> str:
+    """Explicit EMBEDDING_PROVIDER wins; else OpenAI when key is set; else Ollama."""
+    env = os.getenv("EMBEDDING_PROVIDER")
+    if env is not None and env.strip():
+        return env.strip().lower()
+    s = get_settings()
+    if s.embedding_provider:
+        return s.embedding_provider.lower()
+    if s.openai_api_key:
+        return "openai"
+    return "ollama"
+
+
+def resolve_embedding_model(provider: str | None = None) -> str:
+    provider = provider or resolve_embedding_provider()
+    s = get_settings()
+    if provider == "openai":
+        if not s.embedding_model or s.embedding_model == _OLLAMA_DEFAULT_MODEL:
+            return s.openai_embedding_model
+        return s.embedding_model
+    return s.embedding_model
 
 
 def _hash_embedding(text: str, dims: int = 128) -> list[float]:
@@ -31,7 +58,7 @@ async def _ollama_embed_texts(texts: list[str]) -> list[list[float]]:
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
             f"{base}/api/embed",
-            json={"model": s.embedding_model, "input": texts},
+            json={"model": resolve_embedding_model("ollama"), "input": texts},
         )
         response.raise_for_status()
         data = response.json()
@@ -44,42 +71,45 @@ async def _ollama_embed_texts(texts: list[str]) -> list[list[float]]:
     raise RuntimeError("Ollama embedding response did not include embeddings")
 
 
-async def embed_text(text: str) -> list[float]:
+@lru_cache(maxsize=1)
+def _openai_embeddings_client() -> OpenAIEmbeddings:
     s = get_settings()
-    if s.embedding_provider == "ollama":
+    if not s.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is not set")
+    return OpenAIEmbeddings(
+        api_key=s.openai_api_key,
+        model=resolve_embedding_model("openai"),
+    )
+
+
+async def embed_text(text: str) -> list[float]:
+    provider = resolve_embedding_provider()
+    if provider == "ollama":
         try:
             return (await _ollama_embed_texts([text]))[0]
         except Exception as exc:  # noqa: BLE001
             logger.warning("Ollama embedding failed, using local hash embedding: %s", exc)
-    if s.embedding_provider == "openai" and s.openai_api_key:
+    if provider == "openai":
         try:
-            client = OpenAIEmbeddings(
-                api_key=s.openai_api_key,
-                model=s.embedding_model,
-            )
-            return await client.aembed_query(text)
+            return await _openai_embeddings_client().aembed_query(text)
         except Exception as exc:  # noqa: BLE001
             logger.warning("OpenAI embedding failed, using local hash embedding: %s", exc)
     return _hash_embedding(text)
 
 
 async def embed_documents(texts: Iterable[str]) -> list[list[float]]:
-    s = get_settings()
     text_list = list(texts)
     if not text_list:
         return []
-    if s.embedding_provider == "ollama":
+    provider = resolve_embedding_provider()
+    if provider == "ollama":
         try:
             return await _ollama_embed_texts(text_list)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Ollama document embedding failed, using local hash embeddings: %s", exc)
-    if s.embedding_provider == "openai" and s.openai_api_key:
+    if provider == "openai":
         try:
-            client = OpenAIEmbeddings(
-                api_key=s.openai_api_key,
-                model=s.embedding_model,
-            )
-            return await client.aembed_documents(text_list)
+            return await _openai_embeddings_client().aembed_documents(text_list)
         except Exception as exc:  # noqa: BLE001
             logger.warning("OpenAI document embedding failed, using local hash embeddings: %s", exc)
     return [_hash_embedding(text) for text in text_list]
