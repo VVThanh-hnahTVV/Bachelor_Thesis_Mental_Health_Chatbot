@@ -21,13 +21,13 @@ const features = [
     icon: MessageCircleHeart,
     title: "AI Companion Chat",
     description:
-      "Talk with Luna anytime through guided therapy sessions. Conversations are powered by LangGraph with multi-turn memory, empathetic replies, and local, Groq, OpenAI, or Gemini models.",
+      "Talk with Luna for emotional support or Helios for medical questions. Conversations use LangGraph with multi-turn memory, empathetic replies, and local, Groq, OpenAI, or Gemini models.",
   },
   {
     icon: BookOpen,
     title: "Knowledge-Grounded Guidance",
     description:
-      "Responses can use hybrid retrieval from a curated wellness knowledge base, with source-aware context kept separate from Luna's normal supportive tone.",
+      "Luna draws on a curated wellness knowledge base for supportive guidance. Helios uses medical references to keep health answers clear and source-aware.",
   },
   {
     icon: Smile,
@@ -43,9 +43,9 @@ const features = [
   },
   {
     icon: History,
-    title: "Therapy Sessions",
+    title: "Therapy & Medical Sessions",
     description:
-      "Start a new AI chat from the dashboard or resume past conversations. Luna remembers context within each session and can suggest calming exercises when you need them.",
+      "Start a new chat with Luna or Helios from the dashboard, or resume past conversations. Each companion remembers context within its session and can suggest next steps when you need them.",
   },
   {
     icon: Wind,
@@ -57,7 +57,7 @@ const features = [
     icon: ShieldAlert,
     title: "Built-in Safety Checks",
     description:
-      "Each message is screened for elevated risk. When needed, Luna shares crisis resources and reminds you this app is for wellness support, not emergency or clinical care.",
+      "Each message is screened for elevated risk. When needed, Luna & Helios share crisis resources and remind you this app is for wellness support, not emergency or clinical care.",
   },
   {
     icon: UserCircle,
@@ -81,12 +81,13 @@ export default function FeaturesPage() {
             Luna & Helios
           </p>
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">
-            What Luna Offers
+            What Luna & Helios Offer
           </h1>
           <p className="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-            A calm space for emotional support—AI conversation, mood tracking,
-            wellness tools, and grounding exercises. Built for everyday
-            well-being, not as a replacement for professional care.
+            A calm space for emotional support and medical guidance—AI
+            conversation, mood tracking, wellness tools, and grounding
+            exercises. Built for everyday well-being, not as a replacement for
+            professional care.
           </p>
         </motion.div>
 
@@ -145,8 +146,8 @@ export default function FeaturesPage() {
             </Button>
           </div>
           <p className="text-xs text-gray-400 mt-6 italic">
-            Luna is for educational and wellness support only—not medical
-            advice, diagnosis, or emergency services.
+            Luna & Helios are for educational and wellness support only—not
+            medical advice, diagnosis, or emergency services.
           </p>
         </motion.div>
       </div>

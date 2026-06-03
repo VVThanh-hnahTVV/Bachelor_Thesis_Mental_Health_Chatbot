@@ -43,21 +43,21 @@ export default function Home() {
 
   const welcomeSteps = [
     {
-      title: "Hi, I'm Luna 👋",
+      title: "Meet Luna & Helios 👋",
       description:
-        "Your AI companion for emotional well-being. I'm here to provide a safe, judgment-free space for you to express yourself.",
+        "Luna supports emotional wellness; Helios helps with medical information. Together they offer a safe, judgment-free space to talk, learn, and feel supported.",
       icon: Waves,
     },
     {
       title: "Personalized Support 🌱",
       description:
-        "I adapt to your needs and emotional state, offering evidence-based techniques and gentle guidance when you need it most.",
+        "Luna adapts to your emotional state with evidence-based techniques. Helios answers health questions with clear, reference-grounded guidance when you need it.",
       icon: Brain,
     },
     {
       title: "Your Privacy Matters 🛡️",
       description:
-        "Our conversations are completely private and secure. I follow strict ethical guidelines and respect your boundaries.",
+        "Your conversations are private and secure. Luna & Helios follow strict ethical guidelines and respect your boundaries.",
       icon: Shield,
     },
   ];
@@ -118,7 +118,7 @@ export default function Home() {
         >
           <div className="mb-8 px-4 py-1.5 rounded-full border border-serene-green/30 bg-white/50 text-serene-accent text-xs font-medium flex items-center gap-2">
             <Waves className="w-3.5 h-3.5 opacity-70" />
-            <span>Your AI Agent Mental Health Companion</span>
+            <span>Wellness & Medical AI Companions</span>
           </div>
 
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-gray-800 leading-tight mb-6">
@@ -130,8 +130,8 @@ export default function Home() {
           </h1>
 
           <p className="text-lg text-gray-500 max-w-xl mb-16 leading-relaxed">
-            Experience a new way of emotional support. Our AI companion is here
-            to listen, understand, and guide you through life&apos;s journey.
+            Luna for emotional wellness, Helios for medical information — your AI
+            companions are here to listen, understand, and guide you.
           </p>
 
           {/* Mood tracker */}
@@ -218,11 +218,11 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl font-bold text-gray-800">
-              How Luna Helps You
+              How Luna & Helios Help You
             </h2>
             <p className="text-gray-500 max-w-2xl mx-auto text-lg">
-              Experience a new kind of emotional support, powered by empathetic
-              AI
+              Emotional support and medical guidance, powered by thoughtful AI
+              companions
             </p>
           </motion.div>
 

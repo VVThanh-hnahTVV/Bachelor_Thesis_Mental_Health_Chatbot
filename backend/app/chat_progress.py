@@ -88,6 +88,6 @@ def emit_progress(step: str) -> None:
         tcb(step)
 
 
-def label_for_step(step: str, lang: str = "vi") -> str:
+def label_for_step(step: str, lang: str = "en") -> str:
     table = STEP_LABELS_EN if lang == "en" else STEP_LABELS_VI
     return table.get(step, table.get("analyzing_request", "Processing"))

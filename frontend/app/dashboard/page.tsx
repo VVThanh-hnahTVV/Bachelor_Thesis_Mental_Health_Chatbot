@@ -105,18 +105,18 @@ interface DailyStats {
 }
 
 const EMOTION_LABELS: Record<string, string> = {
-  joy: "Vui",
-  neutral: "Bình thường",
-  anxiety: "Lo âu",
-  sadness: "Buồn",
-  anger: "Tức giận",
-  hopeless: "Vô vọng",
-  overwhelmed: "Quá tải",
-  lonely: "Cô đơn",
-  grief: "Đau buồn",
-  fear: "Sợ hãi",
-  shame: "Xấu hổ",
-  guilt: "Tội lỗi",
+  joy: "Joy",
+  neutral: "Neutral",
+  anxiety: "Anxious",
+  sadness: "Sad",
+  anger: "Angry",
+  hopeless: "Hopeless",
+  overwhelmed: "Overwhelmed",
+  lonely: "Lonely",
+  grief: "Grief",
+  fear: "Afraid",
+  shame: "Ashamed",
+  guilt: "Guilty",
 };
 
 const generateInsights = (activities: Activity[]) => {
@@ -378,12 +378,12 @@ export default function Dashboard() {
 
   const moodDescription =
     dailyStats.moodSource === "chat" && dailyStats.dominantEmotion
-      ? `Từ chat hôm nay · ${EMOTION_LABELS[dailyStats.dominantEmotion] ?? dailyStats.dominantEmotion}`
+      ? `From today's chat · ${EMOTION_LABELS[dailyStats.dominantEmotion] ?? dailyStats.dominantEmotion}`
       : dailyStats.moodSource === "form"
-        ? "Từ mood check-in hôm nay"
+        ? "From today's mood check-in"
         : dailyStats.chatTurnsToday > 0
-          ? "Chat hôm nay — chưa có emotion"
-          : "Chưa có dữ liệu hôm nay";
+          ? "Chat today — no emotion detected yet"
+          : "No data for today yet";
 
   const wellnessStats = [
     {
@@ -402,8 +402,8 @@ export default function Dashboard() {
       bgColor: "bg-yellow-500/10",
       description:
         dailyStats.completionRate > 0
-          ? "Có tương tác wellness hôm nay"
-          : "Chưa có hoạt động hôm nay",
+          ? "Wellness activity today"
+          : "No activity logged today",
     },
     {
       title: "Therapy Sessions",
@@ -411,7 +411,7 @@ export default function Dashboard() {
       icon: Heart,
       color: "text-rose-500",
       bgColor: "bg-rose-500/10",
-      description: "Cuộc hội thoại trị liệu",
+      description: "Therapy conversations",
     },
     {
       title: "Total Activities",
@@ -419,7 +419,7 @@ export default function Dashboard() {
       icon: Activity,
       color: "text-blue-500",
       bgColor: "bg-blue-500/10",
-      description: `Wellness hôm nay · ${dailyStats.chatTurnsToday} tin chat`,
+      description: `Wellness today · ${dailyStats.chatTurnsToday} chat turns`,
     },
   ];
 
@@ -485,7 +485,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Container className="pt-20 pb-8 space-y-6">
+      <Container className="pt-[var(--header-height)] pb-8 space-y-6">
         {/* Header Section */}
         <div className="flex justify-between items-center">
           <motion.div
@@ -594,9 +594,9 @@ export default function Dashboard() {
                           <BrainCircuit className="w-5 h-5 text-blue-500" />
                         </div>
                         <div>
-                          <div className="font-medium text-sm">Khảo sát nhanh</div>
+                          <div className="font-medium text-sm">Quick screening</div>
                           <div className="text-xs text-muted-foreground mt-0.5">
-                            PHQ-2 (~2 phút)
+                            PHQ-2 (~2 min)
                           </div>
                         </div>
                       </Button>
@@ -749,9 +749,9 @@ export default function Dashboard() {
       <Dialog open={showPhqModal} onOpenChange={setShowPhqModal}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Khảo sát sàng lọc PHQ-2</DialogTitle>
+            <DialogTitle>PHQ-2 screening survey</DialogTitle>
             <DialogDescription>
-              Không thay cho đánh giá lâm sàng — chỉ giúp theo dõi xu hướng cảm xúc.
+              Not a clinical assessment — helps track emotional trends over time.
             </DialogDescription>
           </DialogHeader>
           <PhqMiniForm

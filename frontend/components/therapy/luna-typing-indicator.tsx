@@ -23,7 +23,7 @@ function AnimatedEllipsis() {
 }
 
 export function LunaTypingIndicator({
-  label = "Luna AI",
+  label = "Luna",
   variant = "luna",
   statusMessage,
 }: {
@@ -32,7 +32,7 @@ export function LunaTypingIndicator({
   /** Current processing step; animated ellipsis is appended automatically. */
   statusMessage?: string | null;
 }) {
-  const displayStatus = statusMessage?.trim() || "Đang xử lý";
+  const displayStatus = statusMessage?.trim() || "Processing";
 
   return (
     <motion.div

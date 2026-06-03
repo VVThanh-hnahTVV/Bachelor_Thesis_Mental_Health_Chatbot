@@ -18,7 +18,7 @@ export interface ScreeningResult {
 export async function fetchScreeningQuestions(
   instrument: "phq2" | "phq4" = "phq2"
 ): Promise<ScreeningQuestions> {
-  const q = new URLSearchParams({ instrument });
+  const q = new URLSearchParams({ instrument, lang: "en" });
   const response = await fetch(`${API_BASE}/api/v1/screening/questions?${q}`);
   if (!response.ok) throw new Error("Failed to load screening questions");
   return response.json();
@@ -32,7 +32,12 @@ export async function submitScreening(
   const response = await fetch(`${API_BASE}/api/v1/screening`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, instrument, answers }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      instrument,
+      answers,
+      lang: "en",
+    }),
   });
   if (!response.ok) throw new Error("Failed to submit screening");
   return response.json();

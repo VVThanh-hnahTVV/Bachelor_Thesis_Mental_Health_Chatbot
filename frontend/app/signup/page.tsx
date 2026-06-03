@@ -49,7 +49,7 @@ export default function SignupPage() {
               Sign Up
             </h1>
             <p className="text-base text-muted-foreground font-medium">
-              Create your account to start your journey with Luna.
+              Create your account to start your journey with Luna & Helios.
             </p>
           </div>
           <form className="space-y-6" onSubmit={handleSubmit}>

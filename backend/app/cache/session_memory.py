@@ -49,6 +49,20 @@ async def clear_session(redis: aioredis.Redis, session_id: str) -> None:
     await redis.delete(_personalization_key(session_id))
 
 
+async def purge_chat_session_cache(redis: aioredis.Redis | None, session_id: str) -> None:
+    """Clear Redis keys tied to a therapy chat session."""
+    if redis is None:
+        return
+    await clear_session(redis, session_id)
+    await redis.delete(
+        f"therapy_flags:{session_id}",
+        f"crisis_escalation:{session_id}",
+        f"conv_state:{session_id}",
+        f"wellness:{session_id}",
+        f"wellness_suggest_turn:{session_id}",
+    )
+
+
 async def set_personalization_context(
     redis: aioredis.Redis,
     session_id: str,

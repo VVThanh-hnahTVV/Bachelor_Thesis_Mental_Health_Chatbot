@@ -106,6 +106,15 @@ class Settings(BaseSettings):
     tavily_api_key: str | None = None
     huggingface_token: str | None = None
 
+    eleven_labs_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ELEVEN_LABS_API_KEY"),
+    )
+    eleven_labs_stt_model: str = Field(
+        default="scribe_v2",
+        validation_alias=AliasChoices("ELEVEN_LABS_STT_MODEL"),
+    )
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

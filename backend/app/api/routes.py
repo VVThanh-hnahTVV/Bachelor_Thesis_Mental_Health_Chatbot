@@ -167,6 +167,7 @@ class ScreeningSubmitRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
     instrument: str = Field(..., pattern="^(phq2|phq4)$")
     answers: list[int] = Field(..., min_length=2, max_length=4)
+    lang: str | None = Field(None, pattern="^(vi|en)$")
 
 
 class ScreeningOut(BaseModel):
@@ -201,12 +202,11 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     db = get_db(request)
     redis = get_redis(request)
     maybe_user = await resolve_optional_current_user(request, db)
+    uid: ObjectId | None = None
     if maybe_user:
-        uid = maybe_user.get("_id")
-        if isinstance(uid, ObjectId):
-            # Keep chat flow backward compatible while linking authenticated users
-            # so personalization context can access user profile/name immediately.
-            await link_session_to_user(db, session_id=req.session_id, user_id=uid)
+        raw_uid = maybe_user.get("_id")
+        if isinstance(raw_uid, ObjectId):
+            uid = raw_uid
 
     personalization_context: dict[str, Any] = {}
     if redis is not None:
@@ -237,7 +237,10 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         session_id=req.session_id,
         requested_mode=req.chat_mode,
         conv=conv,
+        user_id=uid,
     )
+    if uid is not None:
+        await link_session_to_user(db, session_id=req.session_id, user_id=uid)
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
@@ -257,6 +260,20 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         content=user_message_stored,
         metadata={"chat_mode": chat_mode},
     )
+
+    user_turn_count_after = await count_user_messages(db, cid)
+    default_titles = {"New chat", "Chat", ""}
+    current_title = str(conv.get("title") or "")
+    if user_turn_count_after == 1 and current_title in default_titles:
+        from app.db.repository import update_conversation_title
+        from app.graph.conversation_title import generate_conversation_title
+
+        title = await generate_conversation_title(
+            req.message,
+            provider=default_provider(),
+        )
+        await update_conversation_title(db, cid, title)
+        conv["title"] = title
 
     if chat_mode == "medical":
         emit_progress("analyzing_request")
@@ -678,9 +695,8 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
         set_progress_callback,
         set_thread_progress_callback,
     )
-    from app.graph.nodes.response_generator import detect_language
 
-    lang = detect_language(req.message, [])
+    lang = "en"
 
     async def event_generator():
         loop = asyncio.get_running_loop()
@@ -964,7 +980,7 @@ async def wellness_complete(body: WellnessCompleteRequest, request: Request) -> 
 @router.post("/screening", response_model=ScreeningOut)
 async def submit_screening(body: ScreeningSubmitRequest, request: Request) -> ScreeningOut:
     from app.db.repository import save_screening_response
-    from app.screening.phq import DISCLAIMER_VI, get_questions, interpret_phq2, score_phq
+    from app.screening.phq import get_disclaimer, get_options, get_questions, interpret_phq2, score_phq
 
     expected = 2 if body.instrument == "phq2" else 4
     if len(body.answers) != expected:
@@ -972,6 +988,7 @@ async def submit_screening(body: ScreeningSubmitRequest, request: Request) -> Sc
     if any(a < 0 or a > 3 for a in body.answers):
         raise HTTPException(400, "Each answer must be 0-3")
 
+    lang = body.lang if body.lang in ("vi", "en") else "en"
     score = score_phq(body.answers)
     db = get_db(request)
     doc = await save_screening_response(
@@ -990,8 +1007,8 @@ async def submit_screening(body: ScreeningSubmitRequest, request: Request) -> Sc
     return ScreeningOut(
         instrument=body.instrument,
         score=score,
-        interpretation=interpret_phq2(score),
-        disclaimer=DISCLAIMER_VI,
+        interpretation=interpret_phq2(score, lang),
+        disclaimer=get_disclaimer(lang),
         created_at=created_iso,
     )
 
@@ -1003,7 +1020,7 @@ async def get_latest_screening(
     instrument: str | None = None,
 ) -> ScreeningOut | None:
     from app.db.repository import latest_screening
-    from app.screening.phq import DISCLAIMER_VI, interpret_phq2
+    from app.screening.phq import get_disclaimer, interpret_phq2
 
     db = get_db(request)
     doc = await latest_screening(db, session_id=session_id, instrument=instrument)
@@ -1016,26 +1033,31 @@ async def get_latest_screening(
         else str(created)
     )
     score = int(doc["score"])
+    lang = "en"
     return ScreeningOut(
         instrument=str(doc["instrument"]),
         score=score,
-        interpretation=interpret_phq2(score),
-        disclaimer=DISCLAIMER_VI,
+        interpretation=interpret_phq2(score, lang),
+        disclaimer=get_disclaimer(lang),
         created_at=created_iso,
     )
 
 
 @router.get("/screening/questions")
-async def screening_questions(instrument: str = "phq2") -> dict[str, Any]:
-    from app.screening.phq import DISCLAIMER_VI, OPTIONS_VI, get_questions
+async def screening_questions(
+    instrument: str = "phq2",
+    lang: str = "en",
+) -> dict[str, Any]:
+    from app.screening.phq import get_disclaimer, get_options, get_questions
 
     if instrument not in ("phq2", "phq4"):
         raise HTTPException(400, "instrument must be phq2 or phq4")
+    ui_lang = lang if lang in ("vi", "en") else "en"
     return {
         "instrument": instrument,
-        "questions": get_questions(instrument),
-        "options": OPTIONS_VI,
-        "disclaimer": DISCLAIMER_VI,
+        "questions": get_questions(instrument, ui_lang),
+        "options": get_options(ui_lang),
+        "disclaimer": get_disclaimer(ui_lang),
     }
 
 
@@ -1046,15 +1068,73 @@ async def screening_questions(instrument: str = "phq2") -> dict[str, Any]:
 @router.get("/conversations", response_model=list[ConversationSummary])
 async def conversations(
     request: Request,
-    session_id: str,
+    session_id: str | None = None,
+    session_ids: str | None = None,
     limit: int = 30,
 ) -> list[ConversationSummary]:
-    from app.db.repository import list_conversations
+    from app.db.repository import (
+        list_conversations,
+        list_conversations_by_session_ids,
+        list_conversations_for_user,
+    )
+
+    from app.auth.repository import is_session_owned_by_user
 
     db = get_db(request)
-    rows = await list_conversations(db, session_id=session_id, limit=limit)
+    maybe_user = await resolve_optional_current_user(request, db)
+    uid: ObjectId | None = None
+    if maybe_user:
+        raw_uid = maybe_user.get("_id")
+        if isinstance(raw_uid, ObjectId):
+            uid = raw_uid
+
+    rows: list[dict[str, Any]] = []
+    seen_sids: set[str] = set()
+
+    def _append_rows(docs: list[dict[str, Any]]) -> None:
+        for doc in docs:
+            sid = str(doc.get("session_id") or "")
+            if sid and sid not in seen_sids:
+                seen_sids.add(sid)
+                rows.append(doc)
+
+    if uid is not None:
+        _append_rows(await list_conversations_for_user(db, user_id=uid, limit=limit))
+
+    ids: list[str] = []
+    if session_ids:
+        ids = [s.strip() for s in session_ids.split(",") if s.strip()]
+    elif session_id:
+        ids = [session_id]
+    if ids:
+        extra = await list_conversations_by_session_ids(
+            db, session_ids=ids, limit=limit
+        )
+        if uid is None:
+            _append_rows(extra)
+        else:
+            for doc in extra:
+                sid = str(doc.get("session_id") or "")
+                if not sid or sid in seen_sids:
+                    continue
+                owner = doc.get("user_id")
+                if owner == uid or await is_session_owned_by_user(
+                    db, session_id=sid, user_id=uid
+                ):
+                    seen_sids.add(sid)
+                    rows.append(doc)
+                elif owner is None and sid in ids:
+                    await link_session_to_user(db, session_id=sid, user_id=uid)
+                    seen_sids.add(sid)
+                    rows.append(doc)
+
+    seen: set[str] = set()
     out: list[ConversationSummary] = []
     for doc in rows:
+        sid = str(doc.get("session_id") or "")
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
         updated = doc.get("updated_at") or doc.get("created_at")
         updated_iso = (
             updated.replace(tzinfo=UTC).isoformat()
@@ -1063,13 +1143,44 @@ async def conversations(
         )
         out.append(
             ConversationSummary(
-                session_id=doc["session_id"],
+                session_id=sid,
                 title=str(doc.get("title") or "Chat"),
                 updated_at=updated_iso,
                 chat_mode=str(doc.get("chat_mode") or "psychologist"),
             )
         )
     return out
+
+
+@router.delete("/conversations/{session_id}")
+async def delete_conversation(session_id: str, request: Request) -> dict[str, str]:
+    from app.auth.repository import delete_session_link, is_session_owned_by_user
+    from app.cache.session_memory import purge_chat_session_cache
+    from app.db.repository import delete_conversation_by_session, get_conversation_by_session
+
+    db = get_db(request)
+    redis = get_redis(request)
+    conv = await get_conversation_by_session(db, session_id)
+
+    if conv:
+        owner = conv.get("user_id")
+        if isinstance(owner, ObjectId):
+            maybe_user = await resolve_optional_current_user(request, db)
+            if not maybe_user:
+                raise HTTPException(401, "Authentication required to delete this chat")
+            uid = maybe_user.get("_id")
+            if not isinstance(uid, ObjectId):
+                raise HTTPException(401, "Invalid user")
+            if owner != uid and not await is_session_owned_by_user(
+                db, session_id=session_id, user_id=uid
+            ):
+                raise HTTPException(403, "You cannot delete this chat session")
+
+        await delete_conversation_by_session(db, session_id)
+        await delete_session_link(db, session_id=session_id)
+        await purge_chat_session_cache(redis, session_id)
+
+    return {"status": "deleted"}
 
 
 # ---------------------------------------------------------------------------
@@ -1372,3 +1483,50 @@ async def list_activities(session_id: str, request: Request, limit: int = 100) -
             )
         )
     return out
+
+
+class SpeechToTextResponse(BaseModel):
+    text: str
+    language_code: str | None = None
+
+
+@router.post("/speech/transcribe", response_model=SpeechToTextResponse)
+async def transcribe_speech(
+    request: Request,
+    audio: UploadFile = File(...),
+    language_code: str | None = Form(None),
+) -> SpeechToTextResponse:
+    from app.config import get_settings
+    from app.speech.elevenlabs_stt import SpeechToTextError, transcribe_with_elevenlabs
+
+    settings = get_settings()
+    api_key = settings.eleven_labs_api_key
+    if not api_key:
+        raise HTTPException(
+            503,
+            detail="Speech-to-text is not configured (missing ELEVEN_LABS_API_KEY)",
+        )
+
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(400, detail="Empty audio file")
+
+    filename = audio.filename or "recording.webm"
+    content_type = audio.content_type or "audio/webm"
+
+    try:
+        result = await transcribe_with_elevenlabs(
+            audio_bytes=raw,
+            filename=filename,
+            content_type=content_type,
+            api_key=api_key,
+            model_id=settings.eleven_labs_stt_model,
+            language_code=language_code.strip() if language_code else None,
+        )
+    except SpeechToTextError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    return SpeechToTextResponse(
+        text=str(result["text"]),
+        language_code=result.get("language_code"),
+    )

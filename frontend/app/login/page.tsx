@@ -50,8 +50,8 @@ export default function LoginPage() {
               Sign In
             </h1>
             <p className="text-base text-muted-foreground font-medium">
-              Optional — chat works without an account. Sign in to save your
-              profile and link this device&apos;s session.
+              Optional — chat with Luna & Helios works without an account. Sign
+              in to save your profile and link this device&apos;s session.
             </p>
           </div>
           <form className="space-y-6" onSubmit={handleSubmit}>

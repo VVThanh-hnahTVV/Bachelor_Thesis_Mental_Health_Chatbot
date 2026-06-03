@@ -2,6 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import type { ChatMode } from "@/lib/api/chat";
+import { HeliosAvatar } from "@/components/therapy/helios-avatar";
+import { LunaAvatar } from "@/components/therapy/luna-avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 
 export interface ChatModeToggleProps {
   value: ChatMode;
@@ -10,6 +18,11 @@ export interface ChatModeToggleProps {
   className?: string;
 }
 
+const MODE_LABELS: Record<ChatMode, string> = {
+  psychologist: "Luna",
+  medical: "Helios",
+};
+
 export function ChatModeToggle({
   value,
   onChange,
@@ -17,41 +30,39 @@ export function ChatModeToggle({
   className,
 }: ChatModeToggleProps) {
   return (
-    <div
-      className={cn(
-        "flex shrink-0 rounded-full border border-brand-border/80 bg-white p-0.5 text-xs font-medium",
-        disabled && "pointer-events-none opacity-50",
-        className
-      )}
-      role="group"
-      aria-label="Chat mode"
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v as ChatMode)}
+      disabled={disabled}
     >
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange("psychologist")}
+      <SelectTrigger
         className={cn(
-          "rounded-full px-3 py-2 transition-colors",
-          value === "psychologist"
-            ? "bg-brand text-white"
-            : "text-gray-600 hover:bg-brand-light"
+          "h-8 w-auto gap-1.5 rounded-full border border-brand-border/60 bg-white px-2 py-0 text-xs font-medium shadow-none focus:ring-0 [&>svg]:h-3 [&>svg]:w-3",
+          className
         )}
+        aria-label="Select chat mode"
       >
-        Psychologist
-      </button>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange("medical")}
-        className={cn(
-          "rounded-full px-3 py-2 transition-colors",
-          value === "medical"
-            ? "bg-slate-700 text-white"
-            : "text-gray-600 hover:bg-gray-100"
+        {value === "medical" ? (
+          <HeliosAvatar size="sm" className="!h-5 !w-5" />
+        ) : (
+          <LunaAvatar size="sm" className="!h-5 !w-5" />
         )}
-      >
-        Helios
-      </button>
-    </div>
+        <span>{MODE_LABELS[value]}</span>
+      </SelectTrigger>
+      <SelectContent align="start" side="top" className="min-w-[9rem]">
+        <SelectItem value="psychologist" className="text-xs">
+          <span className="flex items-center gap-2">
+            <LunaAvatar size="sm" className="!h-5 !w-5" />
+            Luna
+          </span>
+        </SelectItem>
+        <SelectItem value="medical" className="text-xs">
+          <span className="flex items-center gap-2">
+            <HeliosAvatar size="sm" className="!h-5 !w-5" />
+            Helios
+          </span>
+        </SelectItem>
+      </SelectContent>
+    </Select>
   );
 }

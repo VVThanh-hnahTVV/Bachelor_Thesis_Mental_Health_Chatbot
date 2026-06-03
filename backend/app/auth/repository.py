@@ -10,6 +10,8 @@ from app.db.repository import (
     ACTIVITY_COMPLETIONS,
     CONVERSATIONS,
     MOOD_ENTRIES,
+    create_conversation,
+    get_conversation_by_session,
 )
 
 USERS = "users"
@@ -78,6 +80,14 @@ def user_public(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def delete_session_link(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+) -> None:
+    await db[SESSION_LINKS].delete_one({"session_id": session_id})
+
+
 async def link_session_to_user(
     db: AsyncIOMotorDatabase,
     *,
@@ -90,8 +100,17 @@ async def link_session_to_user(
         {"$set": {"user_id": user_id, "linked_at": now}},
         upsert=True,
     )
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        await create_conversation(db, session_id=session_id, user_id=user_id)
+    else:
+        await db[CONVERSATIONS].update_one(
+            {"session_id": session_id},
+            {"$set": {"user_id": user_id}},
+        )
+
     user_ref = user_id
-    for coll in (CONVERSATIONS, MOOD_ENTRIES, ACTIVITY_COMPLETIONS):
+    for coll in (MOOD_ENTRIES, ACTIVITY_COMPLETIONS):
         await db[coll].update_many(
             {"session_id": session_id},
             {"$set": {"user_id": user_ref}},

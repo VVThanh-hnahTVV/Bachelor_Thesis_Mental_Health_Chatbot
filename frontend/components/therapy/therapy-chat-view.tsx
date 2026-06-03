@@ -24,32 +24,44 @@ import { cn } from "@/lib/utils";
 import type { ChatMessage, ChatSession, CrisisChoice } from "@/lib/api/chat";
 
 const SUGGESTED_QUESTIONS = [
-  "Làm thế nào để quản lý lo lắng tốt hơn?",
-  "Gần đây tôi cảm thấy rất áp lực",
-  "Tôi muốn nói về giấc ngủ của mình",
-  "Tôi cần giúp đỡ về cân bằng cuộc sống",
+  "How can I manage anxiety better?",
+  "I've been feeling a lot of pressure lately",
+  "I want to talk about my sleep",
+  "I need help with work-life balance",
 ];
 
 const EMOTION_LABELS: Record<string, string> = {
-  anxiety: "Lo lắng",
-  sadness: "Buồn bã",
-  anger: "Tức giận",
-  hopeless: "Tuyệt vọng",
-  neutral: "Bình thường",
-  overwhelmed: "Quá tải",
-  lonely: "Cô đơn",
-  grief: "Đau buồn",
-  fear: "Sợ hãi",
-  shame: "Xấu hổ",
-  guilt: "Tội lỗi",
-  joy: "Vui vẻ",
+  anxiety: "Anxious",
+  sadness: "Sad",
+  anger: "Angry",
+  hopeless: "Hopeless",
+  neutral: "Neutral",
+  overwhelmed: "Overwhelmed",
+  lonely: "Lonely",
+  grief: "Grief",
+  fear: "Afraid",
+  shame: "Ashamed",
+  guilt: "Guilty",
+  joy: "Joyful",
 };
 
+const DEFAULT_SESSION_TITLES = new Set([
+  "New chat",
+  "Chat",
+  "New conversation",
+  "Cuộc trò chuyện mới",
+]);
+
 function getSessionTitle(session: ChatSession): string {
+  const storedTitle = session.title?.trim();
+  if (storedTitle && !DEFAULT_SESSION_TITLES.has(storedTitle)) {
+    if (storedTitle.length <= 40) return storedTitle;
+    return `${storedTitle.slice(0, 40)}…`;
+  }
   const first =
     session.messages.find((m) => m.role === "user")?.content ||
     session.messages[0]?.content;
-  if (!first) return "Cuộc trò chuyện mới";
+  if (!first) return "New conversation";
   const trimmed = first.trim();
   if (trimmed.length <= 36) return trimmed;
   return `${trimmed.slice(0, 36)}…`;
@@ -68,8 +80,8 @@ function getRetrievalSummary(metadata: ChatMessage["metadata"]) {
     )
   ).slice(0, 2);
   return topics.length > 0
-    ? `Dựa trên kiến thức: ${topics.join(", ")}`
-    : "Dựa trên kiến thức đã tuyển chọn";
+    ? `Based on knowledge: ${topics.join(", ")}`
+    : "Based on selected knowledge";
 }
 
 export interface TherapyChatViewProps {
@@ -186,8 +198,8 @@ export function TherapyChatView(props: TherapyChatViewProps) {
               </div>
               <div className="relative z-10 flex flex-col items-center px-4 text-center">
                 <Moon className="mb-6 h-10 w-10 stroke-[1.25] text-serene-accent" />
-                <h1 className="mb-3 text-3xl font-bold text-gray-800 md:text-4xl">Luna AI</h1>
-                <p className="mb-10 text-lg text-gray-500">Mình có thể giúp gì cho bạn hôm nay?</p>
+                <h1 className="mb-3 text-3xl font-bold text-gray-800 md:text-4xl">Luna</h1>
+                <p className="mb-10 text-lg text-gray-500">How can I help you today?</p>
                 <div className="w-full max-w-md space-y-3">
                   {SUGGESTED_QUESTIONS.map((text, index) => (
                     <motion.button
@@ -262,7 +274,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                                 title={getRetrievalSummary(msg.metadata) ?? undefined}
                               >
                                 <BookOpenCheck className="h-3 w-3" />
-                                Có nguồn
+                                Sourced
                               </Badge>
                             )}
                         </div>
@@ -305,7 +317,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                                   className="rounded-full border-serene-green/30 text-serene-accent"
                                   onClick={onBreathingExercise}
                                 >
-                                  Bài tập hít thở
+                                  Breathing exercise
                                 </Button>
                               )}
                               {showOcean && onOceanSounds && (
@@ -315,7 +327,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                                   className="rounded-full"
                                   onClick={onOceanSounds}
                                 >
-                                  Âm sóng thư giãn
+                                  Calming ocean sounds
                                 </Button>
                               )}
                             </div>
@@ -332,7 +344,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                     <Loader2 className="h-4 w-4 animate-spin text-serene-accent" />
                   </div>
                   <div className="rounded-2xl bg-[#F9FAF7] px-4 py-3 text-sm text-gray-500">
-                    Luna đang soạn…
+                    Luna is typing…
                   </div>
                 </div>
               )}
@@ -364,7 +376,7 @@ export function TherapyChatView(props: TherapyChatViewProps) {
               <textarea
                 value={message}
                 onChange={(e) => onMessageChange(e.target.value)}
-                placeholder="Chia sẻ điều bạn đang nghĩ..."
+                placeholder="Share what's on your mind..."
                 className={cn(
                   "max-h-[160px] min-h-[52px] flex-1 resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800",
                   "placeholder:text-gray-400 focus:border-serene-green/40 focus:outline-none focus:ring-2 focus:ring-serene-green/30",

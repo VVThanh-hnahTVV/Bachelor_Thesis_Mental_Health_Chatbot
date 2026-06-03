@@ -1,5 +1,5 @@
-import { getOrCreateSessionId } from "@/lib/session";
 import { getAuthToken } from "@/lib/auth-token";
+import { getKnownChatSessionIds, getOrCreateSessionId } from "@/lib/session";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -133,8 +133,8 @@ const CRISIS_CHIP_LABELS_EN: Record<string, string> = {
 
 function chipLabelFallback(chipId: string): string {
   return (
-    CRISIS_CHIP_LABELS_VI[chipId] ??
     CRISIS_CHIP_LABELS_EN[chipId] ??
+    CRISIS_CHIP_LABELS_VI[chipId] ??
     chipId
   );
 }
@@ -215,6 +215,7 @@ export interface ChatMessage {
 
 export interface ChatSession {
   sessionId: string;
+  title?: string;
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
@@ -477,13 +478,32 @@ export const getChatHistory = async (
   }));
 };
 
-export const getAllChatSessions = async (): Promise<ChatSession[]> => {
-  const sessionId = getOrCreateSessionId();
-  const q = new URLSearchParams({ session_id: sessionId });
+export async function deleteChatSession(sessionId: string): Promise<void> {
   const token = getAuthToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/api/v1/conversations?${q.toString()}`, {
+  const response = await fetch(
+    `${API_BASE}/api/v1/conversations/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE", headers }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to delete chat session");
+  }
+}
+
+export const getAllChatSessions = async (): Promise<ChatSession[]> => {
+  const token = getAuthToken();
+  const knownIds = getKnownChatSessionIds();
+  const params = new URLSearchParams({ limit: "50" });
+  if (knownIds.length > 0) {
+    params.set("session_ids", knownIds.join(","));
+  } else if (!token) {
+    params.set("session_id", getOrCreateSessionId());
+  }
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE}/api/v1/conversations?${params.toString()}`, {
     headers,
     cache: "no-store",
   });
@@ -495,6 +515,7 @@ export const getAllChatSessions = async (): Promise<ChatSession[]> => {
   if (!Array.isArray(data)) return [];
   return data.map((session: any) => ({
     sessionId: String(session.session_id),
+    title: session.title ? String(session.title) : undefined,
     messages: [],
     createdAt: new Date(session.updated_at),
     updatedAt: new Date(session.updated_at),

@@ -27,10 +27,13 @@ async def resolve_conversation_mode(
     session_id: str,
     requested_mode: str | None,
     conv: dict[str, Any] | None,
+    user_id: ObjectId | None = None,
 ) -> tuple[dict[str, Any], ChatMode]:
     mode = normalize_chat_mode(requested_mode)
     if conv is None:
-        conv = await create_conversation(db, session_id=session_id, chat_mode=mode)
+        conv = await create_conversation(
+            db, session_id=session_id, chat_mode=mode, user_id=user_id
+        )
         return conv, mode
 
     stored = normalize_chat_mode(conv.get("chat_mode"))

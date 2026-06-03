@@ -7,13 +7,7 @@ import { cn } from "@/lib/utils";
 
 type FeedbackValue = "yes" | "a_bit" | "no";
 
-const LABELS_VI: Record<FeedbackValue, string> = {
-  yes: "Có",
-  a_bit: "Một chút",
-  no: "Chưa",
-};
-
-const LABELS_EN: Record<FeedbackValue, string> = {
+const LABELS: Record<FeedbackValue, string> = {
   yes: "Yes",
   a_bit: "A little",
   no: "Not yet",
@@ -29,16 +23,10 @@ interface MessageFeedbackProps {
 export function MessageFeedback({
   sessionId,
   assistantMessageId,
-  lang = "vi",
   className,
 }: MessageFeedbackProps) {
   const [submitted, setSubmitted] = useState<FeedbackValue | null>(null);
   const [loading, setLoading] = useState(false);
-  const labels = lang === "en" ? LABELS_EN : LABELS_VI;
-  const prompt =
-    lang === "en"
-      ? "Did this help you feel a little lighter?"
-      : "Luna có giúp bạn cảm thấy nhẹ hơn chút không?";
 
   const handle = async (value: FeedbackValue) => {
     if (submitted || loading) return;
@@ -56,14 +44,16 @@ export function MessageFeedback({
   if (submitted) {
     return (
       <p className={cn("text-xs text-gray-500", className)}>
-        {lang === "en" ? "Thanks for your feedback." : "Cảm ơn bạn đã phản hồi."}
+        Thanks for your feedback.
       </p>
     );
   }
 
   return (
     <div className={cn("mt-3 space-y-2", className)}>
-      <p className="text-xs text-gray-600">{prompt}</p>
+      <p className="text-xs text-gray-600">
+        Did this help you feel a little lighter?
+      </p>
       <div className="flex flex-wrap gap-2">
         {(["yes", "a_bit", "no"] as FeedbackValue[]).map((v) => (
           <Button
@@ -75,7 +65,7 @@ export function MessageFeedback({
             className="rounded-full text-xs"
             onClick={() => void handle(v)}
           >
-            {labels[v]}
+            {LABELS[v]}
           </Button>
         ))}
       </div>

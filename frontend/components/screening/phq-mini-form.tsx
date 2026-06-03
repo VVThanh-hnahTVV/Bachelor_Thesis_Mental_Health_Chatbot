@@ -56,20 +56,20 @@ export function PhqMiniForm({
   };
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Đang tải khảo sát...</p>;
+    return <p className="text-sm text-gray-500">Loading survey...</p>;
   }
 
   if (result) {
     return (
       <div className="space-y-3">
         <p className="text-sm font-medium text-gray-800">
-          Điểm sàng lọc: {result.score}
+          Screening score: {result.score}
         </p>
         <p className="text-sm text-gray-600">{result.interpretation}</p>
         <p className="text-xs text-gray-500">{result.disclaimer}</p>
         {onDismiss && (
           <Button type="button" onClick={onDismiss} className="mt-2">
-            Đóng
+            Close
           </Button>
         )}
       </div>
@@ -109,11 +109,11 @@ export function PhqMiniForm({
           onClick={() => void handleSubmit()}
           disabled={!allAnswered || submitting}
         >
-          Gửi khảo sát
+          Submit survey
         </Button>
         {onDismiss && (
           <Button type="button" variant="ghost" onClick={onDismiss}>
-            Để sau
+            Not now
           </Button>
         )}
       </div>

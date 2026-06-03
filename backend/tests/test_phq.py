@@ -7,7 +7,9 @@ def test_score_phq():
 
 def test_phq2_questions():
     assert len(get_questions("phq2")) == 2
+    assert len(get_questions("phq2", "en")) == 2
 
 
 def test_interpret():
-    assert "theo dõi" in interpret_phq2(4).lower() or "chuyên gia" in interpret_phq2(4).lower()
+    assert "follow-up" in interpret_phq2(4, "en").lower()
+    assert "theo dõi" in interpret_phq2(4, "vi").lower() or "chuyên gia" in interpret_phq2(4, "vi").lower()
