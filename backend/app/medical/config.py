@@ -122,7 +122,10 @@ class MedicalCVConfig:
     def __init__(self) -> None:
         cv_root = MEDICAL_AGENTS / "image_analysis_agent"
         self.brain_tumor_model_path = str(
-            cv_root / "brain_tumor_agent" / "models" / "brain_tumor_segmentation.pth"
+            cv_root / "brain_tumor_agent" / "models" / "multi_class_resnet.pth"
+        )
+        self.brain_tumor_overlay_output_path = str(
+            UPLOADS_MEDICAL / "brain_tumor_output" / "attention_overlay.png"
         )
         self.chest_xray_weights = os.getenv(
             "CHEST_XRAY_WEIGHTS", "densenet121-res224-all"

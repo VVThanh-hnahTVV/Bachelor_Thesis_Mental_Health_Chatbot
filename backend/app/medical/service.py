@@ -52,11 +52,16 @@ def _needs_validation(agent_name: str) -> bool:
 
 
 def _result_image_url(agent_name: str) -> str | None:
-    if "SKIN_LESION" not in agent_name.upper():
-        return None
-    out_path = Path(get_medical_config().medical_cv.skin_lesion_segmentation_output_path)
-    if out_path.is_file():
-        return "/uploads/medical/skin_lesion_output/segmentation_plot.png"
+    cfg = get_medical_config()
+    upper = agent_name.upper()
+    if "SKIN_LESION" in upper:
+        out_path = Path(cfg.medical_cv.skin_lesion_segmentation_output_path)
+        if out_path.is_file():
+            return "/uploads/medical/skin_lesion_output/segmentation_plot.png"
+    if "BRAIN_TUMOR" in upper:
+        out_path = Path(cfg.medical_cv.brain_tumor_overlay_output_path)
+        if out_path.is_file():
+            return "/uploads/medical/brain_tumor_output/attention_overlay.png"
     return None
 
 

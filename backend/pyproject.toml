@@ -43,6 +43,7 @@ medical = [
     "torchvision>=0.20.0",
     "opencv-python-headless>=4.11.0",
     "sentence-transformers>=3.4.0",
+    "huggingface-hub>=0.27.0",
     "python-multipart>=0.0.9",
     "Pillow>=11.0.0",
     "pypdf>=5.0.0",

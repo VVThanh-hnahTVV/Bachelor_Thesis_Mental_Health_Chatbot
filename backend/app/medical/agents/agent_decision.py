@@ -518,9 +518,13 @@ def create_agent_graph():
         from app.chat_progress import emit_progress
 
         emit_progress("BRAIN_TUMOR_AGENT")
+        current_input = state["current_input"]
+        image_path = current_input.get("image", None)
+
         print(f"Selected agent: BRAIN_TUMOR_AGENT")
 
-        response = AIMessage(content="This would be handled by the brain tumor agent, analyzing the MRI image.")
+        response_text = get_image_analyzer().classify_brain_tumor(image_path)
+        response = AIMessage(content=response_text)
 
         return {
             **state,

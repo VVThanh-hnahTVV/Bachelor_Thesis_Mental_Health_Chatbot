@@ -1,6 +1,6 @@
 from .image_classifier import ImageClassifier
 from .chest_xray_agent.torchxrayvision_inference import TorchXRayVisionClassifier
-# from .brain_tumor_agent.brain_tumor_inference import BrainTumorAgent
+from .brain_tumor_agent.brain_tumor_inference import BrainTumorAgent
 from .skin_lesion_agent.skin_lesion_inference import SkinLesionSegmentation
 
 class ImageAnalysisAgent:
@@ -14,7 +14,10 @@ class ImageAnalysisAgent:
             weights=config.medical_cv.chest_xray_weights,
             threshold=config.medical_cv.chest_xray_threshold,
         )
-        # self.brain_tumor_agent = BrainTumorAgent()
+        self.brain_tumor_agent = BrainTumorAgent(
+            model_path=config.medical_cv.brain_tumor_model_path,
+            overlay_output_path=config.medical_cv.brain_tumor_overlay_output_path,
+        )
         self.skin_lesion_agent = SkinLesionSegmentation(model_path=config.medical_cv.skin_lesion_model_path)
         self.skin_lesion_segmentation_output_path = config.medical_cv.skin_lesion_segmentation_output_path
     
@@ -27,9 +30,8 @@ class ImageAnalysisAgent:
     def classify_chest_xray(self, image_path: str) -> str:
         return self.chest_xray_agent.predict(image_path)
     
-    # # brain tumor agent
-    # def classify_brain_tumor(self, image_path: str) -> str:
-    #     return self.brain_tumor_agent.predict(image_path)
+    def classify_brain_tumor(self, image_path: str) -> str:
+        return self.brain_tumor_agent.predict(image_path)
     
     # skin lesion agent
     def segment_skin_lesion(self, image_path: str) -> str:
