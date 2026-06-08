@@ -1,0 +1,48 @@
+{
+  "documents": {
+    "brain_tumor_2024.pdf": {
+      "title": "Brain tumor detection from images and comparison with transfer learning methods and 3-layer CNN",
+      "authors": ["Khaliki, M.Z.", "Başarslan, M.S."],
+      "year": 2024,
+      "document_type": "research_paper",
+      "topics": ["brain_tumor", "mri", "deep_learning"],
+      "summary": "MRI brain tumor detection, transfer learning, CNN comparison"
+    },
+    "brain_tumors_ucni.pdf": {
+      "title": "Brain Tumors: An Introduction (basic level)",
+      "authors": ["Mayfield Clinic", "University of Cincinnati Neuroscience Institute"],
+      "document_type": "clinical_guide",
+      "topics": ["brain_tumor", "patient_education", "neurology"],
+      "summary": "Patient-friendly overview of brain tumors, symptoms, and care pathways"
+    },
+    "covid_chest_xray_2024.pdf": {
+      "title": "COVID-19 detection from chest X-ray images using transfer learning",
+      "authors": ["El Houby, E.M.F."],
+      "year": 2024,
+      "document_type": "research_paper",
+      "topics": ["chest_imaging", "covid_19", "x_ray", "transfer_learning"],
+      "summary": "Chest X-ray patterns and deep-learning screening for COVID-19"
+    },
+    "skin_lesion_2023.pdf": {
+      "title": "A survey on deep learning for skin lesion segmentation",
+      "authors": ["Mirikharaji, Z.", "Abhishek, K.", "Bissoto, A.", "et al."],
+      "year": 2023,
+      "document_type": "review",
+      "topics": ["skin_lesion", "melanoma", "segmentation", "deep_learning"],
+      "summary": "Skin lesion analysis, melanoma detection, segmentation methods"
+    },
+    "Medical_book.pdf": {
+      "title": "Medical reference textbook",
+      "document_type": "textbook",
+      "topics": ["general_medicine", "clinical_reference"],
+      "summary": "Broad clinical reference across common medical topics"
+    },
+    "AIDS2025.pdf": {
+      "title": "AIDS 2025 conference / HIV clinical update",
+      "year": 2025,
+      "document_type": "conference_material",
+      "topics": ["infectious_disease", "hiv", "aids"],
+      "summary": "HIV/AIDS epidemiology, treatment updates, and clinical guidance"
+    }
+  }
+}

@@ -209,6 +209,8 @@ export interface ChatMessage {
     agent_name?: string;
     needs_validation?: boolean;
     result_image?: string;
+    image_url?: string;
+    has_image?: boolean;
     [key: string]: unknown;
   };
 }

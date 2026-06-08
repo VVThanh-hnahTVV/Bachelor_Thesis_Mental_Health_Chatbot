@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import get_settings
@@ -93,7 +93,8 @@ async def handle_medical_upload_turn(
     *,
     session_id: str,
     conversation_id: ObjectId,
-    image: UploadFile,
+    image_bytes: bytes,
+    filename: str,
     text: str,
     conversation_summary: str = "",
 ) -> tuple[str, dict[str, Any], str | None]:
@@ -101,17 +102,16 @@ async def handle_medical_upload_turn(
     if not settings.enable_medical_mode:
         raise HTTPException(503, detail="Medical mode is disabled")
 
-    content = await image.read()
     max_mb = 5
-    if len(content) > max_mb * 1024 * 1024:
+    if len(image_bytes) > max_mb * 1024 * 1024:
         raise HTTPException(413, detail=f"File too large. Max {max_mb}MB")
 
     svc = get_medical_service()
     try:
         turn = await svc.handle_upload(
             session_id,
-            content,
-            image.filename or "upload.jpg",
+            image_bytes,
+            filename or "upload.jpg",
             text=text,
             conversation_summary=conversation_summary,
         )

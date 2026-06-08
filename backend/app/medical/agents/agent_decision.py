@@ -8,17 +8,17 @@ It dynamically routes user queries to the appropriate agent based on content and
 import json
 from typing import Dict, List, Optional, Any, Literal, TypedDict, Union, Annotated
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from langgraph.graph import MessagesState, StateGraph, END
 import os, getpass
 from app.medical.agents.rag_agent import MedicalRAG
-from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS
+from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS, PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS
 from app.medical.agents.web_search_processor_agent import WebSearchProcessorAgent
 from app.medical.agents.image_analysis_agent import ImageAnalysisAgent
 from app.medical.agents.guardrails.local_guardrails import LocalGuardrails
 from app.medical.config import get_medical_config
+from app.medical.rag_catalog import build_decision_system_prompt
+from app.medical.validation_input import extract_input_text, parse_validation_submission
 
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -48,33 +48,7 @@ class AgentConfig:
     # Confidence threshold for responses
     CONFIDENCE_THRESHOLD = 0.85
     
-    # System instructions for the decision agent
-    DECISION_SYSTEM_PROMPT = """You are an intelligent medical triage system that routes user queries to 
-    the appropriate specialized agent. Your job is to analyze the user's request and determine which agent 
-    is best suited to handle it based on the query content, presence of images, and conversation context.
-
-    Available agents:
-    1. CONVERSATION_AGENT - For general chat, greetings, and non-medical questions.
-    2. RAG_AGENT - For specific medical knowledge questions that can be answered from established medical literature. Currently ingested medical knowledge involves 'introduction to brain tumor', 'deep learning techniques to diagnose and detect brain tumors', 'deep learning techniques to diagnose and detect covid / covid-19 from chest x-ray'.
-    3. WEB_SEARCH_PROCESSOR_AGENT - For questions about recent medical developments, current outbreaks, or time-sensitive medical information.
-    4. BRAIN_TUMOR_AGENT - For analysis of brain MRI images to detect and segment tumors.
-    5. CHEST_XRAY_AGENT - For analysis of chest X-ray images to detect abnormalities.
-    6. SKIN_LESION_AGENT - For analysis of skin lesion images to classify them as benign or malignant.
-
-    Make your decision based on these guidelines:
-    - If the user has not uploaded any image, always route to the conversation agent.
-    - If the user uploads a medical image, decide which medical vision agent is appropriate based on the image type and the user's query. If the image is uploaded without a query, always route to the correct medical vision agent based on the image type.
-    - If the user asks about recent medical developments or current health situations, use the web search pocessor agent.
-    - If the user asks specific medical knowledge questions, use the RAG agent.
-    - For general conversation, greetings, or non-medical questions, use the conversation agent. But if image is uploaded, always go to the medical vision agents first.
-
-    You must provide your answer in JSON format with the following structure:
-    {{
-    "agent": "AGENT_NAME",
-    "reasoning": "Your step-by-step reasoning for selecting this agent",
-    "confidence": 0.95  // Value between 0.0 and 1.0 indicating your confidence in this decision
-    }}
-    """
+    # Routing instructions are built dynamically from data/medical/raw via build_decision_system_prompt().
 
 class AgentState(MessagesState):
     """State maintained across the workflow."""
@@ -90,6 +64,7 @@ class AgentState(MessagesState):
     retrieval_confidence: float  # Confidence in retrieval (for RAG agent)
     bypass_routing: bool  # Flag to bypass agent routing for guardrails
     insufficient_info: bool  # Flag indicating RAG response has insufficient information
+    validation_submission: Optional[dict[str, str]]  # Human validation yes/no from /chat/validate
 
 
 class AgentDecision(TypedDict):
@@ -112,15 +87,8 @@ def create_agent_graph():
     # Initialize the output parser
     json_parser = JsonOutputParser(pydantic_object=AgentDecision)
     
-    # Create the decision prompt
-    decision_prompt = ChatPromptTemplate.from_messages([
-        ("system", AgentConfig.DECISION_SYSTEM_PROMPT),
-        ("human", "{input}")
-    ])
-    
-    # Create the decision chain
-    decision_chain = decision_prompt | decision_model | json_parser
-    
+    decision_runner = decision_model | json_parser
+
     # Define graph state transformations
     def analyze_input(state: AgentState) -> AgentState:
         """Analyze the input to detect images and determine input type."""
@@ -131,13 +99,18 @@ def create_agent_graph():
         has_image = False
         image_type = None
         
-        # Get the text from the input
-        input_text = ""
-        if isinstance(current_input, str):
-            input_text = current_input
-        elif isinstance(current_input, dict):
-            input_text = current_input.get("text", "")
-        
+        input_text = extract_input_text(current_input)
+
+        validation = parse_validation_submission(input_text)
+        if validation:
+            return {
+                **state,
+                "validation_submission": validation,
+                "has_image": False,
+                "image_type": None,
+                "bypass_routing": False,
+            }
+
         # Check input through guardrails if text is present
         if input_text:
             from app.conversation.context import format_recent_user_questions
@@ -156,13 +129,15 @@ def create_agent_graph():
             if not is_allowed:
                 # If input is blocked, return early with guardrail message
                 print(f"Selected agent: INPUT GUARDRAILS, Message: ", message)
+                blocked = message if isinstance(message, AIMessage) else AIMessage(content=str(message))
                 return {
                     **state,
-                    "messages": message,
+                    "messages": [blocked],
+                    "output": blocked,
                     "agent_name": "INPUT_GUARDRAILS",
                     "has_image": False,
                     "image_type": None,
-                    "bypass_routing": True  # flag to end flow
+                    "bypass_routing": True,
                 }
         
         # Original image processing code
@@ -180,11 +155,47 @@ def create_agent_graph():
             "bypass_routing": False  # Explicitly set to False for normal flow
         }
     
-    def check_if_bypassing(state: AgentState) -> str:
-        """Check if we should bypass normal routing due to guardrails."""
+    def route_after_analyze(state: AgentState) -> str:
+        if state.get("validation_submission"):
+            return "validation_response"
         if state.get("bypass_routing", False):
             return "apply_guardrails"
         return "route_to_agent"
+
+    def run_validation_response(state: AgentState) -> AgentState:
+        """Acknowledge human validation without re-running CV or input guardrails."""
+        from app.chat_progress import emit_progress
+
+        emit_progress("validation_response")
+        submission = state.get("validation_submission") or {}
+        result = str(submission.get("result", "")).lower()
+        comments = str(submission.get("comments", "")).strip()
+
+        if result == "yes":
+            content = (
+                "Cảm ơn bạn đã xác nhận kết quả sàng lọc.\n\n"
+                "Nếu bạn muốn, mình có thể **giải thích lại bằng ngôn ngữ dễ hiểu**. "
+                "Dù đã xác nhận, bạn vẫn nên trao đổi với bác sĩ khi có triệu chứng hoặc lo lắng.\n\n"
+                "**Lưu ý:** Đây chỉ là sàng lọc AI, không thay chẩn đoán của bác sĩ."
+            )
+        else:
+            note = f" Ghi chú của bạn: *{comments}*." if comments else ""
+            content = (
+                "Mình đã ghi nhận: kết quả này **cần được bác sĩ xem lại**."
+                f"{note}\n\n"
+                "Bạn nên mang phim X-quang và báo cáo này đến bác sĩ hô hấp hoặc "
+                "chẩn đoán hình ảnh để đối chiếu lại — AI chỉ hỗ trợ sàng lọc ban đầu.\n\n"
+                "**Lưu ý:** Đây không phải chẩn đoán y khoa chính thức."
+            )
+
+        reply = AIMessage(content=content)
+        return {
+            **state,
+            "output": reply,
+            "messages": [reply],
+            "agent_name": "VALIDATION_AGENT",
+            "needs_human_validation": False,
+        }
     
     def route_to_agent(state: AgentState) -> Dict:
         """Make decision about which agent should handle the query."""
@@ -224,8 +235,17 @@ def create_agent_graph():
         Based on this information, which agent should handle this query?
         """
         
-        # Make the decision
-        decision = decision_chain.invoke({"input": decision_input})
+        # Rebuild routing prompt from raw/ so new ingested PDFs are reflected automatically
+        system_prompt = build_decision_system_prompt(
+            raw_dir=config.rag.raw_documents_dir,
+            metadata_path=config.rag.document_metadata_path,
+        )
+        decision = decision_runner.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=decision_input),
+            ]
+        )
 
         # Decided agent
         print(f"Decision: {decision['agent']}")
@@ -311,7 +331,9 @@ def create_agent_graph():
         - Do **not** attempt to analyze images yourself.
         - If user speaks about analyzing or processing or detecting or segmenting or classifying any disease from any image, ask the user to upload the image so that in the next turn it is routed to the appropriate medical vision agents.
         - If an image was uploaded, it would have been routed to the medical computer vision agents. Read the history to know about the diagnosis results and continue conversation if user asks anything regarding the diagnosis.
-        - After processing, **help the user interpret the results**.
+        - After processing, **help the user interpret the results in plain everyday language** — summarize first, then only go term-by-term if they explicitly ask for detail.
+
+        {PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS}
 
         5. **Uncertainty & Ethical Considerations:**
         - If unsure, **never assume** medical facts.
@@ -335,6 +357,13 @@ def create_agent_graph():
 
         **User:** "I have a headache and fever. What should I do?" (follow-up)
         **You:** "Headaches and fever can have various causes, from infections to dehydration. If your symptoms persist, you should see a medical professional."
+
+        **User:** "Giải thích ý nghĩa" (after chest X-ray screening listed many findings)
+        **You:** "Nhìn chung, máy AI thấy phim X-quang có **nhiều chỗ bất thường ở phổi** — chủ yếu là vùng mờ, có thể kèm dịch hoặc dày màng phổi. Các con số % chỉ cho biết AI **khá chắc** hay **hơi nghi ngờ**, không phải mức độ bệnh nặng hay nhẹ.
+
+        Khi một lúc báo nhiều mục như vậy, thường là ảnh khó đọc hoặc **một vùng** khiến AI gắn nhiều nhãn — chưa chắc là bạn mắc cả chục bệnh cùng lúc. Việc quan trọng nhất là **đưa phim và báo cáo này cho bác sĩ** (hô hấp hoặc chẩn đoán hình ảnh) để họ xem lại và hỏi thêm triệu chứng.
+
+        **Lưu ý:** Đây chỉ là sàng lọc AI, không thay chẩn đoán của bác sĩ."
 
         Conversational LLM Response:"""
 
@@ -510,17 +539,8 @@ def create_agent_graph():
 
         print(f"Selected agent: CHEST_XRAY_AGENT")
 
-        # classify chest x-ray into covid or normal
-        predicted_class = get_image_analyzer().classify_chest_xray(image_path)
-
-        if predicted_class == "covid19":
-            response = AIMessage(content="The analysis of the uploaded chest X-ray image indicates a **POSITIVE** result for **COVID-19**.")
-        elif predicted_class == "normal":
-            response = AIMessage(content="The analysis of the uploaded chest X-ray image indicates a **NEGATIVE** result for **COVID-19**, i.e., **NORMAL**.")
-        else:
-            response = AIMessage(content="The uploaded image is not clear enough to make a diagnosis / the image is not a medical image.")
-
-        # response = AIMessage(content="This would be handled by the chest X-ray agent, analyzing the image.")
+        response_text = get_image_analyzer().classify_chest_xray(image_path)
+        response = AIMessage(content=response_text)
 
         return {
             **state,
@@ -654,6 +674,7 @@ def create_agent_graph():
     workflow.add_node("SKIN_LESION_AGENT", run_skin_lesion_agent)
     workflow.add_node("check_validation", handle_human_validation)
     workflow.add_node("human_validation", perform_human_validation)
+    workflow.add_node("validation_response", run_validation_response)
     workflow.add_node("apply_guardrails", apply_output_guardrails)
     
     # Define the edges (workflow connections)
@@ -662,12 +683,14 @@ def create_agent_graph():
     # Add conditional routing for guardrails bypass
     workflow.add_conditional_edges(
         "analyze_input",
-        check_if_bypassing,
+        route_after_analyze,
         {
+            "validation_response": "validation_response",
             "apply_guardrails": "apply_guardrails",
-            "route_to_agent": "route_to_agent"
-        }
+            "route_to_agent": "route_to_agent",
+        },
     )
+    workflow.add_edge("validation_response", END)
     
     # Connect decision router to agents
     workflow.add_conditional_edges(
@@ -725,7 +748,8 @@ def init_agent_state() -> AgentState:
         "needs_human_validation": False,
         "retrieval_confidence": 0.0,
         "bypass_routing": False,
-        "insufficient_info": False
+        "insufficient_info": False,
+        "validation_submission": None,
     }
 
 

@@ -13,6 +13,7 @@ import {
   BookOpenCheck,
   ImagePlus,
   Trash2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -191,6 +192,32 @@ export default function TherapyPage() {
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(
+    null
+  );
+
+  const clearPendingImage = () => {
+    if (pendingImagePreview) {
+      URL.revokeObjectURL(pendingImagePreview);
+    }
+    setPendingImageFile(null);
+    setPendingImagePreview(null);
+  };
+
+  const attachImageFile = (file: File) => {
+    clearPendingImage();
+    setPendingImageFile(file);
+    setPendingImagePreview(URL.createObjectURL(file));
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pendingImagePreview) {
+        URL.revokeObjectURL(pendingImagePreview);
+      }
+    };
+  }, [pendingImagePreview]);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
   const isMedicalMode = chatMode === "medical";
@@ -521,9 +548,20 @@ export default function TherapyPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentMessage = message.trim();
-    if (!currentMessage || isTyping) return;
+    if (isTyping) return;
     if (!isMedicalMode && crisisChoices.length > 0) return;
+
+    if (isMedicalMode && pendingImageFile) {
+      const file = pendingImageFile;
+      const text = message.trim();
+      setMessage("");
+      clearPendingImage();
+      await handleImageUpload(file, text);
+      return;
+    }
+
+    const currentMessage = message.trim();
+    if (!currentMessage) return;
     setMessage("");
     await sendUserMessage(currentMessage);
   };
@@ -534,6 +572,7 @@ export default function TherapyPage() {
     if (sessionId && typeof window !== "undefined") {
       window.localStorage.setItem(chatModeStorageKey(sessionId), mode);
     }
+    clearPendingImage();
     void (async () => {
       setMessages(await welcomeMessages(mode));
       setCrisisChoices([]);
@@ -542,33 +581,46 @@ export default function TherapyPage() {
     })();
   };
 
-  const handleImageUpload = async (file: File) => {
+  const handleImageUpload = async (file: File, text: string = "") => {
     if (!sessionId || isTyping || chatMode !== "medical") return;
     setIsTyping(true);
     setTypingStatus("Analyzing image");
+    const previewUrl = URL.createObjectURL(file);
+    const userText = text.trim() || "[Medical image upload]";
     setMessages((prev) => [
       ...prev,
       {
         role: "user",
-        content: `[Uploaded image: ${file.name}]`,
+        content: userText,
         timestamp: new Date(),
+        metadata: { chat_mode: "medical", has_image: true, image_url: previewUrl },
       },
     ]);
     try {
-      const response = await uploadMedicalImage(sessionId, file, message.trim());
-      setMessage("");
+      const response = await uploadMedicalImage(sessionId, file, text.trim());
       const resultImage = response.metadata?.result_image as string | undefined;
       const imageUrl = resultImage
         ? resultImage.startsWith("http")
           ? resultImage
           : `${API_BASE}${resultImage}`
         : undefined;
+      const uploadedImageUrl = response.metadata?.image_url as string | undefined;
       setPendingMedicalValidation(
         Boolean(response.metadata?.needs_validation)
       );
-      setMessages((prev) => [
-        ...prev,
-        {
+      setMessages((prev) => {
+        const next = [...prev];
+        const lastUserIdx = next.findLastIndex((msg) => msg.role === "user");
+        if (lastUserIdx >= 0 && uploadedImageUrl) {
+          next[lastUserIdx] = {
+            ...next[lastUserIdx],
+            metadata: {
+              ...(next[lastUserIdx].metadata || {}),
+              image_url: uploadedImageUrl,
+            },
+          };
+        }
+        next.push({
           id: response.assistant_message_id,
           role: "assistant",
           content: response.response || response.message || "",
@@ -579,8 +631,9 @@ export default function TherapyPage() {
             ...(response.metadata || {}),
             ...(imageUrl ? { result_image: imageUrl } : {}),
           },
-        },
-      ]);
+        });
+        return next;
+      });
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -591,6 +644,7 @@ export default function TherapyPage() {
         },
       ]);
     } finally {
+      URL.revokeObjectURL(previewUrl);
       setIsTyping(false);
       setTypingStatus(null);
     }
@@ -607,7 +661,10 @@ export default function TherapyPage() {
         ...prev,
         {
           role: "user",
-          content: result === "yes" ? "Yes, confirmed." : `No. ${comments || ""}`.trim(),
+          content:
+            result === "yes"
+              ? "Đã xác nhận kết quả sàng lọc."
+              : `Chưa chắc — ${comments || "cần xem lại"}`.trim(),
           timestamp: new Date(),
         },
         {
@@ -858,7 +915,7 @@ export default function TherapyPage() {
                     </h3>
                     <p className="text-lg text-gray-500">
                       {isMedicalMode
-                        ? "Ask Helios a medical question or upload an image for analysis."
+                        ? "Hỏi Helios hoặc đính kèm ảnh, thêm ghi chú nếu cần, rồi bấm gửi."
                         : "How can I help you today?"}
                     </p>
                   </div>
@@ -1004,6 +1061,13 @@ export default function TherapyPage() {
 
                               {msg.role === "user" ? (
                                 <motion.div className="inline-block w-fit max-w-full rounded-2xl bg-brand px-4 py-3 text-left text-white">
+                                  {typeof msg.metadata?.image_url === "string" && (
+                                    <img
+                                      src={msg.metadata.image_url}
+                                      alt="Uploaded medical image"
+                                      className="mb-2 max-h-64 rounded-lg border border-white/20 object-contain"
+                                    />
+                                  )}
                                   <ChatMessageMarkdown
                                     content={msg.content}
                                     className="text-white [&_a]:text-white [&_p]:text-white [&_strong]:text-white"
@@ -1110,7 +1174,7 @@ export default function TherapyPage() {
               {pendingMedicalValidation && isMedicalMode ? (
                 <div className="w-full space-y-2">
                   <p className="text-center text-sm text-gray-600">
-                    Human validation required — confirm the analysis result:
+                    Xác nhận kết quả sàng lọc (bạn hoặc người có chuyên môn):
                   </p>
                   <div className="flex flex-wrap justify-center gap-2">
                     <Button
@@ -1118,15 +1182,15 @@ export default function TherapyPage() {
                       disabled={isTyping}
                       onClick={() => void handleMedicalValidation("yes")}
                     >
-                      Yes, confirm
+                      Đồng ý / Xác nhận
                     </Button>
                     <Button
                       type="button"
                       variant="secondary"
                       disabled={isTyping}
-                      onClick={() => void handleMedicalValidation("no", "Needs review")}
+                      onClick={() => void handleMedicalValidation("no", "Cần bác sĩ xem lại")}
                     >
-                      No, needs review
+                      Chưa chắc — cần xem lại
                     </Button>
                   </div>
                 </div>
@@ -1163,7 +1227,7 @@ export default function TherapyPage() {
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleImageUpload(file);
+                        if (file) attachImageFile(file);
                         e.target.value = "";
                       }}
                     />
@@ -1179,15 +1243,41 @@ export default function TherapyPage() {
                       {voiceInput.isRecording && (
                         <VoiceRecordingVisualizer level={voiceInput.audioLevel} />
                       )}
+                      {isMedicalMode && pendingImagePreview && (
+                        <div className="flex items-center gap-2 border-b border-brand-border/50 px-3 py-2">
+                          <img
+                            src={pendingImagePreview}
+                            alt="Ảnh đính kèm"
+                            className="h-12 w-12 rounded-lg border border-brand-border/60 object-cover"
+                          />
+                          <div className="min-w-0 flex-1 text-xs text-gray-600">
+                            <p className="truncate font-medium">
+                              {pendingImageFile?.name || "Medical image"}
+                            </p>
+                            <p>Thêm ghi chú (không bắt buộc), rồi bấm gửi.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={clearPendingImage}
+                            disabled={isTyping || pendingMedicalValidation}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                            aria-label="Remove attached image"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
                       <textarea
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         placeholder={
                           voiceInput.isRecording
                             ? "Listening to your voice..."
-                            : isMedicalMode
-                              ? "Ask a medical question..."
-                              : "Share what's on your mind..."
+                            : isMedicalMode && pendingImagePreview
+                              ? "Thêm ghi chú cho ảnh (không bắt buộc)..."
+                              : isMedicalMode
+                                ? "Hỏi Helios hoặc đính kèm ảnh y khoa..."
+                                : "Share what's on your mind..."
                         }
                         rows={1}
                         disabled={isTyping || pendingMedicalValidation}
@@ -1231,7 +1321,9 @@ export default function TherapyPage() {
                         <button
                           type="submit"
                           disabled={
-                            isTyping || !message.trim() || pendingMedicalValidation
+                            isTyping ||
+                            pendingMedicalValidation ||
+                            (!message.trim() && !pendingImageFile)
                           }
                           className={cn(
                             "rounded-full p-2.5 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50",

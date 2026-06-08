@@ -1,5 +1,5 @@
 from .image_classifier import ImageClassifier
-from .chest_xray_agent.covid_chest_xray_inference import ChestXRayClassification
+from .chest_xray_agent.torchxrayvision_inference import TorchXRayVisionClassifier
 # from .brain_tumor_agent.brain_tumor_inference import BrainTumorAgent
 from .skin_lesion_agent.skin_lesion_inference import SkinLesionSegmentation
 
@@ -10,7 +10,10 @@ class ImageAnalysisAgent:
     
     def __init__(self, config):
         self.image_classifier = ImageClassifier(vision_model=config.medical_cv.llm)
-        self.chest_xray_agent = ChestXRayClassification(model_path=config.medical_cv.chest_xray_model_path)
+        self.chest_xray_agent = TorchXRayVisionClassifier(
+            weights=config.medical_cv.chest_xray_weights,
+            threshold=config.medical_cv.chest_xray_threshold,
+        )
         # self.brain_tumor_agent = BrainTumorAgent()
         self.skin_lesion_agent = SkinLesionSegmentation(model_path=config.medical_cv.skin_lesion_model_path)
         self.skin_lesion_segmentation_output_path = config.medical_cv.skin_lesion_segmentation_output_path

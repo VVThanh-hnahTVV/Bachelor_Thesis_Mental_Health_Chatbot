@@ -839,13 +839,32 @@ async def chat_upload(
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
+    image_bytes = await image.read()
+    filename = image.filename or "upload.jpg"
+    try:
+        from app.storage.cloudinary import upload_chat_image
+
+        image_url = await upload_chat_image(
+            image_bytes,
+            filename=filename,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, detail=str(exc)) from exc
+
     user_content = text.strip() or "[Medical image upload]"
     await append_message(
         db,
         conversation_id=cid,
         role="user",
         content=user_content,
-        metadata={"chat_mode": "medical", "has_image": True},
+        metadata={
+            "chat_mode": "medical",
+            "has_image": True,
+            "image_url": image_url,
+        },
     )
 
     from app.conversation.context import load_conversation_summary
@@ -855,7 +874,8 @@ async def chat_upload(
         db,
         session_id=session_id,
         conversation_id=cid,
-        image=image,
+        image_bytes=image_bytes,
+        filename=filename,
         text=text,
         conversation_summary=conversation_summary,
     )
@@ -881,7 +901,7 @@ async def chat_upload(
         crisis_choices=[],
         crisis_stage="none",
         message_type="medical",
-        metadata=meta,
+        metadata={**(meta or {}), "image_url": image_url},
     )
 
 

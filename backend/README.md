@@ -57,3 +57,5 @@ python -m app.medical.ingest --dir data/medical/raw
 ```
 
 API: `POST /api/v1/chat` with `"chat_mode": "medical"`, plus `/api/v1/chat/upload` and `/api/v1/chat/validate`. Static segmentation images: `/uploads/medical/...`.
+
+Chest X-ray analysis uses [TorchXRayVision](https://github.com/mlmed/torchxrayvision) (`densenet121-res224-all` by default). Weights download to `~/.torchxrayvision` on first run. Configure via `CHEST_XRAY_WEIGHTS` and optional `CHEST_XRAY_THRESHOLD` in `.env`.

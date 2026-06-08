@@ -86,13 +86,22 @@ class RAGConfig:
         self.vector_local_path = str(DATA_MEDICAL / "qdrant_db")
         self.doc_local_path = str(DATA_MEDICAL / "docs_db")
         self.parsed_content_dir = str(DATA_MEDICAL / "parsed_docs")
+        self.raw_documents_dir = str(DATA_MEDICAL / "raw")
+        self.document_metadata_path = os.getenv(
+            "RAG_DOCUMENT_METADATA_PATH",
+            str(DATA_MEDICAL / "document_metadata.json"),
+        )
         self.url = os.getenv("QDRANT_URL")
         self.api_key = os.getenv("QDRANT_API_KEY")
         self.collection_name = get_qdrant_collection_name(
             self.embedding_provider, self.embedding_dim
         )
-        self.chunk_size = 512
-        self.chunk_overlap = 50
+        self.chunk_size = int(os.getenv("INGEST_CHUNK_SIZE_WORDS", "512"))
+        self.chunk_overlap = int(os.getenv("INGEST_CHUNK_OVERLAP_WORDS", "50"))
+        self.chunk_batch_max_words = int(os.getenv("INGEST_CHUNK_BATCH_MAX_WORDS", "12000"))
+        self.chunk_batch_max_sections = int(os.getenv("INGEST_CHUNK_BATCH_MAX_SECTIONS", "35"))
+        self.chunk_target_min_words = int(os.getenv("INGEST_CHUNK_TARGET_MIN_WORDS", "256"))
+        self.enable_llm_chunking = _env_bool("INGEST_LLM_CHUNKING", True)
         self.embedding_model = build_embeddings()
         self.llm = build_chat_llm(temperature=0.3)
         self.summarizer_model = build_ingest_llm(temperature=0.5, for_vision=True)
@@ -115,9 +124,10 @@ class MedicalCVConfig:
         self.brain_tumor_model_path = str(
             cv_root / "brain_tumor_agent" / "models" / "brain_tumor_segmentation.pth"
         )
-        self.chest_xray_model_path = str(
-            cv_root / "chest_xray_agent" / "models" / "covid_chest_xray_model.pth"
+        self.chest_xray_weights = os.getenv(
+            "CHEST_XRAY_WEIGHTS", "densenet121-res224-all"
         )
+        self.chest_xray_threshold = float(os.getenv("CHEST_XRAY_THRESHOLD", "0.5"))
         self.skin_lesion_model_path = str(
             cv_root / "skin_lesion_agent" / "models" / "checkpointN25_.pth.tar"
         )
