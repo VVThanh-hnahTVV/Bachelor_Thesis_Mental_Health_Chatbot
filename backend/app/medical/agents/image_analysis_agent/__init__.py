@@ -1,7 +1,7 @@
 from .image_classifier import ImageClassifier
 from .chest_xray_agent.torchxrayvision_inference import TorchXRayVisionClassifier
 from .brain_tumor_agent.brain_tumor_inference import BrainTumorAgent
-from .skin_lesion_agent.skin_lesion_inference import SkinLesionSegmentation
+from .skin_lesion_agent.skin_lesion_inference import SkinLesionClassifier
 
 class ImageAnalysisAgent:
     """
@@ -18,8 +18,11 @@ class ImageAnalysisAgent:
             model_path=config.medical_cv.brain_tumor_model_path,
             overlay_output_path=config.medical_cv.brain_tumor_overlay_output_path,
         )
-        self.skin_lesion_agent = SkinLesionSegmentation(model_path=config.medical_cv.skin_lesion_model_path)
-        self.skin_lesion_segmentation_output_path = config.medical_cv.skin_lesion_segmentation_output_path
+        self.skin_lesion_agent = SkinLesionClassifier(
+            model_path=config.medical_cv.skin_lesion_model_path,
+            overlay_output_path=config.medical_cv.skin_lesion_segmentation_output_path,
+        )
+        self.skin_lesion_overlay_output_path = config.medical_cv.skin_lesion_segmentation_output_path
     
     # classify image
     def analyze_image(self, image_path: str) -> str:
@@ -33,6 +36,5 @@ class ImageAnalysisAgent:
     def classify_brain_tumor(self, image_path: str) -> str:
         return self.brain_tumor_agent.predict(image_path)
     
-    # skin lesion agent
-    def segment_skin_lesion(self, image_path: str) -> str:
-        return self.skin_lesion_agent.predict(image_path, self.skin_lesion_segmentation_output_path)
+    def classify_skin_lesion(self, image_path: str) -> str:
+        return self.skin_lesion_agent.predict(image_path, self.skin_lesion_overlay_output_path)

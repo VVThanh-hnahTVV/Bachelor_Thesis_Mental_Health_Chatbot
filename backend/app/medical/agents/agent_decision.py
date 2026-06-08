@@ -563,15 +563,8 @@ def create_agent_graph():
 
         print(f"Selected agent: SKIN_LESION_AGENT")
 
-        # classify chest x-ray into covid or normal
-        predicted_mask = get_image_analyzer().segment_skin_lesion(image_path)
-
-        if predicted_mask:
-            response = AIMessage(content="Following is the analyzed **segmented** output of the uploaded skin lesion image:")
-        else:
-            response = AIMessage(content="The uploaded image is not clear enough to make a diagnosis / the image is not a medical image.")
-
-        # response = AIMessage(content="This would be handled by the skin lesion agent, analyzing the skin image.")
+        response_text = get_image_analyzer().classify_skin_lesion(image_path)
+        response = AIMessage(content=response_text)
 
         return {
             **state,

@@ -132,7 +132,7 @@ class MedicalCVConfig:
         )
         self.chest_xray_threshold = float(os.getenv("CHEST_XRAY_THRESHOLD", "0.5"))
         self.skin_lesion_model_path = str(
-            cv_root / "skin_lesion_agent" / "models" / "checkpointN25_.pth.tar"
+            cv_root / "skin_lesion_agent" / "models" / "ham10000_efficientnet_b0.pth"
         )
         self.skin_lesion_segmentation_output_path = str(
             UPLOADS_MEDICAL / "skin_lesion_output" / "segmentation_plot.png"

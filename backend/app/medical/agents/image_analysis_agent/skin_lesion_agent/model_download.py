@@ -1,23 +1,32 @@
+"""Download HAM10000 EfficientNet-B0 weights from Hugging Face."""
+
+from __future__ import annotations
+
 import os
-import gdown
+from pathlib import Path
 
-def download_model_checkpoint(gdrive_file_id, output_path):
-    """
-    Download model checkpoint from Google Drive if it doesn't exist.
-    
-    Args:
-        gdrive_file_id (str): Google Drive file ID
-        output_path (str): Path where model will be saved
-    """
-    # Ensure the directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
-    # Check if file already exists
-    if not os.path.exists(output_path):
-        print(f"Downloading model checkpoint to {output_path}...")
-        url = f'https://drive.google.com/uc?id={gdrive_file_id}'
-        gdown.download(url, output_path, quiet=False)
-        print("Download complete!")
+_HF_REPO = "yungprof/ham10000_efficientnet_b0"
+_HF_FILENAME = "ham10000_efficientnet_b0.pth"
 
-# Usage in app.py
-# download_model_checkpoint('your_gdrive_file_id', 'path/to/checkpoint.pth')
+
+def ensure_model_checkpoint(output_path: str) -> str:
+    """Download classifier weights if missing; return local path."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file() and path.stat().st_size > 1_000_000:
+        return str(path)
+
+    from huggingface_hub import hf_hub_download
+
+    cached = hf_hub_download(
+        repo_id=_HF_REPO,
+        filename=_HF_FILENAME,
+        local_dir=str(path.parent),
+        local_dir_use_symlinks=False,
+    )
+    cached_path = Path(cached)
+    if cached_path.resolve() != path.resolve():
+        if path.is_file():
+            path.unlink()
+        os.replace(cached, path)
+    return str(path)

@@ -1,137 +1,186 @@
-import os
-import cv2
-import torch
-import logging
-import numpy as np
-import matplotlib.pyplot as plt
-import torch.nn as nn
-import torch.nn.functional as F
-from .model_download import download_model_checkpoint
+"""HAM10000 skin lesion classification via EfficientNet-B0 + Grad-CAM overlay."""
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import timm
+import torch
+import torch.nn.functional as F
+from PIL import Image
+from torchvision import transforms
+
+from .model_download import ensure_model_checkpoint
+
 logger = logging.getLogger(__name__)
 
-# Device setup
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logger.info(f"Using device: {DEVICE}")
+_DISCLAIMER = (
+    "\n\n**Lưu ý:** Đây chỉ là kết quả sàng lọc từ AI trên ảnh da/dermoscopy, "
+    "không phải chẩn đoán y khoa. Bạn nên đi khám bác sĩ da liễu để soi dermoscopy "
+    "và sinh thiết nếu cần."
+)
 
-class UNet(nn.Module):
-    """U-Net model for image segmentation."""
-    def __init__(self, n_channels, n_classes):
-        super(UNet, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+# Standard HAM10000 label order (alphabetical by class folder name).
+_CLASS_NAMES = ("akiec", "bcc", "bkl", "df", "mel", "nv", "vasc")
 
-        # Contracting path (encoder)
-        self.conv1 = nn.Conv2d(self.n_channels, 64, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
-        self.conv5 = nn.Conv2d(512, 1024, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+_PLAIN_LABELS: dict[str, str] = {
+    "akiec": "Dày sừng sun / tổn thương tiền ung thư da (AKIEC)",
+    "bcc": "Ung thư tế bào đáy (BCC)",
+    "bkl": "Tổn thương da lành tính kiểu sừng (BKL)",
+    "df": "U xơ da (dermatofibroma)",
+    "mel": "Melanoma (ung thư da đen)",
+    "nv": "Nốt ruồi melanocytic (thường lành tính)",
+    "vasc": "Tổn thương mạch máu da",
+}
 
-        # Expansive path (decoder)
-        self.upconv1 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
-        self.conv6 = nn.Conv2d(1024, 512, kernel_size=3, padding=1)
-        self.upconv2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.conv7 = nn.Conv2d(512, 256, kernel_size=3, padding=1)
-        self.upconv3 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.conv8 = nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.upconv4 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.conv9 = nn.Conv2d(128, 64, kernel_size=3, padding=1)
-        self.conv10 = nn.Conv2d(64, self.n_classes, kernel_size=1)
+_HIGH_RISK = frozenset({"mel", "bcc", "akiec"})
 
-    def forward(self, x):
-        """Forward pass of U-Net."""
-        x1 = F.relu(self.conv1(x))
-        x2 = F.relu(self.conv2(self.pool(x1)))
-        x3 = F.relu(self.conv3(self.pool(x2)))
-        x4 = F.relu(self.conv4(self.pool(x3)))
-        x5 = F.relu(self.conv5(self.pool(x4)))
-
-        x6 = F.relu(self.upconv1(x5))
-        x6 = torch.cat([x4, x6], dim=1)
-        x6 = F.relu(self.conv6(x6))
-        x7 = F.relu(self.upconv2(x6))
-        x7 = torch.cat([x3, x7], dim=1)
-        x7 = F.relu(self.conv7(x7))
-        x8 = F.relu(self.upconv3(x7))
-        x8 = torch.cat([x2, x8], dim=1)
-        x8 = F.relu(self.conv8(x8))
-        x9 = F.relu(self.upconv4(x8))
-        x9 = torch.cat([x1, x9], dim=1)
-        x9 = F.relu(self.conv9(x9))
-        x10 = self.conv10(x9)
-
-        return x10
+_TRANSFORM = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
 
-class SkinLesionSegmentation:
-    """Handles skin lesion segmentation using a trained U-Net model."""
-    
-    def __init__(self, model_path):
+class SkinLesionClassifier:
+    """Classify dermoscopic skin lesions on HAM10000 taxonomy."""
+
+    def __init__(self, model_path: str, overlay_output_path: str) -> None:
         self.model_path = model_path
-        self.device = DEVICE
+        self.overlay_output_path = overlay_output_path
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._load_model()
 
-    def _load_model(self):
-        """Load the trained U-Net model."""
-        try:
-            # with safe_globals([UNet]):
-            #     model = torch.load(self.model_path, weights_only=False, map_location=self.device)
-            # Call this before using the model
-            download_model_checkpoint('1rvn4ucOH6UBoNk-GB9bUWuGTLkNIVUf0', self.model_path)
-            model = UNet(n_channels=3, n_classes=1).to(self.device)  # Explicitly initialize UNet
-            # model.load_state_dict(torch.load(self.model_path, weights_only=False, map_location=self.device), strict=False)
-            model.load_state_dict(torch.load(self.model_path, map_location=torch.device(self.device))['state_dict'])
-            # model = torch.load(self.model_path, map_location=torch.device(DEVICE))
-            model.eval()
-            logger.info(f"Model loaded successfully from {self.model_path}")
-            return model
-        except Exception as e:
-            logger.error(f"Error loading model: {e}")
-            raise e
+    def _load_model(self) -> torch.nn.Module:
+        weights_path = ensure_model_checkpoint(self.model_path)
+        model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=7)
+        state = torch.load(weights_path, map_location=self.device, weights_only=False)
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+        model.load_state_dict(state)
+        model = model.to(self.device)
+        model.eval()
+        logger.info("HAM10000 EfficientNet-B0 loaded from %s on %s", weights_path, self.device)
+        return model
 
-    def _overlay_mask(self, img, mask, output_path):
-        """Overlay the segmentation mask on the original image."""
+    def _preprocess(self, image_path: str) -> tuple[torch.Tensor, np.ndarray]:
+        pil = Image.open(image_path).convert("RGB")
+        rgb = np.array(pil)
+        tensor = _TRANSFORM(pil).unsqueeze(0).to(self.device)
+        return tensor, rgb
+
+    def _predict_probs(self, tensor: torch.Tensor) -> tuple[str, float, dict[str, float]]:
+        with torch.no_grad():
+            logits = self.model(tensor)
+            probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+
+        scores = {name: float(probs[i]) for i, name in enumerate(_CLASS_NAMES)}
+        best_idx = int(np.argmax(probs))
+        return _CLASS_NAMES[best_idx], float(probs[best_idx]), scores
+
+    def _grad_cam(self, tensor: torch.Tensor, target_idx: int, rgb: np.ndarray) -> np.ndarray:
+        activations: list[torch.Tensor] = []
+        gradients: list[torch.Tensor] = []
+        target_layer = self.model.blocks[-1]
+
+        def forward_hook(_module, _inputs, output) -> None:
+            activations.append(output)
+
+        def backward_hook(_module, _grad_input, grad_output) -> None:
+            gradients.append(grad_output[0])
+
+        handle_f = target_layer.register_forward_hook(forward_hook)
+        handle_b = target_layer.register_full_backward_hook(backward_hook)
         try:
-            mask_stacked = np.stack((mask,) * 3, axis=-1)
-            fig, ax = plt.subplots(figsize=(10, 10))
+            self.model.zero_grad(set_to_none=True)
+            output = self.model(tensor)
+            score = output[0, target_idx]
+            score.backward()
+
+            grads = gradients[0]
+            fmaps = activations[0]
+            weights = grads.mean(dim=(2, 3), keepdim=True)
+            cam = (weights * fmaps).sum(dim=1, keepdim=True)
+            cam = F.relu(cam)
+            cam = F.interpolate(cam, size=(rgb.shape[0], rgb.shape[1]), mode="bilinear", align_corners=False)
+            cam_np = cam.squeeze().detach().cpu().numpy()
+            return (cam_np - cam_np.min()) / (cam_np.max() - cam_np.min() + 1e-8)
+        finally:
+            handle_f.remove()
+            handle_b.remove()
+
+    def _save_overlay(self, rgb: np.ndarray, cam: np.ndarray, output_path: str) -> bool:
+        try:
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            heatmap = plt.cm.jet(cam)[..., :3]
+            fig, ax = plt.subplots(figsize=(8, 8))
             ax.axis("off")
-            ax.imshow(img)
-            ax.imshow(mask_stacked, alpha=0.4)
-            # plt.savefig("overlayed_plot.png", bbox_inches="tight")
-            plt.savefig(output_path, bbox_inches="tight")
-            logger.info("Overlayed segmentation mask saved as 'overlayed_plot.png'")
-            # return "overlayed_plot.png"
-            return True
-        except Exception as e:
-            logger.error(f"Error generating overlay: {e}")
-            raise e
-    
-    def predict(self, image_path, output_path):
-        """Segment lesion in an image and return overlaid visualization."""
+            ax.imshow(rgb)
+            ax.imshow(heatmap, alpha=0.42)
+            plt.savefig(out, bbox_inches="tight", pad_inches=0)
+            plt.close(fig)
+            return out.is_file()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to save skin lesion Grad-CAM overlay: %s", exc)
+            plt.close("all")
+            return False
+
+    def predict(self, image_path: str, output_path: str | None = None) -> str:
+        overlay_path = output_path or self.overlay_output_path
         try:
-            img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0  # Normalize to [0,1]
-            img_resized = cv2.resize(img, (256, 256))
-            img_tensor = torch.Tensor(img_resized).unsqueeze(0).permute(0, 3, 1, 2).to(self.device)
+            tensor, rgb = self._preprocess(image_path)
+            best_name, confidence, scores = self._predict_probs(tensor)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Skin lesion inference failed: %s", exc)
+            return (
+                "Không đọc được ảnh tổn thương da này. "
+                "Bạn thử gửi lại ảnh rõ hơn (dermoscopy hoặc ảnh cận vùng tổn thương)."
+                + _DISCLAIMER
+            )
 
-            with torch.no_grad():
-                generated_mask = self.model(img_tensor).squeeze().cpu().numpy()
+        target_idx = _CLASS_NAMES.index(best_name)
+        cam = self._grad_cam(tensor, target_idx, rgb)
+        overlay_ok = self._save_overlay(rgb, cam, overlay_path)
 
-            # Resize mask to match original image dimensions
-            generated_mask_resized = cv2.resize(generated_mask, (img.shape[1], img.shape[0]))
-            return self._overlay_mask(img, generated_mask_resized, output_path)
+        label = _PLAIN_LABELS.get(best_name, best_name)
+        certainty = "AI khá chắc" if confidence >= 0.55 else "AI hơi nghi ngờ"
 
-        except Exception as e:
-            logger.error(f"Error during segmentation: {e}")
-            raise e
+        if best_name in _HIGH_RISK:
+            intro = (
+                f"AI nghi ngờ **{label}** ({certainty}: {confidence:.0%}).\n\n"
+                "Đây là nhóm cần **theo dõi hoặc khám da liễu sớm** — AI chỉ gợi ý sàng lọc.\n\n"
+                "Xác suất từng nhóm HAM10000:\n"
+            )
+        else:
+            intro = (
+                f"AI thấy ảnh **gần với {label}** nhất ({certainty}: {confidence:.0%}).\n\n"
+                "Xác suất từng nhóm HAM10000:\n"
+            )
 
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        lines = [
+            f"- **{_PLAIN_LABELS.get(name, name)}** — {score:.0%}"
+            for name, score in ranked
+        ]
+        body = intro + "\n".join(lines)
 
-# # Example Usage
-# if __name__ == "__main__":
-#     segmenter = SkinLesionSegmentation(model_path="./models/skin_lesion_segmentation.pth")
-#     segmented_image = segmenter.predict("./images/ISIC_0020840.jpg", "./segmentation_plot.png")
-#     logger.info(f"Segmentation completed. Output saved at: {segmented_image}")
+        if overlay_ok:
+            body += (
+                "\n\nẢnh heatmap bên dưới cho thấy vùng AI chú ý nhất (Grad-CAM) — "
+                "chỉ mang tính tham khảo."
+            )
+
+        if best_name == "mel":
+            body += (
+                "\n\n**Melanoma** là ung thư da nguy hiểm; nếu bạn lo ngại, "
+                "hãy đặt lịch khám da liễu càng sớm càng tốt."
+            )
+
+        return body + _DISCLAIMER

@@ -49,6 +49,7 @@ medical = [
     "pypdf>=5.0.0",
     "beautifulsoup4>=4.13.0",
     "torchxrayvision>=1.2.0",
+    "timm>=1.0.0",
     "scikit-image>=0.24.0",
 ]
 
