@@ -11,9 +11,7 @@ import {
   PlusCircle,
   AlertTriangle,
   BookOpenCheck,
-  ImagePlus,
   Trash2,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -21,16 +19,7 @@ import {
   AssistantMessageBubble,
   ChatMessageMarkdown,
 } from "@/components/therapy/chat-message-markdown";
-import { BreathingGame } from "@/components/games/breathing-game";
-import { OceanWaves } from "@/components/games/ocean-waves";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,8 +38,6 @@ import {
   ChatMessage,
   getAllChatSessions,
   ChatSession,
-  uploadMedicalImage,
-  validateMedicalOutput,
   chatModeStorageKey,
   type ChatMode,
 } from "@/lib/api/chat";
@@ -64,7 +51,9 @@ import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
 import { HeliosAvatar } from "@/components/therapy/helios-avatar";
 import { LunaAvatar } from "@/components/therapy/luna-avatar";
 import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
-import { startWellnessSession, completeWellnessSession } from "@/lib/api/wellness";
+import { startWellnessSession, completeWellnessSession, getActivityCatalog, type WellnessActivity } from "@/lib/api/wellness";
+import { ActivityPopupHost } from "@/components/activities/activity-popup-host";
+import { ActivityStarRating } from "@/components/activities/activity-star-rating";
 import type { QuickReply, CrisisChoice } from "@/lib/api/chat";
 import {
   CRISIS_CHIP_PREFIX,
@@ -75,12 +64,10 @@ import { fetchCurrentUser, linkChatSession } from "@/lib/api/auth";
 import { getDefaultLunaGreeting, getDefaultMedicalGreeting } from "@/lib/luna-greeting";
 import { registerChatSessionId, unregisterChatSessionId } from "@/lib/session";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
 const MEDICAL_SUGGESTED_QUESTIONS = [
-  { text: "What are common symptoms of brain tumors?" },
-  { text: "Explain chest X-ray findings for COVID-19" },
-  { text: "How is skin lesion analysis performed?" },
+  { text: "What are common symptoms of HIV/AIDS?" },
+  { text: "Explain how antiretroviral therapy works" },
+  { text: "What should I know about infectious disease prevention?" },
 ];
 
 const SUGGESTED_QUESTIONS = [
@@ -177,8 +164,10 @@ export default function TherapyPage() {
   const [mounted, setMounted] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [showBreathingPopup, setShowBreathingPopup] = useState(false);
-  const [showOceanPopup, setShowOceanPopup] = useState(false);
+  const [activityCatalog, setActivityCatalog] = useState<WellnessActivity[]>([]);
+  const [activeActivity, setActiveActivity] = useState<WellnessActivity | null>(null);
+  const [activityPopupOpen, setActivityPopupOpen] = useState(false);
+  const wellnessCompleteRef = useRef(false);
   // Crisis state
   const [crisisChoices, setCrisisChoices] = useState<CrisisChoice[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(
@@ -187,37 +176,9 @@ export default function TherapyPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [inputQuickReplies, setInputQuickReplies] = useState<QuickReply[]>([]);
   const [chatMode, setChatMode] = useState<ChatMode>("psychologist");
-  const [pendingMedicalValidation, setPendingMedicalValidation] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
-  const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(
-    null
-  );
-
-  const clearPendingImage = () => {
-    if (pendingImagePreview) {
-      URL.revokeObjectURL(pendingImagePreview);
-    }
-    setPendingImageFile(null);
-    setPendingImagePreview(null);
-  };
-
-  const attachImageFile = (file: File) => {
-    clearPendingImage();
-    setPendingImageFile(file);
-    setPendingImagePreview(URL.createObjectURL(file));
-  };
-
-  useEffect(() => {
-    return () => {
-      if (pendingImagePreview) {
-        URL.revokeObjectURL(pendingImagePreview);
-      }
-    };
-  }, [pendingImagePreview]);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
   const isMedicalMode = chatMode === "medical";
@@ -230,7 +191,7 @@ export default function TherapyPage() {
   const voiceInput = useSpeechToText({
     onTranscript: handleSpeechTranscript,
     onError: setSpeechError,
-    disabled: isTyping || pendingMedicalValidation,
+    disabled: isTyping,
   });
 
   const getSuggestedActivities = (metadata: ChatMessage["metadata"]) => {
@@ -273,7 +234,6 @@ export default function TherapyPage() {
     }
     setMessages(mapped);
     const last = [...mapped].reverse().find((m) => m.role === "assistant");
-    setPendingMedicalValidation(Boolean(last?.metadata?.needs_validation));
     if (restoredMode === "medical") {
       setCrisisChoices([]);
       setInputQuickReplies([]);
@@ -317,13 +277,11 @@ export default function TherapyPage() {
       setMessages(await welcomeMessages(mode));
       setInputQuickReplies([]);
       setCrisisChoices([]);
-      setPendingMedicalValidation(false);
     } catch {
       setMessages(await welcomeMessages("psychologist"));
       setChatMode("psychologist");
       setInputQuickReplies([]);
       setCrisisChoices([]);
-      setPendingMedicalValidation(false);
     }
   };
 
@@ -356,7 +314,6 @@ export default function TherapyPage() {
       setMessages(await welcomeMessages("psychologist"));
       setInputQuickReplies([]);
       setCrisisChoices([]);
-      setPendingMedicalValidation(false);
       window.history.pushState({}, "", `/therapy/${newSessionId}`);
     } catch (error) {
       console.error("Failed to create new session:", error);
@@ -459,9 +416,6 @@ export default function TherapyPage() {
       if (chatMode === "medical") {
         setCrisisChoices([]);
         setInputQuickReplies([]);
-        setPendingMedicalValidation(
-          Boolean(response.metadata?.needs_validation)
-        );
       } else {
         const nextCrisisChoices = response.crisis_choices ?? [];
         const blocked = Boolean(
@@ -479,7 +433,6 @@ export default function TherapyPage() {
           ).slice(0, 3);
           setInputQuickReplies(quickReplies);
         }
-        setPendingMedicalValidation(false);
       }
 
       // Auto-open the appropriate wellness popup when an activity is chosen.
@@ -493,13 +446,6 @@ export default function TherapyPage() {
           void openBreathing();
         }
       }
-
-      const resultImage = response.metadata?.result_image as string | undefined;
-      const imageUrl = resultImage
-        ? resultImage.startsWith("http")
-          ? resultImage
-          : `${API_BASE}${resultImage}`
-        : undefined;
 
       setMessages((prev) => [
         ...prev,
@@ -523,7 +469,6 @@ export default function TherapyPage() {
             quick_replies: quickReplies,
             chat_mode: chatMode,
             ...(response.metadata || {}),
-            ...(imageUrl ? { result_image: imageUrl } : {}),
           },
         },
       ]);
@@ -551,15 +496,6 @@ export default function TherapyPage() {
     if (isTyping) return;
     if (!isMedicalMode && crisisChoices.length > 0) return;
 
-    if (isMedicalMode && pendingImageFile) {
-      const file = pendingImageFile;
-      const text = message.trim();
-      setMessage("");
-      clearPendingImage();
-      await handleImageUpload(file, text);
-      return;
-    }
-
     const currentMessage = message.trim();
     if (!currentMessage) return;
     setMessage("");
@@ -572,122 +508,11 @@ export default function TherapyPage() {
     if (sessionId && typeof window !== "undefined") {
       window.localStorage.setItem(chatModeStorageKey(sessionId), mode);
     }
-    clearPendingImage();
     void (async () => {
       setMessages(await welcomeMessages(mode));
       setCrisisChoices([]);
       setInputQuickReplies([]);
-      setPendingMedicalValidation(false);
     })();
-  };
-
-  const handleImageUpload = async (file: File, text: string = "") => {
-    if (!sessionId || isTyping || chatMode !== "medical") return;
-    setIsTyping(true);
-    setTypingStatus("Analyzing image");
-    const previewUrl = URL.createObjectURL(file);
-    const userText = text.trim() || "[Medical image upload]";
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: userText,
-        timestamp: new Date(),
-        metadata: { chat_mode: "medical", has_image: true, image_url: previewUrl },
-      },
-    ]);
-    try {
-      const response = await uploadMedicalImage(sessionId, file, text.trim());
-      const resultImage = response.metadata?.result_image as string | undefined;
-      const imageUrl = resultImage
-        ? resultImage.startsWith("http")
-          ? resultImage
-          : `${API_BASE}${resultImage}`
-        : undefined;
-      const uploadedImageUrl = response.metadata?.image_url as string | undefined;
-      setPendingMedicalValidation(
-        Boolean(response.metadata?.needs_validation)
-      );
-      setMessages((prev) => {
-        const next = [...prev];
-        const lastUserIdx = next.findLastIndex((msg) => msg.role === "user");
-        if (lastUserIdx >= 0 && uploadedImageUrl) {
-          next[lastUserIdx] = {
-            ...next[lastUserIdx],
-            metadata: {
-              ...(next[lastUserIdx].metadata || {}),
-              image_url: uploadedImageUrl,
-            },
-          };
-        }
-        next.push({
-          id: response.assistant_message_id,
-          role: "assistant",
-          content: response.response || response.message || "",
-          timestamp: new Date(),
-          metadata: {
-            chat_mode: "medical",
-            message_type: "medical",
-            ...(response.metadata || {}),
-            ...(imageUrl ? { result_image: imageUrl } : {}),
-          },
-        });
-        return next;
-      });
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, image analysis failed. Please try again.",
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
-      URL.revokeObjectURL(previewUrl);
-      setIsTyping(false);
-      setTypingStatus(null);
-    }
-  };
-
-  const handleMedicalValidation = async (result: "yes" | "no", comments?: string) => {
-    if (!sessionId || isTyping) return;
-    setIsTyping(true);
-    setTypingStatus("Processing validation");
-    setPendingMedicalValidation(false);
-    try {
-      const response = await validateMedicalOutput(sessionId, result, comments);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "user",
-          content:
-            result === "yes"
-              ? "Đã xác nhận kết quả sàng lọc."
-              : `Chưa chắc — ${comments || "cần xem lại"}`.trim(),
-          timestamp: new Date(),
-        },
-        {
-          id: response.assistant_message_id,
-          role: "assistant",
-          content: response.response || response.message || "",
-          timestamp: new Date(),
-          metadata: { chat_mode: "medical", ...(response.metadata || {}) },
-        },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Validation could not be processed. Please try again.",
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
-      setIsTyping(false);
-      setTypingStatus(null);
-    }
   };
 
   const handleSuggestedQuestion = (text: string) => {
@@ -701,44 +526,106 @@ export default function TherapyPage() {
     });
   };
 
-  const openBreathing = async () => {
+  useEffect(() => {
+    void getActivityCatalog("helios", "vi")
+      .then(setActivityCatalog)
+      .catch(() => setActivityCatalog([]));
+  }, []);
+
+  const resolveActivity = (activityId: string): WellnessActivity | null => {
+    const fromCatalog = activityCatalog.find((a) => a.id === activityId);
+    if (fromCatalog) return fromCatalog;
+    return {
+      id: activityId,
+      title: activityId.replace(/_/g, " "),
+      description: "",
+      content_type: activityId.endsWith("_video") ? "video" : "interactive",
+      activity_type: activityId.endsWith("_video") ? "video" : "exercise",
+      ui_component: activityId,
+      video_url: null,
+      youtube_id: null,
+      video_source: null,
+      duration_min: 5,
+      avg_rating: 0,
+      rating_count: 0,
+    };
+  };
+
+  const openActivity = async (activityId: string) => {
     if (!sessionId) return;
-    setShowBreathingPopup(true);
+    const activity = resolveActivity(activityId);
+    if (!activity) return;
+    setActiveActivity(activity);
+    setActivityPopupOpen(true);
+    wellnessCompleteRef.current = false;
     try {
-      await startWellnessSession(sessionId, "breathing_box", { quiet: true, lang: "en" });
+      await startWellnessSession(sessionId, activityId, {
+        quiet: true,
+        lang: "vi",
+        chatMode,
+      });
     } catch {
       /* popup still opens */
     }
+  };
+
+  const openBreathing = async () => {
+    await openActivity("breathing_box");
   };
 
   const openOcean = async () => {
-    if (!sessionId) return;
-    setShowOceanPopup(true);
-    try {
-      await startWellnessSession(sessionId, "ocean_sound", { quiet: true, lang: "en" });
-    } catch {
-      /* popup still opens */
-    }
+    await openActivity("ocean_sound");
   };
 
   const handleWellnessComplete = async () => {
-    if (!sessionId) return;
+    if (!sessionId || !activeActivity || wellnessCompleteRef.current) return;
+    wellnessCompleteRef.current = true;
+    const activityId = activeActivity.id;
     try {
-      const { checkin_message, show_micro_feedback } =
-        await completeWellnessSession(sessionId, { lang: "en" });
-      if (checkin_message) {
+      const result = await completeWellnessSession(sessionId, {
+        lang: "vi",
+        activityId,
+      });
+      const ratingMeta =
+        result.show_activity_rating &&
+        result.completion_id &&
+        result.activity_id
+          ? {
+              pending_activity_rating: {
+                activity_id: result.activity_id,
+                completion_id: result.completion_id,
+                rated: false,
+              },
+              chat_mode: chatMode,
+            }
+          : { chat_mode: chatMode };
+
+      const assistantContent =
+        result.checkin_message ||
+        (result.show_activity_rating
+          ? chatMode === "medical"
+            ? "Bạn vừa hoàn thành bài tập. Bạn đánh giá thế nào?"
+            : "You finished the activity. How was it?"
+          : "");
+
+      if (assistantContent && (result.show_activity_rating || result.checkin_message)) {
         setMessages((prev) => [
           ...prev,
           {
+            id: result.assistant_message_id ?? undefined,
             role: "assistant",
-            content: checkin_message,
+            content: assistantContent,
             timestamp: new Date(),
-            metadata: { show_micro_feedback },
+            metadata: ratingMeta,
           },
         ]);
       }
     } catch {
       // ignore
+    } finally {
+      wellnessCompleteRef.current = false;
+      setActiveActivity(null);
+      setActivityPopupOpen(false);
     }
   };
 
@@ -1089,15 +976,6 @@ export default function TherapyPage() {
                               )}
 
                               {msg.role === "assistant" &&
-                                typeof msg.metadata?.result_image === "string" && (
-                                  <img
-                                    src={msg.metadata.result_image}
-                                    alt="Analysis result"
-                                    className="mt-2 max-h-64 rounded-lg border border-gray-200 object-contain"
-                                  />
-                                )}
-
-                              {msg.role === "assistant" &&
                                 msg.metadata?.show_micro_feedback &&
                                 msg.id === latestFeedbackMessageId &&
                                 sessionId && (
@@ -1108,41 +986,126 @@ export default function TherapyPage() {
                                 )}
 
                               {/* Wellness activity buttons */}
-                              {!isMedicalMode &&
-                                msg.role === "assistant" &&
+                              {msg.role === "assistant" &&
                                 msg.metadata?.message_type !== "crisis" &&
                                 (() => {
+                                  type ActivityEntry = { id: string; title: string };
                                   const activityIds = getSuggestedActivities(msg.metadata);
-                                  // Use metadata only — keyword scan duplicated CTAs already in prose.
-                                  const canShowBreathing =
-                                    activityIds.includes("breathing_box");
-                                  const canShowOcean =
-                                    activityIds.includes("ocean_sound");
-                                  if (!canShowBreathing && !canShowOcean) return null;
+                                  const suggestedList = Array.isArray(
+                                    msg.metadata?.suggested_activities
+                                  )
+                                    ? (msg.metadata.suggested_activities as Array<{
+                                        id: string;
+                                        title?: string;
+                                      }>)
+                                    : [];
+                                  const entries: ActivityEntry[] =
+                                    suggestedList.length > 0
+                                      ? suggestedList.map((s) => ({
+                                          id: s.id,
+                                          title: s.title || s.id,
+                                        }))
+                                      : activityIds.map((id: string) => ({
+                                          id,
+                                          title: resolveActivity(id)?.title || id,
+                                        }));
+                                  if (!entries.length) return null;
                                   return (
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                      {canShowBreathing && (
+                                      {entries.map((entry) => (
                                         <Button
+                                          key={entry.id}
                                           size="sm"
                                           className="rounded-full bg-brand hover:bg-brand/90"
-                                          onClick={() => void openBreathing()}
+                                          onClick={() => void openActivity(entry.id)}
                                         >
-                                          Open breathing exercise
+                                          {isMedicalMode
+                                            ? `Mở: ${entry.title}`
+                                            : `Open: ${entry.title}`}
                                         </Button>
-                                      )}
-                                      {canShowOcean && (
-                                        <Button
-                                          size="sm"
-                                          variant="secondary"
-                                          className="rounded-full"
-                                          onClick={() => void openOcean()}
-                                        >
-                                          Open calming ocean sounds
-                                        </Button>
-                                      )}
+                                      ))}
                                     </div>
                                   );
                                 })()}
+
+                              {msg.role === "assistant" &&
+                                Boolean(msg.metadata?.pending_activity_rating) &&
+                                sessionId &&
+                                msg.metadata?.pending_activity_rating && (
+                                  <ActivityStarRating
+                                    sessionId={sessionId}
+                                    messageId={msg.id}
+                                    activityId={
+                                      (msg.metadata.pending_activity_rating as {
+                                        activity_id: string;
+                                      }).activity_id
+                                    }
+                                    completionId={
+                                      (msg.metadata.pending_activity_rating as {
+                                        completion_id: string;
+                                      }).completion_id
+                                    }
+                                    initialRating={
+                                      (msg.metadata.pending_activity_rating as {
+                                        rating?: number;
+                                      }).rating
+                                    }
+                                    readOnly={Boolean(
+                                      (msg.metadata.pending_activity_rating as {
+                                        rated?: boolean;
+                                      }).rated
+                                    )}
+                                    initialThanks={
+                                      typeof msg.metadata.rating_thanks === "string"
+                                        ? msg.metadata.rating_thanks
+                                        : undefined
+                                    }
+                                    chatMode={chatMode}
+                                    lang="vi"
+                                    onRated={(rating, thankMessage) => {
+                                      const pending = msg.metadata?.pending_activity_rating as
+                                        | {
+                                            activity_id: string;
+                                            completion_id: string;
+                                            rated?: boolean;
+                                            rating?: number;
+                                          }
+                                        | undefined;
+                                      if (!pending) return;
+                                      setMessages((prev) =>
+                                        prev.map((m) =>
+                                          msg.id && m.id === msg.id
+                                            ? {
+                                                ...m,
+                                                metadata: {
+                                                  ...m.metadata,
+                                                  pending_activity_rating: {
+                                                    ...pending,
+                                                    rated: true,
+                                                    rating,
+                                                  },
+                                                  rating_thanks: thankMessage,
+                                                },
+                                              }
+                                            : m === msg
+                                              ? {
+                                                  ...m,
+                                                  metadata: {
+                                                    ...m.metadata,
+                                                    pending_activity_rating: {
+                                                      ...pending,
+                                                      rated: true,
+                                                      rating,
+                                                    },
+                                                    rating_thanks: thankMessage,
+                                                  },
+                                                }
+                                              : m
+                                        )
+                                      );
+                                    }}
+                                  />
+                                )}
                             </motion.div>
                           </motion.div>
                         </motion.div>
@@ -1171,30 +1134,7 @@ export default function TherapyPage() {
                   : "border-t border-brand-border/40"
               )}
             >
-              {pendingMedicalValidation && isMedicalMode ? (
-                <div className="w-full space-y-2">
-                  <p className="text-center text-sm text-gray-600">
-                    Xác nhận kết quả sàng lọc (bạn hoặc người có chuyên môn):
-                  </p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Button
-                      type="button"
-                      disabled={isTyping}
-                      onClick={() => void handleMedicalValidation("yes")}
-                    >
-                      Đồng ý / Xác nhận
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={isTyping}
-                      onClick={() => void handleMedicalValidation("no", "Cần bác sĩ xem lại")}
-                    >
-                      Chưa chắc — cần xem lại
-                    </Button>
-                  </div>
-                </div>
-              ) : !isMedicalMode && crisisChoices.length > 0 ? (
+              {!isMedicalMode && crisisChoices.length > 0 ? (
                 <div className="w-full">
                   <div className="grid grid-cols-2 gap-2">
                     {crisisChoices.map((choice) => (
@@ -1220,52 +1160,17 @@ export default function TherapyPage() {
                     />
                   )}
                   <form onSubmit={handleSubmit} className="min-w-0">
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) attachImageFile(file);
-                        e.target.value = "";
-                      }}
-                    />
                     <div
                       className={cn(
                         "flex flex-col rounded-2xl border-2 bg-brand-light transition-all focus-within:border-brand",
                         voiceInput.isRecording
                           ? "border-red-300 ring-2 ring-red-100"
                           : "border-brand-border/80",
-                        (isTyping || pendingMedicalValidation) && "opacity-50"
+                        isTyping && "opacity-50"
                       )}
                     >
                       {voiceInput.isRecording && (
                         <VoiceRecordingVisualizer level={voiceInput.audioLevel} />
-                      )}
-                      {isMedicalMode && pendingImagePreview && (
-                        <div className="flex items-center gap-2 border-b border-brand-border/50 px-3 py-2">
-                          <img
-                            src={pendingImagePreview}
-                            alt="Ảnh đính kèm"
-                            className="h-12 w-12 rounded-lg border border-brand-border/60 object-cover"
-                          />
-                          <div className="min-w-0 flex-1 text-xs text-gray-600">
-                            <p className="truncate font-medium">
-                              {pendingImageFile?.name || "Medical image"}
-                            </p>
-                            <p>Thêm ghi chú (không bắt buộc), rồi bấm gửi.</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={clearPendingImage}
-                            disabled={isTyping || pendingMedicalValidation}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-                            aria-label="Remove attached image"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
                       )}
                       <textarea
                         value={message}
@@ -1273,14 +1178,12 @@ export default function TherapyPage() {
                         placeholder={
                           voiceInput.isRecording
                             ? "Listening to your voice..."
-                            : isMedicalMode && pendingImagePreview
-                              ? "Thêm ghi chú cho ảnh (không bắt buộc)..."
-                              : isMedicalMode
-                                ? "Hỏi Helios hoặc đính kèm ảnh y khoa..."
-                                : "Share what's on your mind..."
+                            : isMedicalMode
+                              ? "Hỏi Helios về y khoa..."
+                              : "Share what's on your mind..."
                         }
                         rows={1}
-                        disabled={isTyping || pendingMedicalValidation}
+                        disabled={isTyping}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -1300,31 +1203,16 @@ export default function TherapyPage() {
                             onChange={handleChatModeChange}
                             disabled={hasUserMessages || isTyping}
                           />
-                          {isMedicalMode && (
-                            <button
-                              type="button"
-                              disabled={isTyping || pendingMedicalValidation}
-                              onClick={() => imageInputRef.current?.click()}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-border/60 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                              aria-label="Upload medical image"
-                            >
-                              <ImagePlus className="h-4 w-4" />
-                            </button>
-                          )}
                           <VoiceMicButton
                             toggle={voiceInput.toggle}
                             isRecording={voiceInput.isRecording}
                             isTranscribing={voiceInput.isTranscribing}
-                            disabled={isTyping || pendingMedicalValidation}
+                            disabled={isTyping}
                           />
                         </div>
                         <button
                           type="submit"
-                          disabled={
-                            isTyping ||
-                            pendingMedicalValidation ||
-                            (!message.trim() && !pendingImageFile)
-                          }
+                          disabled={isTyping || !message.trim()}
                           className={cn(
                             "rounded-full p-2.5 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50",
                             isMedicalMode
@@ -1391,41 +1279,12 @@ export default function TherapyPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
-        open={showBreathingPopup}
-        onOpenChange={(open) => {
-          setShowBreathingPopup(open);
-          if (!open) void handleWellnessComplete();
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Breathing exercise</DialogTitle>
-            <DialogDescription>
-              Take a few minutes to breathe in, hold, and breathe out to steady your rhythm and ease tension.
-            </DialogDescription>
-          </DialogHeader>
-          <BreathingGame onComplete={() => void handleWellnessComplete()} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={showOceanPopup}
-        onOpenChange={(open) => {
-          setShowOceanPopup(open);
-          if (!open) void handleWellnessComplete();
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Calming ocean sounds</DialogTitle>
-            <DialogDescription>
-              Play ocean wave ambience and adjust the volume to your preference.
-            </DialogDescription>
-          </DialogHeader>
-          <OceanWaves />
-        </DialogContent>
-      </Dialog>
+      <ActivityPopupHost
+        activity={activeActivity}
+        open={activityPopupOpen}
+        onOpenChange={setActivityPopupOpen}
+        onComplete={() => void handleWellnessComplete()}
+      />
     </>
   );
 }

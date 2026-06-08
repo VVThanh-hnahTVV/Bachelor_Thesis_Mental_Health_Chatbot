@@ -19,6 +19,18 @@ def test_match_objection_only():
     assert sc.id == "objection_apology"
 
 
+def test_match_repetition_frustration():
+    sc = match_scenario(
+        "Bạn chỉ nói được mỗi vậy thôi sao",
+        objection_detected=True,
+    )
+    assert sc is not None
+    assert sc.id == "repetition_frustration"
+    text = render_template(sc, "vi")
+    assert "lặp lại" in text.lower()
+    assert "chỉ nói được" not in text.lower()
+
+
 def test_render_template_vi():
     sc = match_scenario("bạn là ai", intent="casual")
     assert sc is not None

@@ -14,6 +14,7 @@ from app.auth.dependencies import resolve_optional_current_user
 from app.auth.repository import link_session_to_user
 from app.config import ProviderName
 from app.db.repository import (
+    ACTIVITY_COMPLETIONS,
     add_activity_completion,
     append_message,
     create_conversation,
@@ -153,14 +154,17 @@ class MessageFeedbackRequest(BaseModel):
 
 class WellnessStartRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
-    activity_id: str = Field(..., pattern="^(breathing_box|ocean_sound)$")
+    activity_id: str = Field(..., min_length=2, max_length=64)
     quiet: bool = False
     lang: str | None = Field(None, pattern="^(vi|en)$")
+    chat_mode: str | None = Field(None, pattern="^(psychologist|medical)$")
 
 
 class WellnessCompleteRequest(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
     lang: str | None = Field(None, pattern="^(vi|en)$")
+    activity_id: str | None = Field(None, min_length=2, max_length=64)
+    duration_sec: int | None = Field(None, ge=1, le=86400)
 
 
 class ScreeningSubmitRequest(BaseModel):
@@ -288,6 +292,7 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
             message=req.message,
             conversation_summary=conversation_summary,
         )
+        suggested = meta.get("suggested_activities") or []
         from app.conversation.summary import schedule_conversation_summary_update
 
         schedule_conversation_summary_update(
@@ -309,6 +314,7 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
             crisis_choices=[],
             crisis_stage="none",
             message_type="medical",
+            suggested_activities=[ActivitySuggestionOut(**s) for s in suggested],
             metadata=meta,
         )
 
@@ -791,6 +797,7 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
                 "emotion": result.emotion,
                 "therapy_strategy": result.therapy_strategy,
                 "quick_replies": [q.model_dump() for q in result.quick_replies],
+                "suggested_activities": [s.model_dump() for s in result.suggested_activities],
                 "metadata": result.metadata,
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False, default=_json_default)}\n\n"
@@ -812,175 +819,6 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     )
 
 
-@router.post("/chat/upload", response_model=ChatResponse)
-async def chat_upload(
-    request: Request,
-    session_id: str = Form(...),
-    image: UploadFile = File(...),
-    text: str = Form(""),
-    chat_mode: str = Form("medical"),
-) -> ChatResponse:
-    from app.api.medical_handlers import (
-        handle_medical_upload_turn,
-        resolve_conversation_mode,
-    )
-
-    db = get_db(request)
-    redis = get_redis(request)
-    conv = await get_conversation_by_session(db, session_id)
-    conv, mode = await resolve_conversation_mode(
-        db,
-        session_id=session_id,
-        requested_mode=chat_mode,
-        conv=conv,
-    )
-    if mode != "medical":
-        raise HTTPException(400, detail="Image upload is only available in medical mode")
-    cid = conv["_id"]
-    assert isinstance(cid, ObjectId)
-
-    image_bytes = await image.read()
-    filename = image.filename or "upload.jpg"
-    try:
-        from app.storage.cloudinary import upload_chat_image
-
-        image_url = await upload_chat_image(
-            image_bytes,
-            filename=filename,
-            session_id=session_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(503, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(502, detail=str(exc)) from exc
-
-    user_content = text.strip() or "[Medical image upload]"
-    await append_message(
-        db,
-        conversation_id=cid,
-        role="user",
-        content=user_content,
-        metadata={
-            "chat_mode": "medical",
-            "has_image": True,
-            "image_url": image_url,
-        },
-    )
-
-    from app.conversation.context import load_conversation_summary
-
-    conversation_summary = await load_conversation_summary(db, redis, session_id)
-    reply, meta, assistant_message_id = await handle_medical_upload_turn(
-        db,
-        session_id=session_id,
-        conversation_id=cid,
-        image_bytes=image_bytes,
-        filename=filename,
-        text=text,
-        conversation_summary=conversation_summary,
-    )
-    medical_provider = default_provider()
-    from app.conversation.summary import schedule_conversation_summary_update
-
-    schedule_conversation_summary_update(
-        db,
-        redis,
-        session_id=session_id,
-        conversation_id=cid,
-        user_message=user_content,
-        assistant_reply=reply,
-        provider=medical_provider,
-    )
-    return ChatResponse(
-        reply=reply,
-        session_id=session_id,
-        conversation_id=str(cid),
-        assistant_message_id=assistant_message_id,
-        provider=medical_provider,
-        chat_blocked=False,
-        crisis_choices=[],
-        crisis_stage="none",
-        message_type="medical",
-        metadata={**(meta or {}), "image_url": image_url},
-    )
-
-
-@router.post("/chat/validate", response_model=ChatResponse)
-async def chat_validate(
-    request: Request,
-    session_id: str = Form(...),
-    validation_result: str = Form(...),
-    comments: str | None = Form(None),
-) -> ChatResponse:
-    from app.api.medical_handlers import (
-        handle_medical_validation_turn,
-        resolve_conversation_mode,
-    )
-
-    db = get_db(request)
-    redis = get_redis(request)
-    conv = await get_conversation_by_session(db, session_id)
-    if not conv:
-        raise HTTPException(404, detail="Session not found")
-    _, mode = await resolve_conversation_mode(
-        db,
-        session_id=session_id,
-        requested_mode=None,
-        conv=conv,
-    )
-    if mode != "medical":
-        raise HTTPException(400, detail="Validation is only for medical sessions")
-    cid = conv["_id"]
-    assert isinstance(cid, ObjectId)
-
-    stored = f"Validation: {validation_result}"
-    if comments:
-        stored += f" — {comments}"
-    await append_message(
-        db,
-        conversation_id=cid,
-        role="user",
-        content=stored,
-        metadata={"chat_mode": "medical", "validation_input": True},
-    )
-
-    from app.conversation.context import load_conversation_summary
-
-    conversation_summary = await load_conversation_summary(db, redis, session_id)
-    reply, meta, assistant_message_id = await handle_medical_validation_turn(
-        db,
-        session_id=session_id,
-        conversation_id=cid,
-        validation_result=validation_result,
-        comments=comments,
-        conversation_summary=conversation_summary,
-    )
-    medical_provider = default_provider()
-    from app.conversation.summary import schedule_conversation_summary_update
-
-    schedule_conversation_summary_update(
-        db,
-        redis,
-        session_id=session_id,
-        conversation_id=cid,
-        user_message=stored,
-        assistant_reply=reply,
-        provider=medical_provider,
-    )
-    return ChatResponse(
-        reply=reply,
-        session_id=session_id,
-        conversation_id=str(cid),
-        assistant_message_id=assistant_message_id,
-        provider=medical_provider,
-        chat_blocked=False,
-        crisis_choices=[],
-        crisis_stage="none",
-        message_type="medical",
-        metadata=meta,
-    )
-
-
 @router.post("/chat/feedback")
 async def submit_message_feedback(body: MessageFeedbackRequest, request: Request) -> dict[str, str]:
     from app.db.repository import save_message_feedback
@@ -998,10 +836,14 @@ async def submit_message_feedback(body: MessageFeedbackRequest, request: Request
 @router.post("/wellness/start", response_model=ChatResponse)
 async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatResponse:
     from app.cache.session_memory import push_turn
+    from app.db.repository import is_valid_activity_id
     from app.wellness.session import set_active, start_session
 
     db = get_db(request)
     redis = get_redis(request)
+    if not await is_valid_activity_id(db, body.activity_id):
+        raise HTTPException(400, detail=f"Unknown or unavailable activity: {body.activity_id}")
+
     conv = await get_conversation_by_session(db, body.session_id)
     if not conv:
         conv = await create_conversation(db, session_id=body.session_id)
@@ -1044,15 +886,77 @@ async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatRe
 
 @router.post("/wellness/complete")
 async def wellness_complete(body: WellnessCompleteRequest, request: Request) -> dict[str, Any]:
-    from app.wellness.session import clear_session, complete_session
+    from app.wellness.session import clear_session, complete_session, get_session
 
+    db = get_db(request)
     redis = get_redis(request)
     lang = body.lang if body.lang in ("vi", "en") else "vi"
+    prior = await get_session(redis, body.session_id)
+    activity_id = body.activity_id or (prior or {}).get("activity_id") or ""
     state, checkin_msg = await complete_session(redis, session_id=body.session_id, lang=lang)
+
+    completion_id: str | None = None
+    assistant_message_id: str | None = None
+    chat_mode = "psychologist"
+    if activity_id:
+        conv = await get_conversation_by_session(db, body.session_id)
+        if conv:
+            cid = conv["_id"]
+            assert isinstance(cid, ObjectId)
+            chat_mode = str(conv.get("chat_mode") or "psychologist")
+            doc = await add_activity_completion(
+                db,
+                session_id=body.session_id,
+                conversation_id=cid,
+                activity_id=str(activity_id),
+                duration_sec=body.duration_sec,
+                chat_mode=chat_mode,
+            )
+            completion_id = str(doc["_id"])
+
+    show_rating = bool(completion_id and activity_id)
+    if show_rating or checkin_msg:
+        conv = await get_conversation_by_session(db, body.session_id)
+        if conv:
+            cid = conv["_id"]
+            assert isinstance(cid, ObjectId)
+            chat_mode = str(conv.get("chat_mode") or chat_mode)
+            meta: dict[str, Any] = {"chat_mode": chat_mode}
+            if show_rating:
+                meta["pending_activity_rating"] = {
+                    "activity_id": str(activity_id),
+                    "completion_id": completion_id,
+                    "rated": False,
+                }
+            content = checkin_msg or (
+                "Bạn vừa hoàn thành bài tập. Bạn đánh giá thế nào?"
+                if chat_mode == "medical"
+                else "You finished the activity. How was it?"
+            )
+            msg_doc = await append_message(
+                db,
+                conversation_id=cid,
+                role="assistant",
+                content=content,
+                metadata=meta,
+            )
+            raw_mid = msg_doc.get("_id")
+            if isinstance(raw_mid, ObjectId):
+                assistant_message_id = str(raw_mid)
+                if completion_id:
+                    await db[ACTIVITY_COMPLETIONS].update_one(
+                        {"_id": ObjectId(completion_id)},
+                        {"$set": {"linked_message_id": raw_mid}},
+                    )
+
     await clear_session(redis, body.session_id)
     return {
         "checkin_message": checkin_msg,
-        "show_micro_feedback": True,
+        "show_micro_feedback": False,
+        "show_activity_rating": show_rating,
+        "activity_id": activity_id or None,
+        "completion_id": completion_id,
+        "assistant_message_id": assistant_message_id,
         "wellness_session": state,
     }
 
@@ -1435,7 +1339,40 @@ async def list_mood(session_id: str, request: Request, limit: int = 60) -> list[
 # Messages (history)
 # ---------------------------------------------------------------------------
 
-ALLOWED_ACTIVITY_IDS = frozenset({"breathing_box", "ocean_sound"})
+ALLOWED_ACTIVITY_IDS = frozenset({"breathing_box", "ocean_sound"})  # legacy Luna fallback
+
+
+class ActivityVideoSourceOut(BaseModel):
+    name: str
+    url: str | None = None
+    license: str | None = None
+    attribution: str | None = None
+
+
+class ActivityCatalogOut(BaseModel):
+    id: str
+    title: str
+    description: str
+    content_type: str
+    activity_type: str
+    ui_component: str
+    video_url: str | None = None
+    youtube_id: str | None = None
+    video_source: ActivityVideoSourceOut | None = None
+    duration_min: int
+    avg_rating: float
+    rating_count: int
+    benefits: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class ActivityRateBody(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=128)
+    activity_id: str = Field(..., min_length=2, max_length=64)
+    completion_id: str = Field(..., min_length=1)
+    rating: int = Field(..., ge=1, le=5)
+    chat_mode: str | None = Field(None, pattern="^(psychologist|medical)$")
+    message_id: str | None = Field(None, max_length=32)
 
 
 class MessageOut(BaseModel):
@@ -1500,11 +1437,108 @@ class ActivityCompletionOut(BaseModel):
     created_at: str
 
 
+@router.get("/activities/catalog", response_model=list[ActivityCatalogOut])
+async def get_activity_catalog(
+    request: Request,
+    scope: str = "helios",
+    lang: str = "vi",
+) -> list[ActivityCatalogOut]:
+    from app.db.repository import activity_to_api, list_wellness_activities
+
+    db = get_db(request)
+    ui_lang = lang if lang in ("vi", "en") else "vi"
+    rows = await list_wellness_activities(
+        db, scope=scope, active_only=True, implemented_only=True
+    )
+    if not rows:
+        from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+        rows = [
+            d
+            for d in DEFAULT_WELLNESS_ACTIVITIES
+            if (not scope or scope in (d.get("scope") or []))
+            and d.get("active")
+            and d.get("implemented")
+        ]
+    return [ActivityCatalogOut(**activity_to_api(r, lang=ui_lang)) for r in rows]
+
+
+@router.post("/activities/rate")
+async def rate_activity(body: ActivityRateBody, request: Request) -> dict[str, str]:
+    from app.auth.dependencies import resolve_optional_current_user
+    from app.db.repository import (
+        get_activity_completion_by_id,
+        save_activity_rating,
+        update_message_metadata,
+    )
+
+    db = get_db(request)
+    try:
+        completion_oid = ObjectId(body.completion_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, "Invalid completion_id") from exc
+
+    completion = await get_activity_completion_by_id(db, completion_oid)
+    if not completion:
+        raise HTTPException(404, "Completion not found")
+    if completion.get("session_id") != body.session_id:
+        raise HTTPException(403, "Session mismatch")
+    if str(completion.get("activity_id")) != body.activity_id:
+        raise HTTPException(400, "Activity mismatch")
+
+    maybe_user = await resolve_optional_current_user(request, db)
+    uid: ObjectId | None = None
+    if maybe_user:
+        raw = maybe_user.get("_id")
+        if isinstance(raw, ObjectId):
+            uid = raw
+
+    chat_mode = body.chat_mode or str(completion.get("chat_mode") or "medical")
+    await save_activity_rating(
+        db,
+        session_id=body.session_id,
+        activity_id=body.activity_id,
+        completion_id=completion_oid,
+        rating=body.rating,
+        chat_mode=chat_mode,
+        user_id=uid,
+    )
+    thanks = (
+        "Cảm ơn bạn đã đánh giá! Phản hồi của bạn giúp Helios gợi ý bài tập phù hợp hơn."
+        if chat_mode == "medical"
+        else "Cảm ơn bạn đã đánh giá! Phản hồi của bạn giúp Luna gợi ý bài tập phù hợp hơn."
+    )
+    if body.message_id:
+        try:
+            message_oid = ObjectId(body.message_id)
+            pending = {
+                "activity_id": body.activity_id,
+                "completion_id": body.completion_id,
+                "rated": True,
+                "rating": body.rating,
+            }
+            await update_message_metadata(
+                db,
+                message_oid,
+                {
+                    "pending_activity_rating": pending,
+                    "rating_thanks": thanks,
+                    "chat_mode": chat_mode,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return {"status": "ok", "message": thanks}
+
+
 @router.post("/activities/complete", response_model=ActivityCompletionOut)
 async def complete_activity(body: ActivityCompleteBody, request: Request) -> ActivityCompletionOut:
-    if body.activity_id not in ALLOWED_ACTIVITY_IDS:
-        raise HTTPException(400, f"activity_id must be one of: {', '.join(sorted(ALLOWED_ACTIVITY_IDS))}")
+    from app.db.repository import is_valid_activity_id
+
     db = get_db(request)
+    if not await is_valid_activity_id(db, body.activity_id):
+        if body.activity_id not in ALLOWED_ACTIVITY_IDS:
+            raise HTTPException(400, f"Unknown activity: {body.activity_id}")
     conv = await get_conversation_by_session(db, body.session_id)
     if not conv:
         conv = await create_conversation(db, session_id=body.session_id)

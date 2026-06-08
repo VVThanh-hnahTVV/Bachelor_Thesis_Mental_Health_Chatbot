@@ -19,9 +19,7 @@ from app.medical.llm import build_chat_llm, build_ingest_llm
 load_dotenv()
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-MEDICAL_AGENTS = BACKEND_ROOT / "app" / "medical" / "agents"
 DATA_MEDICAL = BACKEND_ROOT / "data" / "medical"
-UPLOADS_MEDICAL = BACKEND_ROOT / "uploads" / "medical"
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -114,30 +112,8 @@ class RAGConfig:
         self.reranker_top_k = 3
         self.max_context_length = 8192
         self.include_sources = True
-        self.min_retrieval_confidence = 0.40
+        self.min_retrieval_confidence = 0.20
         self.context_limit = 20
-
-
-class MedicalCVConfig:
-    def __init__(self) -> None:
-        cv_root = MEDICAL_AGENTS / "image_analysis_agent"
-        self.brain_tumor_model_path = str(
-            cv_root / "brain_tumor_agent" / "models" / "multi_class_resnet.pth"
-        )
-        self.brain_tumor_overlay_output_path = str(
-            UPLOADS_MEDICAL / "brain_tumor_output" / "attention_overlay.png"
-        )
-        self.chest_xray_weights = os.getenv(
-            "CHEST_XRAY_WEIGHTS", "densenet121-res224-all"
-        )
-        self.chest_xray_threshold = float(os.getenv("CHEST_XRAY_THRESHOLD", "0.5"))
-        self.skin_lesion_model_path = str(
-            cv_root / "skin_lesion_agent" / "models" / "ham10000_efficientnet_b0.pth"
-        )
-        self.skin_lesion_segmentation_output_path = str(
-            UPLOADS_MEDICAL / "skin_lesion_output" / "segmentation_plot.png"
-        )
-        self.llm = build_chat_llm(temperature=0.1, for_vision=True)
 
 
 class SpeechConfig:
@@ -151,34 +127,31 @@ class SpeechConfig:
         )
 
 
-class ValidationConfig:
-    def __init__(self) -> None:
-        self.require_validation = {
-            "CONVERSATION_AGENT": False,
-            "RAG_AGENT": False,
-            "WEB_SEARCH_AGENT": False,
-            "BRAIN_TUMOR_AGENT": True,
-            "CHEST_XRAY_AGENT": True,
-            "SKIN_LESION_AGENT": True,
-        }
-        self.validation_timeout = 300
-        self.default_action = "reject"
-
-
 class APIConfig:
     def __init__(self) -> None:
         self.host = "0.0.0.0"
         self.port = 8000
         self.debug = True
         self.rate_limit = 10
-        self.max_image_upload_size = 5
-
 
 class UIConfig:
     def __init__(self) -> None:
         self.theme = "light"
         self.enable_speech = True
-        self.enable_image_upload = True
+
+
+class WellnessConfig:
+    def __init__(self) -> None:
+        self.collection_name = os.getenv(
+            "WELLNESS_QDRANT_COLLECTION", "helios_wellness_activities"
+        )
+        self.vector_local_path = str(DATA_MEDICAL / "qdrant_wellness")
+        self.top_k = int(os.getenv("WELLNESS_SEARCH_TOP_K", "5"))
+        self.min_score = float(os.getenv("WELLNESS_SEARCH_MIN_SCORE", "0.25"))
+        # Min top-hit score to attach activity buttons after RAG / web search
+        self.suggestion_min_score = float(
+            os.getenv("WELLNESS_SUGGESTION_MIN_SCORE", "0.35")
+        )
 
 
 class MedicalConfig:
@@ -186,11 +159,10 @@ class MedicalConfig:
         self.agent_decision = AgentDecisoinConfig()
         self.conversation = ConversationConfig()
         self.rag = RAGConfig()
-        self.medical_cv = MedicalCVConfig()
         self.web_search = WebSearchConfig()
+        self.wellness = WellnessConfig()
         self.api = APIConfig()
         self.speech = SpeechConfig()
-        self.validation = ValidationConfig()
         self.ui = UIConfig()
         self.eleven_labs_api_key = os.getenv("ELEVEN_LABS_API_KEY")
         self.tavily_api_key = os.getenv("TAVILY_API_KEY")

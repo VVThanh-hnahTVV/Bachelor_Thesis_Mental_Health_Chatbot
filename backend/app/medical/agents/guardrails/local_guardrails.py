@@ -1,6 +1,6 @@
 import re
 
-from app.medical.validation_input import is_validation_submission
+from app.medical.validation_input import extract_input_text
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import AIMessage
@@ -104,7 +104,7 @@ Final message:"""
         Returns:
             Tuple of (is_allowed, message)
         """
-        if is_validation_submission(user_input):
+        if not user_input.strip():
             return True, user_input
 
         result = self.input_guardrail_chain.invoke(
@@ -143,9 +143,6 @@ Final message:"""
         "CONVERSATION_AGENT",
         "WEB_SEARCH_PROCESSOR_AGENT",
         "RAG_AGENT",
-        "BRAIN_TUMOR_AGENT",
-        "CHEST_XRAY_AGENT",
-        "SKIN_LESION_AGENT",
     )
 
     def _strip_agent_prefix(self, text: str) -> str:

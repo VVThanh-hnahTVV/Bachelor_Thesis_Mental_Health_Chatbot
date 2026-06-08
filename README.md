@@ -23,8 +23,7 @@ Toggle in the therapy chat UI. Powered by a multi-agent workflow under `backend/
 | Agent decision | Routes queries to the right specialist agent |
 | RAG | Qdrant vector search over ingested medical PDFs |
 | Web search | Tavily + PubMed / Europe PMC for recent literature |
-| CV (optional) | Brain tumor MRI, chest X-ray (COVID), skin lesion image analysis |
-| Validation | Human-in-the-loop review for CV outputs before final response |
+| Conversation | General medical Q&A and follow-up chat |
 
 Medical PDFs ship in `backend/data/medical/raw/`. Run ingest once to populate the local Qdrant store.
 
@@ -125,7 +124,7 @@ Copy `backend/.env.example` to `backend/.env`. Important variables:
 
 - **LLM** — `GROQ_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MODAL_BASE_URL`
 - **Embeddings** — `EMBEDDING_PROVIDER=ollama`, `OLLAMA_EMBEDDING_MODEL=nomic-embed-text-v2-moe`
-- **Medical** — `ENABLE_MEDICAL_MODE`, `MEDICAL_CV_ENABLED`, `TAVILY_API_KEY`, `HUGGINGFACE_TOKEN`, `PUBMED_EMAIL`
+- **Medical** — `ENABLE_MEDICAL_MODE`, `TAVILY_API_KEY`, `HUGGINGFACE_TOKEN`, `PUBMED_EMAIL`
 - **Database** — `MONGO_URI` (defaults to local Docker MongoDB)
 
 See [backend/README.md](backend/README.md) for Modal deployment notes and test commands.

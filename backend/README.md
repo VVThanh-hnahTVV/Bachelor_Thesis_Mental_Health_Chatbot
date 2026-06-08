@@ -56,6 +56,19 @@ pip install -e ".[medical]"
 python -m app.medical.ingest --dir data/medical/raw
 ```
 
-API: `POST /api/v1/chat` with `"chat_mode": "medical"`, plus `/api/v1/chat/upload` and `/api/v1/chat/validate`. Static segmentation images: `/uploads/medical/...`.
+API: `POST /api/v1/chat` with `"chat_mode": "medical"`.
 
-Chest X-ray analysis uses [TorchXRayVision](https://github.com/mlmed/torchxrayvision) (`densenet121-res224-all` by default). Weights download to `~/.torchxrayvision` on first run. Configure via `CHEST_XRAY_WEIGHTS` and optional `CHEST_XRAY_THRESHOLD` in `.env`.
+## Helios wellness activities
+
+Seed catalog + optional Qdrant index:
+
+```bash
+python scripts/seed_wellness_activities.py --ingest-qdrant
+# or separately:
+python -m app.medical.agents.wellness_agent.ingest
+```
+
+Helios routes wellness requests to `WELLNESS_AGENT` (semantic search on activity benefits).
+After **RAG** or **web search** answers, Helios may attach activity buttons when the top
+wellness match score is ≥ `WELLNESS_SUGGESTION_MIN_SCORE` (default `0.35`).
+After completing an in-app activity, users rate 1–5 stars inline in chat.

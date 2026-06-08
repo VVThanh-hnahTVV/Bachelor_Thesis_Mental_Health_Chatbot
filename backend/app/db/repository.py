@@ -12,6 +12,8 @@ USER_PROFILES = "user_profiles"
 MESSAGE_FEEDBACK = "message_feedback"
 SCREENING_RESPONSES = "screening_responses"
 KNOWLEDGE_CHUNKS = "knowledge_chunks"
+WELLNESS_ACTIVITIES = "wellness_activities"
+ACTIVITY_RATINGS = "activity_ratings"
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
@@ -28,6 +30,12 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[SCREENING_RESPONSES].create_index([("session_id", 1), ("created_at", -1)])
     await db[KNOWLEDGE_CHUNKS].create_index([("id", 1)], unique=True)
     await db[KNOWLEDGE_CHUNKS].create_index([("topic", 1)])
+    await db[WELLNESS_ACTIVITIES].create_index([("id", 1)], unique=True)
+    await db[WELLNESS_ACTIVITIES].create_index([("active", 1), ("scope", 1)])
+    await db[ACTIVITY_RATINGS].create_index([("session_id", 1), ("created_at", -1)])
+    await db[ACTIVITY_RATINGS].create_index(
+        [("completion_id", 1), ("session_id", 1)], unique=True
+    )
 
 
 async def create_conversation(
@@ -240,6 +248,27 @@ async def list_messages_chronological(
     return [doc async for doc in cursor]
 
 
+async def update_message_metadata(
+    db: AsyncIOMotorDatabase,
+    message_id: ObjectId,
+    metadata_patch: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Merge metadata_patch into an existing message (top-level keys)."""
+    doc = await db[MESSAGES].find_one({"_id": message_id})
+    if not doc:
+        return None
+    meta = doc.get("metadata")
+    if not isinstance(meta, dict):
+        meta = {}
+    merged = {**meta, **metadata_patch}
+    await db[MESSAGES].update_one(
+        {"_id": message_id},
+        {"$set": {"metadata": merged}},
+    )
+    doc["metadata"] = merged
+    return doc
+
+
 async def add_activity_completion(
     db: AsyncIOMotorDatabase,
     *,
@@ -248,6 +277,7 @@ async def add_activity_completion(
     activity_id: str,
     linked_message_id: ObjectId | None = None,
     duration_sec: int | None = None,
+    chat_mode: str | None = None,
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     doc: dict[str, Any] = {
@@ -256,6 +286,8 @@ async def add_activity_completion(
         "activity_id": activity_id,
         "created_at": now,
     }
+    if chat_mode:
+        doc["chat_mode"] = chat_mode
     if linked_message_id is not None:
         doc["linked_message_id"] = linked_message_id
     if duration_sec is not None:
@@ -483,3 +515,172 @@ async def list_knowledge_chunks(
 ) -> list[dict[str, Any]]:
     cursor = db[KNOWLEDGE_CHUNKS].find({}).limit(limit)
     return [doc async for doc in cursor]
+
+
+# ---------------------------------------------------------------------------
+# Wellness activities catalog (Helios + shared)
+# ---------------------------------------------------------------------------
+
+
+def _localized(doc: dict[str, Any], field: str, lang: str) -> str:
+    raw = doc.get(field) or {}
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict):
+        return str(raw.get(lang) or raw.get("vi") or raw.get("en") or "")
+    return ""
+
+
+def activity_to_api(doc: dict[str, Any], *, lang: str = "vi") -> dict[str, Any]:
+    """Public API shape for an activity."""
+    benefits = doc.get("benefits") if lang == "vi" else doc.get("benefits_en") or doc.get("benefits")
+    video_source_raw = doc.get("video_source")
+    video_source: dict[str, Any] | None = None
+    if isinstance(video_source_raw, dict):
+        attribution_raw = video_source_raw.get("attribution")
+        if isinstance(attribution_raw, dict):
+            attribution = str(
+                attribution_raw.get(lang) or attribution_raw.get("en") or ""
+            ).strip()
+        else:
+            attribution = str(attribution_raw or "").strip()
+        video_source = {
+            "name": str(video_source_raw.get("name") or "").strip(),
+            "url": video_source_raw.get("url"),
+            "license": video_source_raw.get("license"),
+            "attribution": attribution or None,
+        }
+        if not (video_source.get("name") or video_source.get("attribution")):
+            video_source = None
+
+    return {
+        "id": str(doc.get("id", "")),
+        "title": _localized(doc, "title", lang),
+        "description": _localized(doc, "description", lang),
+        "content_type": str(doc.get("content_type") or "interactive"),
+        "activity_type": str(doc.get("activity_type") or "exercise"),
+        "ui_component": str(doc.get("ui_component") or doc.get("id", "")),
+        "video_url": doc.get("video_url"),
+        "youtube_id": doc.get("youtube_id"),
+        "video_source": video_source,
+        "duration_min": int(doc.get("duration_min") or 5),
+        "avg_rating": float(doc.get("avg_rating") or 0),
+        "rating_count": int(doc.get("rating_count") or 0),
+        "benefits": list(benefits) if isinstance(benefits, list) else [],
+        "tags": list(doc.get("tags") or []),
+    }
+
+
+async def upsert_wellness_activity(
+    db: AsyncIOMotorDatabase,
+    doc: dict[str, Any],
+) -> None:
+    now = datetime.now(UTC)
+    activity_id = str(doc["id"])
+    await db[WELLNESS_ACTIVITIES].update_one(
+        {"id": activity_id},
+        {
+            "$set": {**doc, "updated_at": now},
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+
+
+async def list_wellness_activities(
+    db: AsyncIOMotorDatabase,
+    *,
+    scope: str | None = None,
+    active_only: bool = True,
+    implemented_only: bool = False,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    query: dict[str, Any] = {}
+    if active_only:
+        query["active"] = True
+    if implemented_only:
+        query["implemented"] = True
+    if scope:
+        query["scope"] = scope
+    cursor = db[WELLNESS_ACTIVITIES].find(query).sort("id", 1).limit(limit)
+    return [doc async for doc in cursor]
+
+
+async def get_wellness_activity_by_id(
+    db: AsyncIOMotorDatabase,
+    activity_id: str,
+) -> dict[str, Any] | None:
+    return await db[WELLNESS_ACTIVITIES].find_one({"id": activity_id})
+
+
+async def is_valid_activity_id(db: AsyncIOMotorDatabase, activity_id: str) -> bool:
+    doc = await get_wellness_activity_by_id(db, activity_id)
+    if doc and doc.get("active") and doc.get("implemented"):
+        return True
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    return any(
+        str(d.get("id")) == activity_id and d.get("active") and d.get("implemented")
+        for d in DEFAULT_WELLNESS_ACTIVITIES
+    )
+
+
+async def save_activity_rating(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    activity_id: str,
+    completion_id: ObjectId,
+    rating: int,
+    chat_mode: str = "medical",
+    user_id: ObjectId | None = None,
+) -> dict[str, Any]:
+    if rating < 1 or rating > 5:
+        raise ValueError("rating must be 1-5")
+    now = datetime.now(UTC)
+    doc: dict[str, Any] = {
+        "session_id": session_id,
+        "activity_id": activity_id,
+        "completion_id": completion_id,
+        "rating": rating,
+        "chat_mode": chat_mode,
+        "created_at": now,
+    }
+    if user_id is not None:
+        doc["user_id"] = user_id
+    await db[ACTIVITY_RATINGS].update_one(
+        {"completion_id": completion_id, "session_id": session_id},
+        {"$set": doc},
+        upsert=True,
+    )
+    await update_activity_rating_stats(db, activity_id=activity_id, new_rating=rating)
+    return doc
+
+
+async def update_activity_rating_stats(
+    db: AsyncIOMotorDatabase,
+    *,
+    activity_id: str,
+    new_rating: int,
+) -> None:
+    """Incremental mean update for avg_rating."""
+    activity = await get_wellness_activity_by_id(db, activity_id)
+    if not activity:
+        return
+    count = int(activity.get("rating_count") or 0)
+    avg = float(activity.get("avg_rating") or 0)
+    # If re-rating same completion, skip duplicate increment (upsert overwrites rating doc)
+    existing_count = count
+    new_count = existing_count + 1
+    new_avg = ((avg * existing_count) + new_rating) / new_count if new_count else float(new_rating)
+    await db[WELLNESS_ACTIVITIES].update_one(
+        {"id": activity_id},
+        {"$set": {"avg_rating": round(new_avg, 2), "rating_count": new_count}},
+    )
+
+
+async def get_activity_completion_by_id(
+    db: AsyncIOMotorDatabase,
+    completion_id: ObjectId,
+) -> dict[str, Any] | None:
+    return await db[ACTIVITY_COMPLETIONS].find_one({"_id": completion_id})

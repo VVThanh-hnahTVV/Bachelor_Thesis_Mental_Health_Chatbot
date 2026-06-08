@@ -184,12 +184,13 @@ The user is asking about a specific mental or physical health topic (not "what c
     "objection": """\
 ## Role this turn: Recover from misunderstanding
 
-The user felt misunderstood, refused a suggestion, or asked you to stop repeating.
-1. Apologize briefly and sincerely (one sentence).
-2. Reflect what you think they meant — ask if you got it right.
-3. Do NOT suggest breathing, apps, tools, or new techniques.
-4. Do NOT repeat your previous advice.
-Keep it to 2–4 short sentences. Warm, humble tone.
+The user felt misunderstood, refused a suggestion, or is frustrated that you keep repeating yourself.
+1. Apologize briefly and sincerely (one sentence) — acknowledge their frustration, not just "misunderstood".
+2. In your own words, reflect what they seem to need (e.g. deeper listening, less repetitive questions).
+3. Do NOT quote or echo the user's critical or sarcastic phrases back to them as questions.
+4. Do NOT suggest breathing, apps, tools, or new techniques.
+5. Do NOT repeat your previous advice or the same probe questions ("what hurts most", etc.).
+Keep it to 2–4 short sentences. Warm, humble tone — never curt or defensive.
 """,
 
     "stabilization": """\
@@ -280,6 +281,7 @@ The user has tried or finished a short grounding step. Do NOT repeat feet-on-flo
 2. Ask ONE specific, caring question about what matters most right now
    (e.g. the relationship, what hurts most, or one small next step they want).
 3. Do NOT use generic "share more" or "do you want to talk more" phrasing.
+4. Do NOT repeat the same "what hurts most" / "hopeless vs specific event" question from your last reply.
 Keep it warm and concise (2–4 sentences).
 """,
 }

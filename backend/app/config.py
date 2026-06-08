@@ -103,12 +103,11 @@ class Settings(BaseSettings):
     )
     ollama_base_url: str = "http://localhost:11434"
     rag_top_k: int = 3
-    rag_min_score: float = 0.15
+    rag_min_score: float = 0.25
     llm_judge_provider: str = "openai"
     llm_judge_model: str = "gpt-4o-mini"
 
     enable_medical_mode: bool = True
-    medical_cv_enabled: bool = True
     tavily_api_key: str | None = None
     huggingface_token: str | None = None
 

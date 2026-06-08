@@ -4,6 +4,7 @@ from app.graph.nodes.therapy_router import (
     has_physical_distress,
     has_relationship_context,
     is_post_stabilization_followup,
+    is_still_struggling_followup,
     is_sustained_emotional_sharing_lane,
     node_therapy_router,
     resolve_hopeless_strategy,
@@ -94,6 +95,32 @@ def test_hopeless_after_stabilization_journaling_routes_post_stabilization():
         "history": [{"role": "user", "content": "nothing feels worth writing"}],
     }
     assert resolve_hopeless_strategy(state) == "post_stabilization"
+
+
+def test_hopeless_after_post_stabilization_routes_reflective_listening():
+    state = {
+        "primary_emotion": "hopeless",
+        "intent": "venting",
+        "user_input": "tôi chẳng cảm thấy khá hơn chút nào",
+        "therapy_flags": {
+            "stabilization_turn": 2,
+            "last_strategy": "post_stabilization",
+        },
+        "history": [],
+    }
+    assert resolve_hopeless_strategy(state) == "reflective_listening"
+
+
+def test_hopeless_still_struggling_routes_reflective_listening():
+    state = {
+        "primary_emotion": "hopeless",
+        "intent": "venting",
+        "user_input": "tôi chẳng cảm thấy khá hơn chút nào",
+        "therapy_flags": {"stabilization_turn": 2, "last_strategy": "stabilization"},
+        "history": [],
+    }
+    assert resolve_hopeless_strategy(state) == "reflective_listening"
+    assert is_still_struggling_followup("tôi chẳng cảm thấy khá hơn chút nào") is True
 
 
 def test_hopeless_after_stabilization_general_health_routes_cbt():

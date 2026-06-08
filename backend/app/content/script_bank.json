@@ -25,16 +25,39 @@
       "max_sentences": 3
     },
     {
+      "id": "repetition_frustration",
+      "priority": 96,
+      "keywords": [
+        "chỉ nói được",
+        "mỗi vậy thôi",
+        "lặp lại",
+        "toàn hỏi",
+        "cứ hỏi",
+        "vòng vo",
+        "same thing",
+        "keep asking",
+        "you only say",
+        "only say that"
+      ],
+      "objection_only": true,
+      "templates": {
+        "vi": "Mình xin lỗi — có vẻ mình đã lặp lại những câu giống nhau và chưa thật sự ở bên bạn theo cách bạn cần. Mình sẽ không hỏi kiểu đó nữa. Bạn muốn mình chỉ lắng nghe, hay bạn muốn nói thẳng điều gì đang đè nặng lên bạn nhất?",
+        "en": "I'm sorry — it sounds like I've been repeating myself and haven't been there for you the way you need. I won't ask the same kind of questions again. Would you like me to just listen, or tell me straight what's weighing on you most?"
+      },
+      "allow_llm_paraphrase": false,
+      "max_sentences": 3
+    },
+    {
       "id": "objection_apology",
       "priority": 95,
       "keywords": [],
       "objection_only": true,
       "templates": {
-        "vi": "Xin lỗi nếu mình hiểu chưa đúng. Bạn có thể nói thêm để mình lắng nghe rõ hơn không?",
-        "en": "I'm sorry if I misunderstood. Could you tell me a bit more so I can listen better?"
+        "vi": "Mình xin lỗi nếu những gì mình nói chưa thật sự giúp được bạn. Mình muốn hiểu đúng hơn — bạn đang cần mình lắng nghe, hay cần một điều gì khác?",
+        "en": "I'm sorry if what I said hasn't really helped. I want to understand better — do you need me to listen, or is there something different you need from me?"
       },
-      "allow_llm_paraphrase": true,
-      "max_sentences": 2
+      "allow_llm_paraphrase": false,
+      "max_sentences": 3
     },
     {
       "id": "refuse_breathing",

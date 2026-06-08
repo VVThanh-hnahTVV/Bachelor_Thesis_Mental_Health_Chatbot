@@ -20,6 +20,24 @@ _INTRO_VI = {
         "Âm sóng nhẹ có thể giúp thư giãn. "
         "Mở âm nền trong app và để nó đồng hành vài phút khi bạn muốn."
     ),
+    "mindful_forest": (
+        "Hãy thử vài phút với âm thanh rừng — chim, gió và lá — để thư giãn và tập trung vào hiện tại."
+    ),
+    "zen_garden": (
+        "Vườn Zen giúp bạn thư giãn qua thao tác nhẹ nhàng. Mở bài tập và sắp xếp theo nhịp của bạn."
+    ),
+    "body_scan_video": (
+        "Video body scan sẽ hướng dẫn bạn thư giãn từng vùng cơ thể. Xem khi bạn sẵn sàng."
+    ),
+    "pmr_video": (
+        "Video PMR hướng dẫn căng rồi thả lỏng cơ — hữu ích khi cơ thể căng cứng."
+    ),
+    "neck_stretch_video": (
+        "Video giãn cổ vai giúp giảm căng cơ sau khi ngồi lâu. Làm chậm và theo cảm giác của bạn."
+    ),
+    "sleep_wind_down_video": (
+        "Video thư giãn trước ngủ — dành cho lúc bạn muốn chuẩn bị giấc ngủ."
+    ),
 }
 
 _INTRO_EN = {
@@ -30,6 +48,24 @@ _INTRO_EN = {
     "ocean_sound": (
         "Gentle wave sounds can help you unwind. "
         "Open the ambient sound in the app for a few minutes when you're ready."
+    ),
+    "mindful_forest": (
+        "Try a few minutes of forest sounds — birds, wind, and leaves — to relax and stay present."
+    ),
+    "zen_garden": (
+        "The Zen garden is a gentle interactive mindfulness activity. Open it and arrange at your own pace."
+    ),
+    "body_scan_video": (
+        "The body scan video guides you to relax each body area. Watch when you feel ready."
+    ),
+    "pmr_video": (
+        "The PMR video guides tense-and-release for muscle groups — helpful when you feel physically tense."
+    ),
+    "neck_stretch_video": (
+        "The neck and shoulder stretch video helps ease desk tension. Move slowly and stay within comfort."
+    ),
+    "sleep_wind_down_video": (
+        "The sleep wind-down video is for when you want to prepare for rest."
     ),
 }
 

@@ -30,12 +30,7 @@ STEP_LABELS_VI: dict[str, str] = {
     "CONVERSATION_AGENT": "Đang soạn phản hồi",
     "RAG_AGENT": "Đang tra cứu tài liệu y khoa",
     "WEB_SEARCH_PROCESSOR_AGENT": "Đang tìm kiếm trên web",
-    "BRAIN_TUMOR_AGENT": "Đang phân tích ảnh MRI não",
-    "CHEST_XRAY_AGENT": "Đang phân tích ảnh X-quang",
-    "SKIN_LESION_AGENT": "Đang phân tích ảnh da",
-    "human_validation": "Đang xử lý xác nhận",
     "apply_guardrails": "Đang kiểm tra an toàn nội dung",
-    "check_validation": "Đang kiểm tra kết quả",
 }
 
 STEP_LABELS_EN: dict[str, str] = {
@@ -54,12 +49,7 @@ STEP_LABELS_EN: dict[str, str] = {
     "CONVERSATION_AGENT": "Composing response",
     "RAG_AGENT": "Searching medical knowledge",
     "WEB_SEARCH_PROCESSOR_AGENT": "Searching the web",
-    "BRAIN_TUMOR_AGENT": "Analyzing brain MRI",
-    "CHEST_XRAY_AGENT": "Analyzing chest X-ray",
-    "SKIN_LESION_AGENT": "Analyzing skin image",
-    "human_validation": "Processing validation",
     "apply_guardrails": "Checking content safety",
-    "check_validation": "Reviewing results",
 }
 
 

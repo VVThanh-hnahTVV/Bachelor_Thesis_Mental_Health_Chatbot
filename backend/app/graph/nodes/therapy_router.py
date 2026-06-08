@@ -67,6 +67,23 @@ _POST_STABILIZATION_USER_MARKERS = (
     "vòng vo",
 )
 
+_STILL_STRUGGLING_MARKERS = (
+    "không khá hơn",
+    "chẳng khá hơn",
+    "chưa khá hơn",
+    "không đỡ",
+    "chưa đỡ",
+    "chẳng đỡ",
+    "vẫn vậy",
+    "vẫn chưa",
+    "vẫn không",
+    "not better",
+    "no better",
+    "still the same",
+    "doesn't help",
+    "does not help",
+)
+
 _PHYSICAL_DISTRESS_MARKERS = (
     "tightness in my chest",
     "tightness in chest",
@@ -149,6 +166,12 @@ def is_post_stabilization_followup(user_input: str) -> bool:
     return any(m in t for m in _POST_STABILIZATION_USER_MARKERS)
 
 
+def is_still_struggling_followup(user_input: str) -> bool:
+    """User says calming / prior approach did not help — switch to listening, not more probes."""
+    t = user_input.lower().strip()
+    return any(m in t for m in _STILL_STRUGGLING_MARKERS)
+
+
 def has_physical_distress(text: str) -> bool:
     t = text.lower().strip()
     return any(m in t for m in _PHYSICAL_DISTRESS_MARKERS)
@@ -190,9 +213,15 @@ def resolve_venting_regulation_strategy(state: dict[str, Any]) -> str:
 
 
 def resolve_hopeless_strategy(state: dict[str, Any]) -> str:
-    """First hopeless turn → stabilization; later → post_stabilization or CBT."""
+    """First hopeless turn → stabilization; once → post_stabilization; then reflective listening."""
     flags: dict[str, Any] = state.get("therapy_flags") or {}
     user_input: str = state.get("user_input", "")
+
+    if flags.get("last_strategy") == "post_stabilization":
+        return "reflective_listening"
+    if flags.get("stabilization_turn") and is_still_struggling_followup(user_input):
+        return "reflective_listening"
+
     if flags.get("stabilization_turn") and (
         is_post_stabilization_followup(user_input)
         or flags.get("last_strategy") == "stabilization"
@@ -203,7 +232,7 @@ def resolve_hopeless_strategy(state: dict[str, Any]) -> str:
         return "CBT"
     if not flags.get("stabilization_turn"):
         return "stabilization"
-    return "post_stabilization"
+    return "reflective_listening"
 
 
 def _fast_path_strategy(emotion: str, intent: str) -> str | None:

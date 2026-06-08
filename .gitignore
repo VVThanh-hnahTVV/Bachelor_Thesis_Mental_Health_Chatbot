@@ -20,4 +20,3 @@ backend/data/medical/raw/
 *.pth.tar
 *.pt
 *.ckpt
-backend/app/medical/agents/image_analysis_agent/*/models/

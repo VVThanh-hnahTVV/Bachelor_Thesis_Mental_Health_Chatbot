@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".pdf"}
 
 TOPIC_KEYWORDS: Dict[str, tuple[str, ...]] = {
-    "brain_tumor": ("brain", "tumor", "mri", "glioma"),
-    "chest_imaging": ("chest", "xray", "x-ray", "radiograph", "pneumonia", "covid"),
-    "skin_lesion": ("skin", "lesion", "melanoma", "dermat"),
     "infectious_disease": ("aids", "hiv", "outbreak", "infection"),
     "general_medicine": ("medical", "medicine", "clinical", "handbook", "book"),
 }
@@ -181,16 +178,18 @@ Available agents:
 2. RAG_AGENT - For specific medical knowledge questions that can be answered from established medical literature in the ingested knowledge base below.
 {rag_catalog}
 3. WEB_SEARCH_PROCESSOR_AGENT - For questions about recent medical developments, current outbreaks, or time-sensitive medical information not covered by the ingested sources.
-4. BRAIN_TUMOR_AGENT - For analysis of brain MRI images to detect and segment tumors.
-5. CHEST_XRAY_AGENT - For multi-pathology chest X-ray screening (pneumonia, edema, pneumothorax, cardiomegaly, effusion, and related findings).
-6. SKIN_LESION_AGENT - For analysis of skin lesion images to classify them as benign or malignant.
 
 Make your decision based on these guidelines:
-- If the user has not uploaded any image, always route to the conversation agent.
-- If the user uploads a medical image, decide which medical vision agent is appropriate based on the image type and the user's query. If the image is uploaded without a query, always route to the correct medical vision agent based on the image type.
-- If the user asks about recent medical developments or current health situations, use the web search pocessor agent.
+- Route general conversation, greetings, or non-medical questions to the conversation agent.
+- If the user asks about recent medical developments or current health situations, use the web search processor agent.
 - If the user asks specific medical knowledge questions that match an ingested source topic above, use the RAG agent.
-- For general conversation, greetings, or non-medical questions, use the conversation agent. But if image is uploaded, always go to the medical vision agents first.
+- If the user shares symptoms or asks about conditions (e.g. anxiety, insomnia, stress, pain), use RAG_AGENT when the topic matches ingested sources, otherwise CONVERSATION_AGENT for empathetic guidance.
+- Do NOT route to a separate wellness agent. In-app wellness activity buttons are attached automatically after RAG or web search when relevant.
+
+Examples:
+- "Dạo này tôi hay lo âu mất ngủ" -> RAG_AGENT or CONVERSATION_AGENT
+- "Tiểu đường type 2 là gì?" -> RAG_AGENT
+- "Chào Helios" -> CONVERSATION_AGENT
 
 You must provide your answer in JSON format with the following structure:
 {{

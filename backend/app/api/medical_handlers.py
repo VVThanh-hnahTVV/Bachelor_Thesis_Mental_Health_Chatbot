@@ -70,106 +70,14 @@ async def handle_medical_chat_turn(
     meta: dict[str, Any] = {
         "chat_mode": "medical",
         "agent_name": turn.agent_name,
-        "needs_validation": turn.needs_validation,
         "message_type": "medical",
     }
-    if turn.result_image_url:
-        meta["result_image"] = turn.result_image_url
-
-    assistant_doc = await append_message(
-        db,
-        conversation_id=conversation_id,
-        role="assistant",
-        content=turn.reply,
-        metadata=meta,
-    )
-    aid = assistant_doc.get("_id")
-    assistant_message_id = str(aid) if aid is not None else None
-    return turn.reply, meta, assistant_message_id
-
-
-async def handle_medical_upload_turn(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    conversation_id: ObjectId,
-    image_bytes: bytes,
-    filename: str,
-    text: str,
-    conversation_summary: str = "",
-) -> tuple[str, dict[str, Any], str | None]:
-    settings = get_settings()
-    if not settings.enable_medical_mode:
-        raise HTTPException(503, detail="Medical mode is disabled")
-
-    max_mb = 5
-    if len(image_bytes) > max_mb * 1024 * 1024:
-        raise HTTPException(413, detail=f"File too large. Max {max_mb}MB")
-
-    svc = get_medical_service()
-    try:
-        turn = await svc.handle_upload(
-            session_id,
-            image_bytes,
-            filename or "upload.jpg",
-            text=text,
-            conversation_summary=conversation_summary,
-        )
-    except ValueError as exc:
-        raise HTTPException(400, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(500, detail=f"Medical assistant error: {exc}") from exc
-
-    meta: dict[str, Any] = {
-        "chat_mode": "medical",
-        "agent_name": turn.agent_name,
-        "needs_validation": turn.needs_validation,
-        "message_type": "medical",
-    }
-    if turn.result_image_url:
-        meta["result_image"] = turn.result_image_url
-
-    assistant_doc = await append_message(
-        db,
-        conversation_id=conversation_id,
-        role="assistant",
-        content=turn.reply,
-        metadata=meta,
-    )
-    aid = assistant_doc.get("_id")
-    assistant_message_id = str(aid) if aid is not None else None
-    return turn.reply, meta, assistant_message_id
-
-
-async def handle_medical_validation_turn(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    conversation_id: ObjectId,
-    validation_result: str,
-    comments: str | None,
-    conversation_summary: str = "",
-) -> tuple[str, dict[str, Any], str | None]:
-    svc = get_medical_service()
-    try:
-        turn = await svc.handle_validation(
-            session_id,
-            validation_result,
-            comments,
-            conversation_summary=conversation_summary,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(500, detail=f"Medical validation error: {exc}") from exc
-
-    meta: dict[str, Any] = {
-        "chat_mode": "medical",
-        "agent_name": turn.agent_name,
-        "needs_validation": turn.needs_validation,
-        "message_type": "medical",
-        "validation_status": validation_result.lower(),
-    }
-    if turn.result_image_url:
-        meta["result_image"] = turn.result_image_url
+    if turn.suggested_activities:
+        meta["suggested_activities"] = turn.suggested_activities
+    if getattr(turn, "wellness_retrieval_score", None) is not None:
+        meta["wellness_retrieval_score"] = turn.wellness_retrieval_score
+    if getattr(turn, "wellness_retrieval_source", None):
+        meta["wellness_retrieval_source"] = turn.wellness_retrieval_source
 
     assistant_doc = await append_message(
         db,

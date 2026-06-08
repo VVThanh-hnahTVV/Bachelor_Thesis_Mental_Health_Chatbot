@@ -4,27 +4,37 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage
 
 from app.medical.agents.agent_decision import process_query
-from app.medical.config import UPLOADS_MEDICAL, get_medical_config
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
-
-@dataclass
 class MedicalTurnResult:
-    reply: str
-    agent_name: str
-    needs_validation: bool = False
-    result_image_url: str | None = None
+    __slots__ = (
+        "reply",
+        "agent_name",
+        "suggested_activities",
+        "wellness_retrieval_score",
+        "wellness_retrieval_source",
+    )
+
+    def __init__(
+        self,
+        reply: str,
+        agent_name: str,
+        suggested_activities: list[dict[str, str]] | None = None,
+        wellness_retrieval_score: float | None = None,
+        wellness_retrieval_source: str | None = None,
+    ) -> None:
+        self.reply = reply
+        self.agent_name = agent_name
+        self.suggested_activities = suggested_activities or []
+        self.wellness_retrieval_score = wellness_retrieval_score
+        self.wellness_retrieval_source = wellness_retrieval_source
 
 
 def _extract_reply(result: dict[str, Any]) -> str:
@@ -47,26 +57,8 @@ def _agent_name(result: dict[str, Any]) -> str:
     return str(result.get("agent_name") or "MEDICAL")
 
 
-def _needs_validation(agent_name: str) -> bool:
-    return "HUMAN_VALIDATION" in agent_name.upper()
-
-
-def _result_image_url(agent_name: str) -> str | None:
-    cfg = get_medical_config()
-    upper = agent_name.upper()
-    if "SKIN_LESION" in upper:
-        out_path = Path(cfg.medical_cv.skin_lesion_segmentation_output_path)
-        if out_path.is_file():
-            return "/uploads/medical/skin_lesion_output/segmentation_plot.png"
-    if "BRAIN_TUMOR" in upper:
-        out_path = Path(cfg.medical_cv.brain_tumor_overlay_output_path)
-        if out_path.is_file():
-            return "/uploads/medical/brain_tumor_output/attention_overlay.png"
-    return None
-
-
 def _run_sync(
-    query: Union[str, dict[str, str]],
+    query: str,
     *,
     thread_id: str,
     conversation_summary: str = "",
@@ -76,12 +68,12 @@ def _run_sync(
         thread_id=thread_id,
         conversation_summary=conversation_summary,
     )
-    agent = _agent_name(result)
     return MedicalTurnResult(
         reply=_extract_reply(result),
-        agent_name=agent,
-        needs_validation=_needs_validation(agent),
-        result_image_url=_result_image_url(agent),
+        agent_name=_agent_name(result),
+        suggested_activities=result.get("suggested_activities") or [],
+        wellness_retrieval_score=result.get("wellness_retrieval_score"),
+        wellness_retrieval_source=result.get("wellness_retrieval_source"),
     )
 
 
@@ -96,57 +88,6 @@ class MedicalChatService:
         return await asyncio.to_thread(
             _run_sync,
             message,
-            thread_id=session_id,
-            conversation_summary=conversation_summary,
-        )
-
-    async def handle_upload(
-        self,
-        session_id: str,
-        image_bytes: bytes,
-        filename: str,
-        text: str = "",
-        *,
-        conversation_summary: str = "",
-    ) -> MedicalTurnResult:
-        ext = Path(filename).suffix.lower()
-        if ext not in ALLOWED_IMAGE_EXTENSIONS:
-            raise ValueError("Unsupported file type. Allowed: PNG, JPG, JPEG")
-
-        upload_dir = UPLOADS_MEDICAL / "backend"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = f"{uuid.uuid4()}_{Path(filename).name}"
-        file_path = upload_dir / safe_name
-        file_path.write_bytes(image_bytes)
-
-        query: dict[str, str] = {"text": text, "image": str(file_path)}
-        try:
-            return await asyncio.to_thread(
-                _run_sync,
-                query,
-                thread_id=session_id,
-                conversation_summary=conversation_summary,
-            )
-        finally:
-            try:
-                file_path.unlink(missing_ok=True)
-            except OSError as exc:
-                logger.warning("Failed to remove temp upload %s: %s", file_path, exc)
-
-    async def handle_validation(
-        self,
-        session_id: str,
-        validation_result: str,
-        comments: str | None = None,
-        *,
-        conversation_summary: str = "",
-    ) -> MedicalTurnResult:
-        validation_query = f"Validation result: {validation_result}"
-        if comments:
-            validation_query += f" Comments: {comments}"
-        return await asyncio.to_thread(
-            _run_sync,
-            validation_query,
             thread_id=session_id,
             conversation_summary=conversation_summary,
         )

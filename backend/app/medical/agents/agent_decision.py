@@ -14,25 +14,15 @@ import os, getpass
 from app.medical.agents.rag_agent import MedicalRAG
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS, PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS
 from app.medical.agents.web_search_processor_agent import WebSearchProcessorAgent
-from app.medical.agents.image_analysis_agent import ImageAnalysisAgent
 from app.medical.agents.guardrails.local_guardrails import LocalGuardrails
 from app.medical.config import get_medical_config
 from app.medical.rag_catalog import build_decision_system_prompt
-from app.medical.validation_input import extract_input_text, parse_validation_submission
+from app.medical.validation_input import extract_input_text
 
 from langgraph.checkpoint.memory import MemorySaver
 
 # Initialize memory (per-process; thread_id isolates sessions)
 memory = MemorySaver()
-
-_image_analyzer: ImageAnalysisAgent | None = None
-
-
-def get_image_analyzer() -> ImageAnalysisAgent:
-    global _image_analyzer
-    if _image_analyzer is None:
-        _image_analyzer = ImageAnalysisAgent(config=get_medical_config())
-    return _image_analyzer
 
 
 # Agent that takes the decision of routing the request further to correct task specific agent
@@ -41,9 +31,6 @@ class AgentConfig:
     
     # Decision model
     DECISION_MODEL = "gpt-4o"  # or whichever model you prefer
-    
-    # Vision model for image analysis
-    VISION_MODEL = "gpt-4o"
     
     # Confidence threshold for responses
     CONFIDENCE_THRESHOLD = 0.85
@@ -57,14 +44,13 @@ class AgentState(MessagesState):
     conversation_summary: Optional[str]
     agent_name: Optional[str]  # Current active agent
     current_input: Optional[Union[str, Dict]]  # Input to be processed
-    has_image: bool  # Whether the current input contains an image
-    image_type: Optional[str]  # Type of medical image if present
     output: Optional[str]  # Final output to user
-    needs_human_validation: bool  # Whether human validation is required
     retrieval_confidence: float  # Confidence in retrieval (for RAG agent)
     bypass_routing: bool  # Flag to bypass agent routing for guardrails
     insufficient_info: bool  # Flag indicating RAG response has insufficient information
-    validation_submission: Optional[dict[str, str]]  # Human validation yes/no from /chat/validate
+    suggested_activities: Optional[List[Dict[str, str]]]  # Wellness activity suggestions for UI
+    wellness_retrieval_score: Optional[float]
+    wellness_retrieval_source: Optional[str]
 
 
 class AgentDecision(TypedDict):
@@ -96,20 +82,8 @@ def create_agent_graph():
 
         emit_progress("medical_analyze_input")
         current_input = state["current_input"]
-        has_image = False
-        image_type = None
         
         input_text = extract_input_text(current_input)
-
-        validation = parse_validation_submission(input_text)
-        if validation:
-            return {
-                **state,
-                "validation_submission": validation,
-                "has_image": False,
-                "image_type": None,
-                "bypass_routing": False,
-            }
 
         # Check input through guardrails if text is present
         if input_text:
@@ -135,68 +109,19 @@ def create_agent_graph():
                     "messages": [blocked],
                     "output": blocked,
                     "agent_name": "INPUT_GUARDRAILS",
-                    "has_image": False,
-                    "image_type": None,
                     "bypass_routing": True,
                 }
         
-        # Original image processing code
-        if isinstance(current_input, dict) and "image" in current_input:
-            has_image = True
-            image_path = current_input.get("image", None)
-            image_type_response = get_image_analyzer().analyze_image(image_path)
-            image_type = image_type_response['image_type']
-            print("ANALYZED IMAGE TYPE: ", image_type)
-        
         return {
             **state,
-            "has_image": has_image,
-            "image_type": image_type,
             "bypass_routing": False  # Explicitly set to False for normal flow
         }
     
     def route_after_analyze(state: AgentState) -> str:
-        if state.get("validation_submission"):
-            return "validation_response"
         if state.get("bypass_routing", False):
             return "apply_guardrails"
         return "route_to_agent"
 
-    def run_validation_response(state: AgentState) -> AgentState:
-        """Acknowledge human validation without re-running CV or input guardrails."""
-        from app.chat_progress import emit_progress
-
-        emit_progress("validation_response")
-        submission = state.get("validation_submission") or {}
-        result = str(submission.get("result", "")).lower()
-        comments = str(submission.get("comments", "")).strip()
-
-        if result == "yes":
-            content = (
-                "Cảm ơn bạn đã xác nhận kết quả sàng lọc.\n\n"
-                "Nếu bạn muốn, mình có thể **giải thích lại bằng ngôn ngữ dễ hiểu**. "
-                "Dù đã xác nhận, bạn vẫn nên trao đổi với bác sĩ khi có triệu chứng hoặc lo lắng.\n\n"
-                "**Lưu ý:** Đây chỉ là sàng lọc AI, không thay chẩn đoán của bác sĩ."
-            )
-        else:
-            note = f" Ghi chú của bạn: *{comments}*." if comments else ""
-            content = (
-                "Mình đã ghi nhận: kết quả này **cần được bác sĩ xem lại**."
-                f"{note}\n\n"
-                "Bạn nên mang phim X-quang và báo cáo này đến bác sĩ hô hấp hoặc "
-                "chẩn đoán hình ảnh để đối chiếu lại — AI chỉ hỗ trợ sàng lọc ban đầu.\n\n"
-                "**Lưu ý:** Đây không phải chẩn đoán y khoa chính thức."
-            )
-
-        reply = AIMessage(content=content)
-        return {
-            **state,
-            "output": reply,
-            "messages": [reply],
-            "agent_name": "VALIDATION_AGENT",
-            "needs_human_validation": False,
-        }
-    
     def route_to_agent(state: AgentState) -> Dict:
         """Make decision about which agent should handle the query."""
         from app.chat_progress import emit_progress
@@ -204,8 +129,6 @@ def create_agent_graph():
         emit_progress("medical_route")
         messages = state["messages"]
         current_input = state["current_input"]
-        has_image = state["has_image"]
-        image_type = state["image_type"]
         
         # Prepare input for decision model
         input_text = ""
@@ -228,9 +151,6 @@ def create_agent_graph():
 
         Recent conversation context:
         {recent_context}
-
-        Has image: {has_image}
-        Image type: {image_type if has_image else 'None'}
 
         Based on this information, which agent should handle this query?
         """
@@ -310,7 +230,6 @@ def create_agent_graph():
         - Answer **medical questions** using verified knowledge.
         - Route **complex queries** to RAG (retrieval-augmented generation) or web search if needed.
         - Handle **follow-up questions** while keeping track of conversation context.
-        - Redirect **medical images** to the appropriate AI analysis agent.
 
         ### Guidelines for Responding:
         1. **General Conversations:**
@@ -327,15 +246,9 @@ def create_agent_graph():
         - Maintain conversation history for better responses.
         - If a query is unclear, ask **follow-up questions** before answering.
 
-        4. **Handling Medical Image Analysis:**
-        - Do **not** attempt to analyze images yourself.
-        - If user speaks about analyzing or processing or detecting or segmenting or classifying any disease from any image, ask the user to upload the image so that in the next turn it is routed to the appropriate medical vision agents.
-        - If an image was uploaded, it would have been routed to the medical computer vision agents. Read the history to know about the diagnosis results and continue conversation if user asks anything regarding the diagnosis.
-        - After processing, **help the user interpret the results in plain everyday language** — summarize first, then only go term-by-term if they explicitly ask for detail.
-
         {PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS}
 
-        5. **Uncertainty & Ethical Considerations:**
+        4. **Uncertainty & Ethical Considerations:**
         - If unsure, **never assume** medical facts.
         - Recommend consulting a **licensed healthcare professional** for serious medical concerns.
         - Avoid providing **medical diagnoses** or **prescriptions**—stick to general knowledge.
@@ -357,13 +270,6 @@ def create_agent_graph():
 
         **User:** "I have a headache and fever. What should I do?" (follow-up)
         **You:** "Headaches and fever can have various causes, from infections to dehydration. If your symptoms persist, you should see a medical professional."
-
-        **User:** "Giải thích ý nghĩa" (after chest X-ray screening listed many findings)
-        **You:** "Nhìn chung, máy AI thấy phim X-quang có **nhiều chỗ bất thường ở phổi** — chủ yếu là vùng mờ, có thể kèm dịch hoặc dày màng phổi. Các con số % chỉ cho biết AI **khá chắc** hay **hơi nghi ngờ**, không phải mức độ bệnh nặng hay nhẹ.
-
-        Khi một lúc báo nhiều mục như vậy, thường là ảnh khó đọc hoặc **một vùng** khiến AI gắn nhiều nhãn — chưa chắc là bạn mắc cả chục bệnh cùng lúc. Việc quan trọng nhất là **đưa phim và báo cáo này cho bác sĩ** (hô hấp hoặc chẩn đoán hình ảnh) để họ xem lại và hỏi thêm triệu chứng.
-
-        **Lưu ý:** Đây chỉ là sàng lọc AI, không thay chẩn đoán của bác sĩ."
 
         Conversational LLM Response:"""
 
@@ -449,7 +355,6 @@ def create_agent_graph():
         return {
             **state,
             "output": response_output,
-            "needs_human_validation": False,  # Assuming no validation needed for RAG responses
             "retrieval_confidence": retrieval_confidence,
             "agent_name": "RAG_AGENT",
             "insufficient_info": insufficient_info
@@ -511,90 +416,8 @@ def create_agent_graph():
             emit_progress("WEB_SEARCH_PROCESSOR_AGENT")
             print("Re-routed to Web Search Agent due to low confidence or insufficient information...")
             return "WEB_SEARCH_PROCESSOR_AGENT"  # Correct format
-        return "check_validation"  # No transition needed if confidence is high and info is sufficient
+        return "apply_guardrails"
     
-    def run_brain_tumor_agent(state: AgentState) -> AgentState:
-        """Handle brain MRI image analysis."""
-        from app.chat_progress import emit_progress
-
-        emit_progress("BRAIN_TUMOR_AGENT")
-        current_input = state["current_input"]
-        image_path = current_input.get("image", None)
-
-        print(f"Selected agent: BRAIN_TUMOR_AGENT")
-
-        response_text = get_image_analyzer().classify_brain_tumor(image_path)
-        response = AIMessage(content=response_text)
-
-        return {
-            **state,
-            "output": response,
-            "needs_human_validation": True,  # Medical diagnosis always needs validation
-            "agent_name": "BRAIN_TUMOR_AGENT"
-        }
-    
-    def run_chest_xray_agent(state: AgentState) -> AgentState:
-        """Handle chest X-ray image analysis."""
-        from app.chat_progress import emit_progress
-
-        emit_progress("CHEST_XRAY_AGENT")
-        current_input = state["current_input"]
-        image_path = current_input.get("image", None)
-
-        print(f"Selected agent: CHEST_XRAY_AGENT")
-
-        response_text = get_image_analyzer().classify_chest_xray(image_path)
-        response = AIMessage(content=response_text)
-
-        return {
-            **state,
-            "output": response,
-            "needs_human_validation": True,  # Medical diagnosis always needs validation
-            "agent_name": "CHEST_XRAY_AGENT"
-        }
-    
-    def run_skin_lesion_agent(state: AgentState) -> AgentState:
-        """Handle skin lesion image analysis."""
-        from app.chat_progress import emit_progress
-
-        emit_progress("SKIN_LESION_AGENT")
-        current_input = state["current_input"]
-        image_path = current_input.get("image", None)
-
-        print(f"Selected agent: SKIN_LESION_AGENT")
-
-        response_text = get_image_analyzer().classify_skin_lesion(image_path)
-        response = AIMessage(content=response_text)
-
-        return {
-            **state,
-            "output": response,
-            "needs_human_validation": True,  # Medical diagnosis always needs validation
-            "agent_name": "SKIN_LESION_AGENT"
-        }
-    
-    def handle_human_validation(state: AgentState) -> Dict:
-        """Prepare for human validation if needed."""
-        if state.get("needs_human_validation", False):
-            return {"agent_state": state, "next": "human_validation", "agent": "HUMAN_VALIDATION"}
-        return {"agent_state": state, "next": END}
-    
-    def perform_human_validation(state: AgentState) -> AgentState:
-        """Handle human validation process."""
-        print(f"Selected agent: HUMAN_VALIDATION")
-
-        # Append validation request to the existing output
-        validation_prompt = f"{state['output'].content}\n\n**Human Validation Required:**\n- If you're a healthcare professional: Please validate the output. Select **Yes** or **No**. If No, provide comments.\n- If you're a patient: Simply click Yes to confirm."
-
-        # Create an AI message with the validation prompt
-        validation_message = AIMessage(content=validation_prompt)
-
-        return {
-            **state,
-            "output": validation_message,
-            "agent_name": f"{state['agent_name']}, HUMAN_VALIDATION"
-        }
-
     # Check output through guardrails
     def apply_output_guardrails(state: AgentState) -> AgentState:
         """Apply output guardrails to the generated response."""
@@ -610,34 +433,6 @@ def create_agent_graph():
 
         output_text = output if isinstance(output, str) else output.content
         
-        # If the last message was a human validation message
-        if "Human Validation Required" in output_text:
-            # Check if the current input is a human validation response
-            validation_input = ""
-            if isinstance(current_input, str):
-                validation_input = current_input
-            elif isinstance(current_input, dict):
-                validation_input = current_input.get("text", "")
-            
-            # If validation input exists
-            if validation_input.lower().startswith(('yes', 'no')):
-                # Add the validation result to the conversation history
-                validation_response = HumanMessage(content=f"Validation Result: {validation_input}")
-                
-                # If validation is 'No', modify the output
-                if validation_input.lower().startswith('no'):
-                    fallback_message = AIMessage(content="The previous medical analysis requires further review. A healthcare professional has flagged potential inaccuracies.")
-                    return {
-                        **state,
-                        "messages": [validation_response, fallback_message],
-                        "output": fallback_message
-                    }
-                
-                return {
-                    **state,
-                    "messages": validation_response
-                }
-        
         # Get the original input text
         input_text = ""
         if isinstance(current_input, str):
@@ -649,12 +444,16 @@ def create_agent_graph():
         sanitized_output = guardrails.check_output(output_text, input_text)
 
         sanitized_message = AIMessage(content=sanitized_output)
-        
-        return {
+
+        updated: AgentState = {
             **state,
             "messages": sanitized_message,
-            "output": sanitized_message
+            "output": sanitized_message,
         }
+
+        from app.medical.agents.wellness_agent.retrieval import attach_wellness_after_retrieval
+
+        return attach_wellness_after_retrieval(updated)
 
     
     # Create the workflow graph
@@ -666,28 +465,18 @@ def create_agent_graph():
     workflow.add_node("CONVERSATION_AGENT", run_conversation_agent)
     workflow.add_node("RAG_AGENT", run_rag_agent)
     workflow.add_node("WEB_SEARCH_PROCESSOR_AGENT", run_web_search_processor_agent)
-    workflow.add_node("BRAIN_TUMOR_AGENT", run_brain_tumor_agent)
-    workflow.add_node("CHEST_XRAY_AGENT", run_chest_xray_agent)
-    workflow.add_node("SKIN_LESION_AGENT", run_skin_lesion_agent)
-    workflow.add_node("check_validation", handle_human_validation)
-    workflow.add_node("human_validation", perform_human_validation)
-    workflow.add_node("validation_response", run_validation_response)
     workflow.add_node("apply_guardrails", apply_output_guardrails)
     
     # Define the edges (workflow connections)
     workflow.set_entry_point("analyze_input")
-    # workflow.add_edge("analyze_input", "route_to_agent")
-    # Add conditional routing for guardrails bypass
     workflow.add_conditional_edges(
         "analyze_input",
         route_after_analyze,
         {
-            "validation_response": "validation_response",
             "apply_guardrails": "apply_guardrails",
             "route_to_agent": "route_to_agent",
         },
     )
-    workflow.add_edge("validation_response", END)
     
     # Connect decision router to agents
     workflow.add_conditional_edges(
@@ -697,35 +486,14 @@ def create_agent_graph():
             "CONVERSATION_AGENT": "CONVERSATION_AGENT",
             "RAG_AGENT": "RAG_AGENT",
             "WEB_SEARCH_PROCESSOR_AGENT": "WEB_SEARCH_PROCESSOR_AGENT",
-            "BRAIN_TUMOR_AGENT": "BRAIN_TUMOR_AGENT",
-            "CHEST_XRAY_AGENT": "CHEST_XRAY_AGENT",
-            "SKIN_LESION_AGENT": "SKIN_LESION_AGENT",
             "needs_validation": "RAG_AGENT"  # Default to RAG if confidence is low
         }
     )
     
-    # Connect agent outputs to validation check
-    workflow.add_edge("CONVERSATION_AGENT", "check_validation")
-    # workflow.add_edge("RAG_AGENT", "check_validation")
-    workflow.add_edge("WEB_SEARCH_PROCESSOR_AGENT", "check_validation")
+    workflow.add_edge("CONVERSATION_AGENT", "apply_guardrails")
     workflow.add_conditional_edges("RAG_AGENT", confidence_based_routing)
-    workflow.add_edge("BRAIN_TUMOR_AGENT", "check_validation")
-    workflow.add_edge("CHEST_XRAY_AGENT", "check_validation")
-    workflow.add_edge("SKIN_LESION_AGENT", "check_validation")
-
-    workflow.add_edge("human_validation", "apply_guardrails")
+    workflow.add_edge("WEB_SEARCH_PROCESSOR_AGENT", "apply_guardrails")
     workflow.add_edge("apply_guardrails", END)
-    
-    workflow.add_conditional_edges(
-        "check_validation",
-        lambda x: x["next"],
-        {
-            "human_validation": "human_validation",
-            END: "apply_guardrails"  # Route to guardrails instead of END
-        }
-    )
-    
-    # workflow.add_edge("human_validation", END)
     
     # Compile the graph
     return workflow.compile(checkpointer=memory)
@@ -739,14 +507,13 @@ def init_agent_state() -> AgentState:
         "conversation_summary": None,
         "agent_name": None,
         "current_input": None,
-        "has_image": False,
-        "image_type": None,
         "output": None,
-        "needs_human_validation": False,
         "retrieval_confidence": 0.0,
         "bypass_routing": False,
         "insufficient_info": False,
-        "validation_submission": None,
+        "suggested_activities": [],
+        "wellness_retrieval_score": None,
+        "wellness_retrieval_source": None,
     }
 
 
@@ -761,7 +528,7 @@ def process_query(
     Process a user query through the agent decision system.
 
     Args:
-        query: User input (text string or dict with text and image path)
+        query: User input text
         thread_id: LangGraph checkpoint id (use thesis session_id)
         conversation_history: Unused; history kept in MemorySaver per thread_id
 
@@ -778,9 +545,7 @@ def process_query(
     state["session_id"] = thread_id
     state["conversation_summary"] = (conversation_summary or "").strip()
 
-    message_text = query
-    if isinstance(query, dict):
-        message_text = query.get("text", "") + ", user uploaded an image for diagnosis."
+    message_text = extract_input_text(query) or str(query)
 
     state["messages"] = [HumanMessage(content=message_text)]
 

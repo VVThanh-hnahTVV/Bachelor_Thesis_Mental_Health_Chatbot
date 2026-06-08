@@ -196,6 +196,12 @@ export interface ChatMessage {
     }>;
     quick_replies?: QuickReply[];
     show_micro_feedback?: boolean;
+    pending_activity_rating?: {
+      activity_id: string;
+      completion_id: string;
+      rated?: boolean;
+      rating?: number;
+    };
     prompt_screening?: string | null;
     retrieval_mode?: "vector" | "lexical" | "hybrid" | "none";
     retrieved_chunks?: Array<{
@@ -207,10 +213,6 @@ export interface ChatMessage {
     safety_fallback_used?: boolean;
     chat_mode?: ChatMode;
     agent_name?: string;
-    needs_validation?: boolean;
-    result_image?: string;
-    image_url?: string;
-    has_image?: boolean;
     [key: string]: unknown;
   };
 }
@@ -286,6 +288,12 @@ function mapStreamDoneToApiResponse(data: Record<string, unknown>): ApiResponse 
       crisis_stage: data.crisis_stage,
       crisis_choices: normalizeCrisisChoices(data.crisis_choices),
       quick_replies: data.quick_replies,
+      suggested_activities:
+        (data.suggested_activities as Array<{
+          id: string;
+          title: string;
+          description: string;
+        }>) ?? (data.metadata as ChatMessage["metadata"])?.suggested_activities,
     },
   };
 }
@@ -524,66 +532,3 @@ export const getAllChatSessions = async (): Promise<ChatSession[]> => {
     chatMode: (session.chat_mode as ChatMode) || "psychologist",
   }));
 };
-
-export async function uploadMedicalImage(
-  sessionId: string,
-  file: File,
-  text: string = ""
-): Promise<ApiResponse> {
-  const token = getAuthToken();
-  const form = new FormData();
-  form.append("session_id", sessionId);
-  form.append("image", file);
-  form.append("text", text);
-  form.append("chat_mode", "medical");
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/api/v1/chat/upload`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to upload image");
-  }
-  const data = await response.json();
-  return {
-    message: data.reply,
-    response: data.reply,
-    assistant_message_id: data.assistant_message_id ?? undefined,
-    message_type: data.message_type ?? "medical",
-    metadata: data.metadata,
-  };
-}
-
-export async function validateMedicalOutput(
-  sessionId: string,
-  validationResult: "yes" | "no",
-  comments?: string
-): Promise<ApiResponse> {
-  const token = getAuthToken();
-  const form = new FormData();
-  form.append("session_id", sessionId);
-  form.append("validation_result", validationResult);
-  if (comments) form.append("comments", comments);
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE}/api/v1/chat/validate`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to submit validation");
-  }
-  const data = await response.json();
-  return {
-    message: data.reply,
-    response: data.reply,
-    assistant_message_id: data.assistant_message_id ?? undefined,
-    message_type: data.message_type ?? "medical",
-    metadata: data.metadata,
-  };
-}
