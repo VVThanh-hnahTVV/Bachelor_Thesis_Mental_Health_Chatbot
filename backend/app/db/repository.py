@@ -128,6 +128,35 @@ async def update_conversation_title(
     )
 
 
+async def get_conversation_summary(
+    db: AsyncIOMotorDatabase,
+    session_id: str,
+) -> str:
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        return ""
+    summary = conv.get("summary")
+    return str(summary).strip() if summary else ""
+
+
+async def update_conversation_summary(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+    summary: str,
+) -> None:
+    now = datetime.now(UTC)
+    await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id},
+        {
+            "$set": {
+                "summary": summary,
+                "summary_updated_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+
+
 async def delete_conversation_by_session(
     db: AsyncIOMotorDatabase,
     session_id: str,

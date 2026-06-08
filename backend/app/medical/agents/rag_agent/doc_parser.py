@@ -1,5 +1,6 @@
 import os
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
@@ -12,6 +13,45 @@ from docling.datamodel.pipeline_options import (
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import PictureItem, TableItem
+
+from app.medical.llm import resolve_ingest_provider
+
+
+@dataclass
+class MarkdownParsedDocument:
+    """Minimal docling-compatible wrapper (also used by OpenAIDocParser)."""
+
+    markdown: str
+
+    def export_to_markdown(
+        self,
+        page_break_placeholder: str = "",
+        image_placeholder: str = "",
+    ) -> str:
+        _ = image_placeholder
+        if not page_break_placeholder:
+            return self.markdown
+        return self.markdown.replace("\n\n---\n\n", f"\n\n{page_break_placeholder}\n\n")
+
+
+def resolve_ingest_parse_provider() -> str:
+    """PDF parse backend for ingest step 1: openai (API) or docling (local CPU)."""
+    explicit = os.getenv("INGEST_PARSE_PROVIDER", "").strip().lower()
+    if explicit in ("openai", "docling"):
+        return explicit
+    if resolve_ingest_provider() == "openai":
+        return "openai"
+    return "docling"
+
+
+def create_doc_parser():
+    provider = resolve_ingest_parse_provider()
+    if provider == "openai":
+        from .openai_doc_parser import OpenAIDocParser
+
+        return OpenAIDocParser()
+    return MedicalDocParser()
+
 
 class MedicalDocParser:
     """

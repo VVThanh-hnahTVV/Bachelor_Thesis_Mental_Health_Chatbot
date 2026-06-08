@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from pprint import pprint
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,7 @@ from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
 from app.llm.factory import build_provider_chain, default_provider
 from app.mcp.server import create_mcp_asgi_app
+
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -38,8 +40,11 @@ def _active_model_for_provider(primary: str, settings) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
+    pprint(f"s: {s}")
     primary = default_provider()
+    print(f"primary: {primary}")
     provider_chain = build_provider_chain(primary)
+    print(f"provider_chain: {provider_chain}")
     active_model = _active_model_for_provider(primary, s)
     emb_provider = resolve_embedding_provider()
     emb_model = resolve_embedding_model(emb_provider)

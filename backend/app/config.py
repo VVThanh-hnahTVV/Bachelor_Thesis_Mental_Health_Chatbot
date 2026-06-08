@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     jwt_expire_hours: int = 168
 
+    debug_llm_prompts: bool = True
+
     enable_internal_mcp_server: bool = False
     enable_external_mcp_gateway: bool = False
     enable_graph_external_enrichment: bool = False
@@ -78,6 +80,10 @@ class Settings(BaseSettings):
     external_mcp_max_response_chars: int = 2000
     personalization_recent_mood_limit: int = 5
     personalization_recent_note_limit: int = 3
+    conversation_summary_max_tokens: int = Field(
+        default=512,
+        validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),
+    )
     graph_external_mcp_server: str | None = None
     graph_external_mcp_tool: str | None = None
 

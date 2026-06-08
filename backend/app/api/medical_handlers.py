@@ -51,6 +51,7 @@ async def handle_medical_chat_turn(
     session_id: str,
     conversation_id: ObjectId,
     message: str,
+    conversation_summary: str = "",
 ) -> tuple[str, dict[str, Any], str | None]:
     settings = get_settings()
     if not settings.enable_medical_mode:
@@ -58,7 +59,11 @@ async def handle_medical_chat_turn(
 
     svc = get_medical_service()
     try:
-        turn = await svc.handle_message(session_id, message)
+        turn = await svc.handle_message(
+            session_id,
+            message,
+            conversation_summary=conversation_summary,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, detail=f"Medical assistant error: {exc}") from exc
 
@@ -90,6 +95,7 @@ async def handle_medical_upload_turn(
     conversation_id: ObjectId,
     image: UploadFile,
     text: str,
+    conversation_summary: str = "",
 ) -> tuple[str, dict[str, Any], str | None]:
     settings = get_settings()
     if not settings.enable_medical_mode:
@@ -107,6 +113,7 @@ async def handle_medical_upload_turn(
             content,
             image.filename or "upload.jpg",
             text=text,
+            conversation_summary=conversation_summary,
         )
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc)) from exc
@@ -141,10 +148,16 @@ async def handle_medical_validation_turn(
     conversation_id: ObjectId,
     validation_result: str,
     comments: str | None,
+    conversation_summary: str = "",
 ) -> tuple[str, dict[str, Any], str | None]:
     svc = get_medical_service()
     try:
-        turn = await svc.handle_validation(session_id, validation_result, comments)
+        turn = await svc.handle_validation(
+            session_id,
+            validation_result,
+            comments,
+            conversation_summary=conversation_summary,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, detail=f"Medical validation error: {exc}") from exc
 

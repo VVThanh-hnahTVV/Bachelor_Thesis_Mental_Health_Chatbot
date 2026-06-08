@@ -64,8 +64,13 @@ def _run_sync(
     query: Union[str, dict[str, str]],
     *,
     thread_id: str,
+    conversation_summary: str = "",
 ) -> MedicalTurnResult:
-    result = process_query(query, thread_id=thread_id)
+    result = process_query(
+        query,
+        thread_id=thread_id,
+        conversation_summary=conversation_summary,
+    )
     agent = _agent_name(result)
     return MedicalTurnResult(
         reply=_extract_reply(result),
@@ -76,8 +81,19 @@ def _run_sync(
 
 
 class MedicalChatService:
-    async def handle_message(self, session_id: str, message: str) -> MedicalTurnResult:
-        return await asyncio.to_thread(_run_sync, message, thread_id=session_id)
+    async def handle_message(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        conversation_summary: str = "",
+    ) -> MedicalTurnResult:
+        return await asyncio.to_thread(
+            _run_sync,
+            message,
+            thread_id=session_id,
+            conversation_summary=conversation_summary,
+        )
 
     async def handle_upload(
         self,
@@ -85,6 +101,8 @@ class MedicalChatService:
         image_bytes: bytes,
         filename: str,
         text: str = "",
+        *,
+        conversation_summary: str = "",
     ) -> MedicalTurnResult:
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_IMAGE_EXTENSIONS:
@@ -98,7 +116,12 @@ class MedicalChatService:
 
         query: dict[str, str] = {"text": text, "image": str(file_path)}
         try:
-            return await asyncio.to_thread(_run_sync, query, thread_id=session_id)
+            return await asyncio.to_thread(
+                _run_sync,
+                query,
+                thread_id=session_id,
+                conversation_summary=conversation_summary,
+            )
         finally:
             try:
                 file_path.unlink(missing_ok=True)
@@ -110,11 +133,18 @@ class MedicalChatService:
         session_id: str,
         validation_result: str,
         comments: str | None = None,
+        *,
+        conversation_summary: str = "",
     ) -> MedicalTurnResult:
         validation_query = f"Validation result: {validation_result}"
         if comments:
             validation_query += f" Comments: {comments}"
-        return await asyncio.to_thread(_run_sync, validation_query, thread_id=session_id)
+        return await asyncio.to_thread(
+            _run_sync,
+            validation_query,
+            thread_id=session_id,
+            conversation_summary=conversation_summary,
+        )
 
 
 _medical_service: MedicalChatService | None = None

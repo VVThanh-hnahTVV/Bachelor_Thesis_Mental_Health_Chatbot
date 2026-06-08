@@ -1,10 +1,29 @@
-import re
+import base64
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+import re
+from mimetypes import guess_type
+from pathlib import Path
+from typing import Any, List
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+
+def _image_ref_to_data_url(image_ref: str) -> str:
+    """Convert a local path or file URI into a base64 data URL for remote vision APIs."""
+    if image_ref.startswith(("data:", "http://", "https://")):
+        return image_ref
+
+    path = Path(image_ref.removeprefix("file://"))
+    if not path.is_file():
+        raise FileNotFoundError(f"Image not found: {image_ref}")
+
+    mime_type, _ = guess_type(path)
+    if mime_type is None:
+        mime_type = "image/png"
+
+    encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+    return f"data:{mime_type};base64,{encoded}"
+
 
 class ContentProcessor:
     """
@@ -60,12 +79,11 @@ class ContentProcessor:
         results = []
         for image in images:
             try:
-                summary = summary_chain.invoke({"image": image})
+                image_url = _image_ref_to_data_url(image)
+                summary = summary_chain.invoke({"image": image_url})
                 results.append(summary)
             except Exception as e:
-                # Log the error if needed
-                print(f"Error processing image: {str(e)}")
-                # Add placeholder for the failed image
+                self.logger.warning("Error processing image %s: %s", image, e)
                 results.append("no image summary")
         
         return results

@@ -3,7 +3,7 @@ import time
 import logging
 from typing import List, Optional, Dict, Any
 
-from .doc_parser import MedicalDocParser
+from .doc_parser import create_doc_parser
 from .content_processor import ContentProcessor
 from .vectorstore_qdrant import VectorStore
 from .reranker import Reranker
@@ -25,7 +25,7 @@ class MedicalRAG:
         self.logger = logging.getLogger(f"{self.__module__}")
         self.logger.info("Initializing Medical RAG system")
         self.config = config
-        self.doc_parser = MedicalDocParser()
+        self.doc_parser = create_doc_parser()
         self.content_processor = ContentProcessor(config)
         self.vector_store = VectorStore(config)
         self.reranker = Reranker(config)

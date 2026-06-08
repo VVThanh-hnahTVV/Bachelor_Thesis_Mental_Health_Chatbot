@@ -278,11 +278,26 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     if chat_mode == "medical":
         emit_progress("analyzing_request")
         medical_provider = default_provider()
+        from app.conversation.context import load_conversation_summary
+
+        conversation_summary = await load_conversation_summary(db, redis, req.session_id)
         reply, meta, assistant_message_id = await handle_medical_chat_turn(
             db,
             session_id=req.session_id,
             conversation_id=cid,
             message=req.message,
+            conversation_summary=conversation_summary,
+        )
+        from app.conversation.summary import schedule_conversation_summary_update
+
+        schedule_conversation_summary_update(
+            db,
+            redis,
+            session_id=req.session_id,
+            conversation_id=cid,
+            user_message=req.message,
+            assistant_reply=reply,
+            provider=medical_provider,
         )
         return ChatResponse(
             reply=reply,
@@ -658,6 +673,19 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
 
         asyncio.create_task(_update_profile_and_cache())
 
+    if reply.strip():
+        from app.conversation.summary import schedule_conversation_summary_update
+
+        schedule_conversation_summary_update(
+            db,
+            redis,
+            session_id=req.session_id,
+            conversation_id=cid,
+            user_message=user_message_stored,
+            assistant_reply=reply,
+            provider=provider,
+        )
+
     qr_out: list[QuickReplyOut] = []
     if not chat_blocked:
         qr_out = [QuickReplyOut(**q) for q in (meta_out.get("quick_replies") or [])]
@@ -798,6 +826,7 @@ async def chat_upload(
     )
 
     db = get_db(request)
+    redis = get_redis(request)
     conv = await get_conversation_by_session(db, session_id)
     conv, mode = await resolve_conversation_mode(
         db,
@@ -819,14 +848,29 @@ async def chat_upload(
         metadata={"chat_mode": "medical", "has_image": True},
     )
 
+    from app.conversation.context import load_conversation_summary
+
+    conversation_summary = await load_conversation_summary(db, redis, session_id)
     reply, meta, assistant_message_id = await handle_medical_upload_turn(
         db,
         session_id=session_id,
         conversation_id=cid,
         image=image,
         text=text,
+        conversation_summary=conversation_summary,
     )
     medical_provider = default_provider()
+    from app.conversation.summary import schedule_conversation_summary_update
+
+    schedule_conversation_summary_update(
+        db,
+        redis,
+        session_id=session_id,
+        conversation_id=cid,
+        user_message=user_content,
+        assistant_reply=reply,
+        provider=medical_provider,
+    )
     return ChatResponse(
         reply=reply,
         session_id=session_id,
@@ -854,6 +898,7 @@ async def chat_validate(
     )
 
     db = get_db(request)
+    redis = get_redis(request)
     conv = await get_conversation_by_session(db, session_id)
     if not conv:
         raise HTTPException(404, detail="Session not found")
@@ -879,14 +924,29 @@ async def chat_validate(
         metadata={"chat_mode": "medical", "validation_input": True},
     )
 
+    from app.conversation.context import load_conversation_summary
+
+    conversation_summary = await load_conversation_summary(db, redis, session_id)
     reply, meta, assistant_message_id = await handle_medical_validation_turn(
         db,
         session_id=session_id,
         conversation_id=cid,
         validation_result=validation_result,
         comments=comments,
+        conversation_summary=conversation_summary,
     )
     medical_provider = default_provider()
+    from app.conversation.summary import schedule_conversation_summary_update
+
+    schedule_conversation_summary_update(
+        db,
+        redis,
+        session_id=session_id,
+        conversation_id=cid,
+        user_message=stored,
+        assistant_reply=reply,
+        provider=medical_provider,
+    )
     return ChatResponse(
         reply=reply,
         session_id=session_id,

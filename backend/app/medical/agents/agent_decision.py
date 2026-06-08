@@ -79,6 +79,8 @@ class AgentConfig:
 class AgentState(MessagesState):
     """State maintained across the workflow."""
     # messages: List[BaseMessage]  # Conversation history
+    session_id: Optional[str]
+    conversation_summary: Optional[str]
     agent_name: Optional[str]  # Current active agent
     current_input: Optional[Union[str, Dict]]  # Input to be processed
     has_image: bool  # Whether the current input contains an image
@@ -138,7 +140,19 @@ def create_agent_graph():
         
         # Check input through guardrails if text is present
         if input_text:
-            is_allowed, message = guardrails.check_input(input_text)
+            from app.conversation.context import format_recent_user_questions
+
+            summary = str(state.get("conversation_summary") or "").strip()
+            recent_questions = format_recent_user_questions(
+                state.get("messages") or [],
+                limit=5,
+                exclude_current=input_text,
+            )
+            is_allowed, message = guardrails.check_input(
+                input_text,
+                conversation_summary=summary,
+                recent_user_questions=recent_questions,
+            )
             if not is_allowed:
                 # If input is blocked, return early with guardrail message
                 print(f"Selected agent: INPUT GUARDRAILS, Message: ", message)
@@ -701,6 +715,8 @@ def init_agent_state() -> AgentState:
     """Initialize the agent state with default values."""
     return {
         "messages": [],
+        "session_id": None,
+        "conversation_summary": None,
         "agent_name": None,
         "current_input": None,
         "has_image": False,
@@ -718,6 +734,7 @@ def process_query(
     *,
     thread_id: str,
     conversation_history: List[BaseMessage] | None = None,
+    conversation_summary: str = "",
 ) -> dict:
     """
     Process a user query through the agent decision system.
@@ -737,6 +754,8 @@ def process_query(
 
     state = init_agent_state()
     state["current_input"] = query
+    state["session_id"] = thread_id
+    state["conversation_summary"] = (conversation_summary or "").strip()
 
     message_text = query
     if isinstance(query, dict):

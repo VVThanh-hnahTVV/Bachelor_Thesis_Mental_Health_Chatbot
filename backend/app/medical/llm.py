@@ -2,67 +2,144 @@
 
 from __future__ import annotations
 
+import os
+from typing import Any
+
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 
 from app.config import ProviderName, get_settings
-from app.llm.factory import default_provider
+from app.llm.factory import default_provider, is_provider_configured
 
 
-def build_chat_llm(temperature: float, *, for_vision: bool = False) -> BaseChatModel:
+def _log_medical_input(input: Any) -> None:
+    if not get_settings().debug_llm_prompts:
+        return
+    from app.loclog import coerce_llm_input_to_messages, infer_caller_label, print_llm_prompt
+
+    label = infer_caller_label(prefix="medical")
+    messages = coerce_llm_input_to_messages(input)
+    print_llm_prompt(label, default_provider(), messages)
+
+
+class _LoggingMixin:
+    def invoke(
+        self,
+        input: Any,
+        config: RunnableConfig | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        _log_medical_input(input)
+        return super().invoke(input, config, **kwargs)
+
+    async def ainvoke(
+        self,
+        input: Any,
+        config: RunnableConfig | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        _log_medical_input(input)
+        return await super().ainvoke(input, config, **kwargs)
+
+
+class LoggingChatOpenAI(_LoggingMixin, ChatOpenAI):
+    pass
+
+
+class LoggingChatGroq(_LoggingMixin, ChatGroq):
+    pass
+
+
+class LoggingChatGemini(_LoggingMixin, ChatGoogleGenerativeAI):
+    pass
+
+
+def resolve_ingest_provider() -> ProviderName:
+    """Provider for PDF ingest (image summary + chunking). Defaults to OpenAI when configured."""
+    explicit = os.getenv("INGEST_LLM_PROVIDER", "").strip().lower()
+    if explicit in ("local", "modal", "groq", "openai", "gemini"):
+        return explicit  # type: ignore[return-value]
+    if is_provider_configured("openai"):
+        return "openai"
+    return default_provider()
+
+
+def build_chat_llm(
+    temperature: float,
+    *,
+    for_vision: bool = False,
+    provider: ProviderName | None = None,
+    model: str | None = None,
+    timeout: int = 120,
+) -> BaseChatModel:
     """Medical mode uses the same provider-priority selection as psychologist mode."""
     _ = for_vision
     s = get_settings()
-    provider: ProviderName = default_provider()
+    selected: ProviderName = provider or default_provider()
 
-    if provider == "local":
+    if selected == "local":
         if not s.local_base_url:
             raise ValueError("LOCAL_BASE_URL is not set")
-        return ChatOpenAI(
+        return LoggingChatOpenAI(
             base_url=s.local_base_url.rstrip("/"),
             api_key=s.local_api_key or "ollama",
-            model=s.local_model,
+            model=model or s.local_model,
             temperature=temperature,
-            timeout=120,
+            timeout=timeout,
         )
 
-    if provider == "modal":
+    if selected == "modal":
         if not s.modal_base_url:
             raise ValueError("MODAL_BASE_URL is not set")
-        return ChatOpenAI(
+        return LoggingChatOpenAI(
             base_url=s.modal_base_url.rstrip("/"),
             api_key=s.modal_api_key or "dummy",
-            model=s.modal_model,
+            model=model or s.modal_model,
             temperature=temperature,
-            timeout=120,
+            timeout=timeout,
         )
 
-    if provider == "openai":
+    if selected == "openai":
         if not s.openai_api_key:
             raise ValueError("OPENAI_API_KEY is not set")
-        return ChatOpenAI(
+        return LoggingChatOpenAI(
             api_key=s.openai_api_key,
-            model=s.openai_model,
+            model=model or s.openai_model,
             temperature=temperature,
-            timeout=120,
+            timeout=timeout,
         )
 
-    if provider == "gemini":
+    if selected == "gemini":
         if not s.google_api_key:
             raise ValueError("GOOGLE_API_KEY is not set")
-        return ChatGoogleGenerativeAI(
+        return LoggingChatGemini(
             google_api_key=s.google_api_key,
-            model=s.gemini_model,
+            model=model or s.gemini_model,
             temperature=temperature,
         )
 
     if not s.groq_api_key:
         raise ValueError("GROQ_API_KEY is not set")
-    return ChatGroq(
+    return LoggingChatGroq(
         api_key=s.groq_api_key,
-        model=s.groq_model,
+        model=model or s.groq_model,
         temperature=temperature,
-        timeout=120,
+        timeout=timeout,
+    )
+
+
+def build_ingest_llm(temperature: float, *, for_vision: bool = False) -> BaseChatModel:
+    """LLM for medical PDF ingest (summarize images, semantic chunking)."""
+    provider = resolve_ingest_provider()
+    ingest_model = os.getenv("INGEST_OPENAI_MODEL") or os.getenv("OPENAI_MODEL")
+    timeout = 300 if for_vision else 180
+    return build_chat_llm(
+        temperature,
+        for_vision=for_vision,
+        provider=provider,
+        model=ingest_model if provider == "openai" else None,
+        timeout=timeout,
     )

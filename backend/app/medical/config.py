@@ -14,7 +14,7 @@ from app.medical.embeddings import (
     get_embedding_provider,
     get_qdrant_collection_name,
 )
-from app.medical.llm import build_chat_llm
+from app.medical.llm import build_chat_llm, build_ingest_llm
 
 load_dotenv()
 
@@ -95,8 +95,8 @@ class RAGConfig:
         self.chunk_overlap = 50
         self.embedding_model = build_embeddings()
         self.llm = build_chat_llm(temperature=0.3)
-        self.summarizer_model = build_chat_llm(temperature=0.5, for_vision=True)
-        self.chunker_model = build_chat_llm(temperature=0.0)
+        self.summarizer_model = build_ingest_llm(temperature=0.5, for_vision=True)
+        self.chunker_model = build_ingest_llm(temperature=0.0)
         self.response_generator_model = build_chat_llm(temperature=0.3)
         self.top_k = 5
         self.vector_search_type = "similarity"

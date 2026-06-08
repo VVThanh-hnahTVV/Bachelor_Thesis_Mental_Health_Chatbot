@@ -124,17 +124,31 @@ def build_provider_chain(primary: ProviderName) -> list[ProviderName]:
     return [primary] + configured
 
 
+def _apply_max_tokens(model: BaseChatModel, max_tokens: int | None) -> BaseChatModel:
+    if max_tokens is None or max_tokens <= 0:
+        return model
+    return model.bind(max_tokens=max_tokens)
+
+
 async def invoke_with_fallback(
     llm: BaseChatModel,
     messages: list[BaseMessage],
     *,
     primary: ProviderName,
+    label: str | None = None,
+    max_tokens: int | None = None,
 ) -> BaseMessage:
+    if get_settings().debug_llm_prompts:
+        from app.loclog import infer_caller_label, print_llm_prompt
+
+        print_llm_prompt(label or infer_caller_label(), primary, messages)
+
     chain = build_provider_chain(primary)
     last_err: Exception | None = None
     for prov in chain:
         try:
             model = get_chat_model(prov) if prov != primary else llm
+            model = _apply_max_tokens(model, max_tokens)
             return await model.ainvoke(messages)
         except Exception as e:
             logger.warning("LLM provider %s failed: %s", prov, e)

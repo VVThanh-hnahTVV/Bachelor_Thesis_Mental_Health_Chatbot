@@ -15,6 +15,10 @@ def _personalization_key(session_id: str) -> str:
     return f"session:{session_id}:personalization"
 
 
+def _conversation_summary_key(session_id: str) -> str:
+    return f"session:{session_id}:conversation_summary"
+
+
 async def push_turn(
     redis: aioredis.Redis,
     session_id: str,
@@ -47,6 +51,7 @@ async def get_turns(
 async def clear_session(redis: aioredis.Redis, session_id: str) -> None:
     await redis.delete(_key(session_id))
     await redis.delete(_personalization_key(session_id))
+    await redis.delete(_conversation_summary_key(session_id))
 
 
 async def purge_chat_session_cache(redis: aioredis.Redis | None, session_id: str) -> None:
@@ -88,3 +93,27 @@ async def get_personalization_context(
     if not isinstance(parsed, dict):
         return None
     return parsed
+
+
+async def set_conversation_summary_cache(
+    redis: aioredis.Redis,
+    session_id: str,
+    summary: str,
+) -> None:
+    ttl = get_settings().session_ttl_seconds
+    k = _conversation_summary_key(session_id)
+    await redis.set(k, summary)
+    await redis.expire(k, ttl)
+
+
+async def get_conversation_summary_cache(
+    redis: aioredis.Redis,
+    session_id: str,
+) -> str | None:
+    raw = await redis.get(_conversation_summary_key(session_id))
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    text = str(raw).strip()
+    return text or None
