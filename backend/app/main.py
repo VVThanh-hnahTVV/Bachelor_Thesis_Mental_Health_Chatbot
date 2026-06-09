@@ -7,6 +7,7 @@ from pprint import pprint
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router as api_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(auth_router)
+    app.include_router(admin_router)
     app.include_router(mcp_router)
 
     if s.enable_internal_mcp_server:

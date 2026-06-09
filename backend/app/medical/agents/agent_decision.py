@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Base
 from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import MessagesState, StateGraph, END
 import os, getpass
-from app.medical.agents.rag_agent import MedicalRAG
+from app.medical.agents.rag_agent import get_medical_rag
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS, PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS
 from app.medical.agents.web_search_processor_agent import WebSearchProcessorAgent
 from app.medical.agents.guardrails.local_guardrails import LocalGuardrails
@@ -164,6 +164,7 @@ def create_agent_graph():
         system_prompt = build_decision_system_prompt(
             raw_dir=config.rag.raw_documents_dir,
             metadata_path=config.rag.document_metadata_path,
+            web_catalog_path=config.web_corpus.web_catalog_path,
         )
         decision = decision_runner.invoke(
             [
@@ -281,7 +282,7 @@ def create_agent_graph():
         emit_progress("RAG_AGENT")
         print(f"Selected agent: RAG_AGENT")
 
-        rag_agent = MedicalRAG(config)
+        rag_agent = get_medical_rag(config)
         query = state["current_input"]
         memory_context = _agent_memory_context(state)
 

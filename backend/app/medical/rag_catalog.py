@@ -147,26 +147,66 @@ def list_raw_documents(
     return entries
 
 
+def _load_web_catalog(web_catalog_path: str) -> List[Dict[str, Any]]:
+    path = Path(web_catalog_path)
+    if not path.is_file():
+        return []
+    try:
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Could not load web catalog from %s: %s", path, exc)
+        return []
+    articles = payload.get("articles", [])
+    return [a for a in articles if isinstance(a, dict)]
+
+
+def build_web_catalog_section(web_catalog_path: str) -> str:
+    articles = _load_web_catalog(web_catalog_path)
+    if not articles:
+        return (
+            "   (No indexed mental-health news articles yet. "
+            "Mental-health news questions may still use RAG_AGENT if PDF sources match.)"
+        )
+    lines = [
+        "   Indexed mental-health news / web articles (curated, admin-approved):",
+    ]
+    for article in articles[:25]:
+        title = str(article.get("title") or "Untitled")
+        publisher = str(article.get("publisher") or "")
+        language = str(article.get("language") or "")
+        lines.append(f"   - {title} | publisher={publisher} | lang={language} | topics=mental_health")
+    return "\n".join(lines)
+
+
 def build_rag_catalog_section(
     raw_dir: str,
     metadata_path: str,
+    web_catalog_path: str = "",
 ) -> str:
     """Format ingested-source metadata for the routing system prompt."""
     entries = list_raw_documents(raw_dir, metadata_path)
-    if not entries:
+    sections: List[str] = []
+
+    if entries:
+        sections.append("   PDF / textbook ingested sources:")
+        sections.extend(f"   {entry.format_prompt_line()}" for entry in entries)
+    else:
+        sections.append(
+            "   (No ingested PDF documents found in the raw knowledge base yet.)"
+        )
+
+    if web_catalog_path:
+        sections.append(build_web_catalog_section(web_catalog_path))
+
+    if not entries and not web_catalog_path:
         return (
-            "   (No ingested documents found in the raw knowledge base yet. "
+            "   (No ingested documents found. "
             "Prefer CONVERSATION_AGENT or WEB_SEARCH_PROCESSOR_AGENT for medical questions.)"
         )
 
-    lines = [
-        "   Use RAG_AGENT when the user's question matches one of these ingested sources:",
-        *[
-            f"   {entry.format_prompt_line()}"
-            for entry in entries
-        ],
-    ]
-    return "\n".join(lines)
+    header = "   Use RAG_AGENT when the user's question matches one of these ingested sources:"
+    return header + "\n" + "\n".join(sections)
 
 
 DECISION_SYSTEM_PROMPT_BASE = """You are an intelligent medical triage system that routes user queries to
@@ -203,7 +243,12 @@ You must provide your answer in JSON format with the following structure:
 def build_decision_system_prompt(
     raw_dir: str,
     metadata_path: str,
+    web_catalog_path: str = "",
 ) -> str:
     """Build the full routing system prompt with up-to-date raw document metadata."""
-    catalog = build_rag_catalog_section(raw_dir, metadata_path)
+    catalog = build_rag_catalog_section(
+        raw_dir,
+        metadata_path,
+        web_catalog_path=web_catalog_path,
+    )
     return DECISION_SYSTEM_PROMPT_BASE.format(rag_catalog=catalog)

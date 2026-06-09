@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from bson import ObjectId
@@ -44,6 +45,7 @@ class UserOut(BaseModel):
     id: str
     email: str
     name: str
+    role: str = "user"
 
 
 class AuthResponse(BaseModel):
@@ -60,7 +62,19 @@ def get_db(request: Request):
 
 def _to_user_out(doc: dict[str, Any]) -> UserOut:
     pub = user_public(doc)
-    return UserOut(id=pub["_id"], email=pub["email"], name=pub["name"])
+    return UserOut(
+        id=pub["_id"],
+        email=pub["email"],
+        name=pub["name"],
+        role=pub.get("role", "user"),
+    )
+
+
+def _bootstrap_role_for_email(email: str) -> str:
+    bootstrap = (os.getenv("BOOTSTRAP_ADMIN_EMAIL") or "").strip().lower()
+    if bootstrap and email.lower().strip() == bootstrap:
+        return "admin"
+    return "user"
 
 
 async def _issue_token_and_maybe_link(
@@ -91,6 +105,7 @@ async def register(body: RegisterBody, request: Request) -> AuthResponse:
         email=body.email,
         name=body.name,
         password_hash=hash_password(body.password),
+        role=_bootstrap_role_for_email(body.email),
     )
     return await _issue_token_and_maybe_link(db, user, body.session_id)
 

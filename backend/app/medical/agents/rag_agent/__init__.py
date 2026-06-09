@@ -5,10 +5,21 @@ from typing import List, Optional, Dict, Any
 
 from .doc_parser import create_doc_parser
 from .content_processor import ContentProcessor
-from .vectorstore_qdrant import VectorStore
+from .vectorstore_qdrant import CorpusVectorStore, VectorStore
 from .reranker import Reranker
 from .query_expander import QueryExpander
 from .response_generator import ResponseGenerator
+
+_rag_singleton: "MedicalRAG | None" = None
+
+
+def get_medical_rag(config) -> "MedicalRAG":
+    """Reuse one MedicalRAG per process (heavy models + single Qdrant local client)."""
+    global _rag_singleton
+    if _rag_singleton is None:
+        _rag_singleton = MedicalRAG(config)
+    return _rag_singleton
+
 
 class MedicalRAG:
     """
@@ -28,6 +39,7 @@ class MedicalRAG:
         self.doc_parser = create_doc_parser()
         self.content_processor = ContentProcessor(config)
         self.vector_store = VectorStore(config)
+        self.web_vector_store = CorpusVectorStore.for_web_corpus(config)
         self.reranker = Reranker(config)
         self.query_expander = QueryExpander(config)
         self.response_generator = ResponseGenerator(config)
@@ -183,14 +195,39 @@ class MedicalRAG:
             self.logger.info(f"   Expanded: '{expanded_query}'")
             query = expanded_query
 
-            # Step 2: Retrieval
+            # Step 2: Retrieval (PDF + optional web mental-health corpus)
             self.logger.info(f"2. Retrieving relevant documents for the query: '{query}'")
-            vectorstore, docstore = self.vector_store.load_vectorstore()
-            retrieved_documents = self.vector_store.retrieve_relevant_chunks(
-                query=query,
-                vectorstore=vectorstore,
-                docstore=docstore,
+            retrieved_documents: List[Dict[str, Any]] = []
+
+            try:
+                pdf_loaded = self.vector_store.try_load_vectorstore()
+                if pdf_loaded is not None:
+                    pdf_vs, pdf_ds = pdf_loaded
+                    retrieved_documents.extend(
+                        self.vector_store.retrieve_relevant_chunks(
+                            query=query,
+                            vectorstore=pdf_vs,
+                            docstore=pdf_ds,
+                        )
+                    )
+            except Exception as pdf_exc:  # noqa: BLE001
+                self.logger.warning("PDF corpus retrieval skipped: %s", pdf_exc)
+
+            web_loaded = self.web_vector_store.try_load_vectorstore()
+            if web_loaded is not None:
+                web_vs, web_ds = web_loaded
+                retrieved_documents.extend(
+                    self.web_vector_store.retrieve_relevant_chunks(
+                        query=query,
+                        vectorstore=web_vs,
+                        docstore=web_ds,
+                    )
                 )
+
+            # Qdrant cosine distance: lower score = more similar
+            retrieved_documents.sort(key=lambda doc: doc.get("score", 0.0))
+            top_k = self.config.rag.top_k
+            retrieved_documents = retrieved_documents[: top_k * 2]
 
             self.logger.info(f"   Retrieved {len(retrieved_documents)} relevant document chunks")
 

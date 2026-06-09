@@ -140,6 +140,29 @@ class UIConfig:
         self.enable_speech = True
 
 
+class WebCorpusConfig:
+    def __init__(self) -> None:
+        self.collection_name = os.getenv("WEB_QDRANT_COLLECTION", "mental_health_web")
+        self.doc_local_path = os.getenv(
+            "WEB_DOCSTORE_PATH",
+            str(DATA_MEDICAL / "docs_db_web"),
+        )
+        self.vector_local_path = os.getenv(
+            "WEB_QDRANT_PATH",
+            str(DATA_MEDICAL / "qdrant_db"),
+        )
+        self.url = os.getenv("QDRANT_URL")
+        self.api_key = os.getenv("QDRANT_API_KEY")
+        self.staging_dir = os.getenv(
+            "CRAWL_STAGING_DIR",
+            str(BACKEND_ROOT / "data" / "crawl" / "staging"),
+        )
+        self.web_catalog_path = os.getenv(
+            "WEB_CATALOG_PATH",
+            str(BACKEND_ROOT / "data" / "crawl" / "web_catalog.json"),
+        )
+
+
 class WellnessConfig:
     def __init__(self) -> None:
         self.collection_name = os.getenv(
@@ -159,6 +182,7 @@ class MedicalConfig:
         self.agent_decision = AgentDecisoinConfig()
         self.conversation = ConversationConfig()
         self.rag = RAGConfig()
+        self.web_corpus = WebCorpusConfig()
         self.web_search = WebSearchConfig()
         self.wellness = WellnessConfig()
         self.api = APIConfig()

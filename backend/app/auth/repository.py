@@ -58,12 +58,14 @@ async def create_user(
     email: str,
     name: str,
     password_hash: str,
+    role: str = "user",
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     doc = {
         "email": email.lower().strip(),
         "name": name.strip(),
         "password_hash": password_hash,
+        "role": role if role in ("user", "admin") else "user",
         "created_at": now,
         "updated_at": now,
     }
@@ -77,7 +79,23 @@ def user_public(doc: dict[str, Any]) -> dict[str, Any]:
         "_id": str(doc["_id"]),
         "email": doc["email"],
         "name": doc["name"],
+        "role": str(doc.get("role") or "user"),
     }
+
+
+async def set_user_role(
+    db: AsyncIOMotorDatabase,
+    *,
+    email: str,
+    role: str,
+) -> dict[str, Any] | None:
+    if role not in ("user", "admin"):
+        raise ValueError("role must be user or admin")
+    await db[USERS].update_one(
+        {"email": email.lower().strip()},
+        {"$set": {"role": role, "updated_at": datetime.now(UTC)}},
+    )
+    return await get_user_by_email(db, email)
 
 
 async def delete_session_link(
