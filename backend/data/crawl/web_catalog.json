@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-09T09:11:03.925627+00:00",
+  "updated_at": "2026-06-09T09:52:47.549430+00:00",
   "articles": [
     {
       "source_id": "2fe07d3a68a9dffb",
@@ -8,6 +8,14 @@
       "language": "vi",
       "url": "https://www.vinmec.com/vie/bai-viet/tri-lieu-tam-ly-la-gi-hanh-trinh-tim-lai-su-can-bang",
       "indexed_at": "2026-06-09T09:11:03.924406+00:00"
+    },
+    {
+      "source_id": "f9ae6712e60fa98f",
+      "title": "Dị ứng và sức khỏe tâm thần có mối liên hệ ra sao?",
+      "publisher": "Vinmec",
+      "language": "vi",
+      "url": "https://www.vinmec.com/vie/bai-viet/di-ung-va-suc-khoe-tam-than-co-moi-lien-he-ra-sao",
+      "indexed_at": "2026-06-09T09:52:47.548353+00:00"
     }
   ]
 }

@@ -53,6 +53,7 @@ class AgentState(MessagesState):
     suggested_activities: Optional[List[Dict[str, str]]]  # Wellness activity suggestions for UI
     wellness_retrieval_score: Optional[float]
     wellness_retrieval_source: Optional[str]
+    user_language: Optional[str]  # ISO 639-1 code from input guardrail (e.g. vi, en)
 
 
 class AgentDecision(TypedDict):
@@ -116,26 +117,38 @@ def create_agent_graph():
                 limit=5,
                 exclude_current=input_text,
             )
-            is_allowed, message = guardrails.check_input(
+            guard_result = guardrails.check_input(
                 input_text,
                 conversation_summary=summary,
                 recent_user_questions=recent_questions,
             )
-            if not is_allowed:
-                # If input is blocked, return early with guardrail message
-                print(f"Selected agent: INPUT GUARDRAILS, Message: ", message)
-                blocked = message if isinstance(message, AIMessage) else AIMessage(content=str(message))
+            user_language = guard_result.user_language
+            if not guard_result.is_allowed:
+                print(f"Selected agent: INPUT GUARDRAILS, Message: ", guard_result.message)
+                blocked = (
+                    guard_result.message
+                    if isinstance(guard_result.message, AIMessage)
+                    else AIMessage(content=str(guard_result.message))
+                )
                 return {
                     **state,
                     "messages": [blocked],
                     "output": blocked,
                     "agent_name": "INPUT_GUARDRAILS",
                     "bypass_routing": True,
+                    "user_language": user_language,
                 }
-        
+
+            return {
+                **state,
+                "bypass_routing": False,
+                "user_language": user_language,
+            }
+
         return {
             **state,
-            "bypass_routing": False  # Explicitly set to False for normal flow
+            "bypass_routing": False,
+            "user_language": "en",
         }
     
     def route_after_analyze(state: AgentState) -> str:
@@ -202,17 +215,21 @@ def create_agent_graph():
         input_text = _input_text_from_state(state)
         memory_context = _agent_memory_context(state)
 
+        user_language = str(state.get("user_language") or "en")
+
         conversation_prompt = f"""User query: {input_text}
 
         Conversation memory:
         {memory_context}
 
+        Detected user language code: {user_language} (for downstream localization only).
+
         You are Helios, an AI-powered medical conversation assistant. Your goal is to facilitate smooth and informative conversations with users, handling both casual and medical-related queries. You must respond naturally while ensuring medical accuracy and clarity.
 
         ### Identity & tone
-        - Say "Mình là Helios" (or introduce yourself by name) ONLY on the first turn of a chat, when the user greets you, or when they explicitly ask who you are.
+        - Say "I am Helios" (or introduce yourself by name) ONLY on the first turn of a chat, when the user greets you, or when they explicitly ask who you are.
         - If there is prior conversation in the memory context above, do NOT re-introduce yourself — answer the user's question directly.
-        - Never open follow-up replies with "Mình là Helios" or similar self-introductions.
+        - Never open follow-up replies with a repeated self-introduction.
 
         ### Role & Capabilities
         - Engage in **general conversation** while maintaining professionalism.
@@ -249,13 +266,13 @@ def create_agent_graph():
 
         {MARKDOWN_RESPONSE_INSTRUCTIONS}
 
-        ### Example User Queries & Responses:
+        ### Example User Queries & Responses (English internal draft):
 
         **User:** "Hey, how's your day going?" (first message)
-        **You:** "Chào bạn! Mình là Helios, trợ lý y tế AI. Mình có thể giúp gì cho bạn hôm nay?"
+        **You:** "Hello! I'm Helios, an AI medical assistant. How can I help you today?"
 
-        **User:** "Mình cảm thấy hơi rát họng" (follow-up — Assistant already replied before)
-        **You:** "Rát họng thường gặp khi nhiễm đường hô hấp trên. Bạn có thể uống nước ấm, nghỉ giọng và tránh khói thuốc. Nếu kéo dài hoặc sốt cao, nên đi khám bác sĩ."
+        **User:** "My throat feels a bit sore" (follow-up — assistant already replied before)
+        **You:** "A sore throat is common with upper respiratory infections. Try warm fluids, rest your voice, and avoid smoke. See a doctor if it lasts more than a few days or you have a high fever."
 
         **User:** "I have a headache and fever. What should I do?" (follow-up)
         **You:** "Headaches and fever can have various causes, from infections to dehydration. If your symptoms persist, you should see a medical professional."
@@ -390,7 +407,12 @@ def create_agent_graph():
             input_text = current_input.get("text", "")
         
         # Apply output sanitization
-        sanitized_output = guardrails.check_output(output_text, input_text)
+        user_language = str(state.get("user_language") or "en")
+        sanitized_output = guardrails.check_output(
+            output_text,
+            input_text,
+            user_language=user_language,
+        )
 
         sanitized_message = AIMessage(content=sanitized_output)
 
@@ -465,6 +487,7 @@ def init_agent_state() -> AgentState:
         "suggested_activities": [],
         "wellness_retrieval_score": None,
         "wellness_retrieval_source": None,
+        "user_language": "en",
     }
 
 

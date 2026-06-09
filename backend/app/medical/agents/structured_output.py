@@ -25,12 +25,12 @@ Examples:
 
 ACTIVITIES_INTRO_RULES = """\
 ### activities_intro
-When suggest_activities is true, write 1–2 short warm sentences in the user's language (Vietnamese if they wrote in Vietnamese)
-that naturally bridge from your medical answer to the exercise buttons shown **below** this message.
-Invite them to tap **Mở** on a button to start a guided in-app exercise. Do not name specific exercise titles
-(buttons already show them). Keep activities_intro separate from "answer" — the system appends it after the answer.
+When suggest_activities is true, write 1–2 short warm sentences in **English** (internal draft) that bridge from your
+medical answer to the exercise buttons shown **below** this message. Invite the user to tap **Open** on a button to
+start a guided in-app exercise. Do not name specific exercise titles (buttons already show them). Keep activities_intro
+separate from "answer" — the system appends it after the answer. Final localization to the user's language happens later.
 When suggest_activities is false, set activities_intro to "".
-Example (insomnia): "Ngoài các thói quen trên, bạn có thể thử ngay vài bài tập thư giãn ngắn trong app — nhấn nút **Mở** bên dưới để bắt đầu."
+Example (insomnia): "Besides the habits above, you can try a short relaxation exercise in the app — tap **Open** below to start."
 """
 
 
