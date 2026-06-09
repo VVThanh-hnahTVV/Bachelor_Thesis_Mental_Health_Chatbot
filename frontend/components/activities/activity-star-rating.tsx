@@ -10,7 +10,6 @@ interface ActivityStarRatingProps {
   activityId: string;
   completionId: string;
   messageId?: string;
-  chatMode?: "psychologist" | "medical";
   lang?: "vi" | "en";
   className?: string;
   initialRating?: number;
@@ -24,7 +23,6 @@ export function ActivityStarRating({
   activityId,
   completionId,
   messageId,
-  chatMode = "medical",
   lang = "vi",
   className,
   initialRating,
@@ -36,13 +34,9 @@ export function ActivityStarRating({
   const [submitted, setSubmitted] = useState<number | null>(initialRating ?? null);
   const [loading, setLoading] = useState(false);
   const defaultThanks =
-    chatMode === "medical"
-      ? lang === "vi"
-        ? "Cảm ơn bạn đã đánh giá! Phản hồi của bạn giúp Helios gợi ý bài tập phù hợp hơn."
-        : "Thanks for your rating! Your feedback helps Helios suggest better activities."
-      : lang === "vi"
-        ? "Cảm ơn bạn đã đánh giá! Phản hồi của bạn giúp Luna gợi ý bài tập phù hợp hơn."
-        : "Thanks for your rating! Your feedback helps Luna suggest better activities.";
+    lang === "vi"
+      ? "Cảm ơn bạn đã đánh giá! Phản hồi của bạn giúp Helios gợi ý bài tập phù hợp hơn."
+      : "Thanks for your rating! Your feedback helps Helios suggest better activities.";
 
   const [thanks, setThanks] = useState<string | null>(
     readOnly && initialRating ? initialThanks ?? defaultThanks : null
@@ -65,7 +59,6 @@ export function ActivityStarRating({
         activityId,
         completionId,
         value,
-        chatMode,
         messageId
       );
       setSubmitted(value);

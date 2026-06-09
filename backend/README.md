@@ -1,74 +1,44 @@
-# Mental health chat backend
+# Helios medical chat backend
 
-FastAPI service with LangGraph orchestration, MongoDB persistence, and multi-provider LLM routing (Modal OpenAI-compatible, Groq, OpenAI, Gemini).
+FastAPI service with multi-agent LangGraph orchestration (Helios), MongoDB persistence, Qdrant RAG, and multi-provider LLM routing.
 
 ## API highlights
 
-- `POST /api/v1/chat` — returns `assistant_message_id` and LLM-detected `suggested_activities` (when risk is not high) for inline wellness UI.
-- `GET /api/v1/messages?session_id=` — chronological messages with ids.
-- `POST /api/v1/activities/complete` — body: `session_id`, `activity_id` (`breathing_box` | `ocean_sound`), optional `linked_message_id`, optional `duration_sec`.
-- `GET /api/v1/activities?session_id=` — list completions for badges in the UI.
+- `POST /api/v1/chat` — Helios medical assistant (RAG, web search, wellness suggestions)
+- `POST /api/v1/chat/stream` — SSE status + final response
+- `GET /api/v1/messages?session_id=` — chronological messages
+- `POST /api/v1/wellness/start` / `POST /api/v1/wellness/complete` — in-app wellness activities
+- `GET /api/v1/activities/catalog` — activity catalog
+- `POST /api/v1/activities/rate` — rate completed activities
 
 ## Quick start
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,medical]"
 cp .env.example .env   # fill keys
-# from repo root:
-docker compose up -d mongo
+docker compose up -d mongo redis
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open `http://localhost:8000/docs`.
 
-## Modal (fine-tuned) endpoint
-
-Deploy your model behind an **OpenAI-compatible** HTTP API (for example vLLM, TGI, or LiteLLM on [Modal](https://modal.com)). Set:
-
-- `MODAL_BASE_URL` — base URL including `/v1` if your proxy expects it (LangChain `ChatOpenAI` appends `/chat/completions` to the base host; use the host root your stack documents).
-- `MODAL_API_KEY` — token your gateway expects (use `dummy` if none).
-- `MODAL_MODEL` — model id string your server expects.
-
-Cold starts on serverless GPU can timeout; configure `LLM_FALLBACK_CHAIN` (e.g. `groq,openai,gemini`) so `invoke_with_fallback` can continue if Modal is slow or down.
-
-## Environment
-
-See [.env.example](.env.example).
-
-## Tests
-
-```bash
-pytest
-```
-
-## Lexical RAG
-
-Curated snippets live in `app/data/knowledge/chunks.json`. Runtime retrieval is keyword overlap (no embedding dependency). Extend `scripts/seed_vectorstore.py` if you add Chroma/OpenAI embeddings later.
-
-## Medical mode (dual chat)
-
-Vendored workflow under `app/medical/` (from `Clone/Multi-Agent-Medical-Assistant`). Install extras and ingest PDFs:
+## Medical RAG
 
 ```bash
 pip install -e ".[medical]"
 python -m app.medical.ingest --dir data/medical/raw
 ```
 
-API: `POST /api/v1/chat` with `"chat_mode": "medical"`.
-
-## Helios wellness activities
-
-Seed catalog + optional Qdrant index:
+## Wellness activities
 
 ```bash
 python scripts/seed_wellness_activities.py --ingest-qdrant
-# or separately:
-python -m app.medical.agents.wellness_agent.ingest
 ```
 
-Helios routes wellness requests to `WELLNESS_AGENT` (semantic search on activity benefits).
-After **RAG** or **web search** answers, Helios may attach activity buttons when the top
-wellness match score is ≥ `WELLNESS_SUGGESTION_MIN_SCORE` (default `0.35`).
-After completing an in-app activity, users rate 1–5 stars inline in chat.
+## Tests
+
+```bash
+pytest
+```

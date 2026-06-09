@@ -21,11 +21,11 @@ const notoSerif = Noto_Serif({
 
 export const metadata: Metadata = {
   title: {
-    default: "Find Peace of Mind | Luna & Helios",
-    template: "%s | Luna & Helios",
+    default: "Tra cứu & tư vấn sức khỏe tâm thần | Helios",
+    template: "%s | Helios",
   },
   description:
-    "Luna for emotional wellness and Helios for medical information — your AI companions for support and guidance.",
+    "Helios — nền tảng hỗ trợ tra cứu và tư vấn sức khỏe tâm thần với AI, bài tập thư giãn và thông tin tham khảo dễ hiểu.",
   icons: {
     icon: [{ url: "/logo.png", type: "image/png" }],
     apple: [{ url: "/logo.png", type: "image/png" }],
@@ -38,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${notoSerif.variable} font-serif antialiased bg-serene-bg text-[#2D3436]`}
       >

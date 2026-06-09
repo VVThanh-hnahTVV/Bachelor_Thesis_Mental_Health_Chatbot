@@ -75,7 +75,7 @@ def build_chat_llm(
     model: str | None = None,
     timeout: int = 120,
 ) -> BaseChatModel:
-    """Medical mode uses the same provider-priority selection as psychologist mode."""
+    """Medical mode uses the shared multi-provider LLM factory."""
     _ = for_vision
     s = get_settings()
     selected: ProviderName = provider or default_provider()

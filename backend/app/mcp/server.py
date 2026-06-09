@@ -6,8 +6,8 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.dependencies import ensure_session_ownership
+from app.auth.repository import get_session_link_by_session_id, get_user_by_id
 from app.auth.security import decode_access_token
-from app.personalization.context import build_personalization_context
 
 
 async def _authorize(
@@ -27,49 +27,39 @@ async def _authorize(
     await ensure_session_ownership(db=db, session_id=session_id, user_id=user_oid)
 
 
+async def _load_session_context(
+    db: AsyncIOMotorDatabase,
+    session_id: str,
+) -> dict[str, Any]:
+    link = await get_session_link_by_session_id(db, session_id)
+    context: dict[str, Any] = {"session_id": session_id}
+    if link:
+        user_oid = link.get("user_id")
+        if isinstance(user_oid, ObjectId):
+            user = await get_user_by_id(db, user_oid)
+            if user and isinstance(user.get("name"), str):
+                context["user_display_name"] = user["name"]
+    return context
+
+
 def create_personalization_mcp_server(
     *,
     db_getter: Callable[[], AsyncIOMotorDatabase | None],
 ) -> Any:
     from mcp.server.fastmcp import FastMCP
 
-    mcp = FastMCP("mental-health-personalization")
+    mcp = FastMCP("helios-session")
 
     async def _load_context(access_token: str, session_id: str) -> dict[str, Any]:
         db = db_getter()
         if db is None:
             raise RuntimeError("Database not ready")
         await _authorize(db, access_token=access_token, session_id=session_id)
-        return await build_personalization_context(
-            db,
-            session_id=session_id,
-            include_user_display=True,
-        )
+        return await _load_session_context(db, session_id)
 
     @mcp.tool()
-    async def get_user_mood_context(access_token: str, session_id: str) -> dict[str, Any]:
-        """Return user mood trend and recent mood highlights."""
-        ctx = await _load_context(access_token, session_id)
-        return {
-            "mood_trend": ctx.get("mood_trend", "stable"),
-            "recent_mood_scores": ctx.get("recent_mood_scores", []),
-            "recent_mood_notes": ctx.get("recent_mood_notes", []),
-        }
-
-    @mcp.tool()
-    async def get_user_profile_context(access_token: str, session_id: str) -> dict[str, Any]:
-        """Return long-term profile signals for personalized replies."""
-        ctx = await _load_context(access_token, session_id)
-        return {
-            "user_display_name": ctx.get("user_display_name"),
-            "preferred_tone": ctx.get("preferred_tone", "warm"),
-            "recurring_stressors": ctx.get("recurring_stressors", []),
-            "coping_preferences": ctx.get("coping_preferences", []),
-        }
-
-    @mcp.tool()
-    async def get_personalization_context(access_token: str, session_id: str) -> dict[str, Any]:
-        """Return compact context payload for LLM personalization."""
+    async def get_session_context(access_token: str, session_id: str) -> dict[str, Any]:
+        """Return basic session context for Helios integrations."""
         return await _load_context(access_token, session_id)
 
     return mcp

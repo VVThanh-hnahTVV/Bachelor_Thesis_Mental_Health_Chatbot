@@ -32,13 +32,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Container } from "@/components/ui/container";
 import { cn } from "@/lib/utils";
 
-import { MoodForm } from "@/components/mood/mood-form";
-import { PhqMiniForm } from "@/components/screening/phq-mini-form";
 import { AnxietyGames } from "@/components/games/anxiety-games";
 
 import {
   getUserActivities,
-  saveMoodData,
   logActivity,
 } from "@/lib/static-dashboard-data";
 
@@ -265,13 +262,10 @@ export default function Dashboard() {
 
   // New states for activities and wearables
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [showMoodModal, setShowMoodModal] = useState(false);
-  const [showPhqModal, setShowPhqModal] = useState(false);
   const [showCheckInChat, setShowCheckInChat] = useState(false);
   const [activityHistory, setActivityHistory] = useState<DayActivity[]>([]);
   const [showActivityLogger, setShowActivityLogger] = useState(false);
   const [isSavingActivity, setIsSavingActivity] = useState(false);
-  const [isSavingMood, setIsSavingMood] = useState(false);
   const [dailyStats, setDailyStats] = useState<DailyStats>({
     moodScore: null,
     moodSource: "none",
@@ -433,22 +427,6 @@ export default function Dashboard() {
     router.push("/therapy/new");
   };
 
-  const handleMoodSubmit = async (data: { moodScore: number }) => {
-    setIsSavingMood(true);
-    try {
-      await saveMoodData({
-        userId: "default-user",
-        mood: data.moodScore,
-        note: "",
-      });
-      setShowMoodModal(false);
-    } catch (error) {
-      console.error("Error saving mood:", error);
-    } finally {
-      setIsSavingMood(false);
-    }
-  };
-
   const handleAICheckIn = () => {
     setShowActivityLogger(true);
   };
@@ -560,47 +538,25 @@ export default function Dashboard() {
                       </div>
                     </Button>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "flex flex-col h-[120px] px-4 py-3 group/mood hover:border-primary/50",
-                          "justify-center items-center text-center",
-                          "transition-all duration-200 group-hover:translate-y-[-2px]"
-                        )}
-                        onClick={() => setShowMoodModal(true)}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center mb-2">
-                          <Heart className="w-5 h-5 text-rose-500" />
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "flex h-[120px] w-full flex-col px-4 py-3",
+                        "justify-center items-center text-center",
+                        "transition-all duration-200 hover:border-primary/50 group-hover:translate-y-[-2px]"
+                      )}
+                      onClick={() => router.push("/therapy/new")}
+                    >
+                      <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                        <BrainCircuit className="h-5 w-5 text-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">Trò chuyện với Helios</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          Tra cứu & tư vấn sức khỏe tâm thần
                         </div>
-                        <div>
-                          <div className="font-medium text-sm">Track Mood</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            How are you feeling?
-                          </div>
-                        </div>
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "flex flex-col h-[120px] px-4 py-3 group/ai hover:border-primary/50",
-                          "justify-center items-center text-center",
-                          "transition-all duration-200 group-hover:translate-y-[-2px]"
-                        )}
-                        onClick={() => setShowPhqModal(true)}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-2">
-                          <BrainCircuit className="w-5 h-5 text-blue-500" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm">Quick screening</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            PHQ-2 (~2 min)
-                          </div>
-                        </div>
-                      </Button>
-                    </div>
+                      </div>
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -727,40 +683,6 @@ export default function Dashboard() {
           </div>
         </div>
       </Container>
-
-      {/* Mood tracking modal */}
-      <Dialog open={showMoodModal} onOpenChange={setShowMoodModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>How are you feeling?</DialogTitle>
-            <DialogDescription>
-              Move the slider to track your current mood
-            </DialogDescription>
-          </DialogHeader>
-          <MoodForm
-            onSuccess={() => {
-              setShowMoodModal(false);
-              fetchDailyStats();
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showPhqModal} onOpenChange={setShowPhqModal}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>PHQ-2 screening survey</DialogTitle>
-            <DialogDescription>
-              Not a clinical assessment — helps track emotional trends over time.
-            </DialogDescription>
-          </DialogHeader>
-          <PhqMiniForm
-            instrument="phq2"
-            onComplete={() => setShowPhqModal(false)}
-            onDismiss={() => setShowPhqModal(false)}
-          />
-        </DialogContent>
-      </Dialog>
 
       {/* AI check-in chat */}
       {showCheckInChat && (

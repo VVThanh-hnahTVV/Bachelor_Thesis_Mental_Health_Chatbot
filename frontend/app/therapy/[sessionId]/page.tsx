@@ -9,7 +9,6 @@ import {
   Loader2,
   MessageSquare,
   PlusCircle,
-  AlertTriangle,
   BookOpenCheck,
   Trash2,
 } from "lucide-react";
@@ -38,59 +37,30 @@ import {
   ChatMessage,
   getAllChatSessions,
   ChatSession,
-  chatModeStorageKey,
-  type ChatMode,
 } from "@/lib/api/chat";
-import { ChatModeToggle } from "@/components/therapy/chat-mode-toggle";
 import { VoiceMicButton } from "@/components/therapy/voice-mic-button";
 import { VoiceRecordingVisualizer } from "@/components/therapy/voice-recording-visualizer";
 import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageFeedback } from "@/components/therapy/message-feedback";
-import { QuickReplyChips } from "@/components/therapy/quick-reply-chips";
 import { HeliosAvatar } from "@/components/therapy/helios-avatar";
-import { LunaAvatar } from "@/components/therapy/luna-avatar";
-import { LunaTypingIndicator } from "@/components/therapy/luna-typing-indicator";
-import { startWellnessSession, completeWellnessSession, getActivityCatalog, type WellnessActivity } from "@/lib/api/wellness";
+import { HeliosTypingIndicator } from "@/components/therapy/helios-typing-indicator";
+import {
+  startWellnessSession,
+  completeWellnessSession,
+  getActivityCatalog,
+  type WellnessActivity,
+} from "@/lib/api/wellness";
 import { ActivityPopupHost } from "@/components/activities/activity-popup-host";
 import { ActivityStarRating } from "@/components/activities/activity-star-rating";
-import type { QuickReply, CrisisChoice } from "@/lib/api/chat";
-import {
-  CRISIS_CHIP_PREFIX,
-  formatMessageForDisplay,
-  normalizeCrisisChoices,
-} from "@/lib/api/chat";
-import { fetchCurrentUser, linkChatSession } from "@/lib/api/auth";
-import { getDefaultLunaGreeting, getDefaultMedicalGreeting } from "@/lib/luna-greeting";
+import { linkChatSession } from "@/lib/api/auth";
+import { getDefaultMedicalGreeting } from "@/lib/helios-greeting";
 import { registerChatSessionId, unregisterChatSessionId } from "@/lib/session";
 
-const MEDICAL_SUGGESTED_QUESTIONS = [
-  { text: "What are common symptoms of HIV/AIDS?" },
-  { text: "Explain how antiretroviral therapy works" },
-  { text: "What should I know about infectious disease prevention?" },
-];
-
 const SUGGESTED_QUESTIONS = [
-  { text: "How can I manage anxiety better?" },
-  { text: "I've been feeling a lot of pressure lately" },
-  { text: "I want to talk about my sleep" },
-  { text: "I need help with work-life balance" },
+  { text: "Làm sao để quản lý lo âu và căng thẳng hàng ngày?" },
+  { text: "Dấu hiệu trầm cảm thường gặp là gì?" },
+  { text: "Tôi cảm thấy quá tải — nên làm gì để ổn định cảm xúc?" },
 ];
-
-const EMOTION_LABELS: Record<string, string> = {
-  anxiety: "Anxious",
-  sadness: "Sad",
-  anger: "Angry",
-  hopeless: "Hopeless",
-  neutral: "Neutral",
-  overwhelmed: "Overwhelmed",
-  lonely: "Lonely",
-  grief: "Grief",
-  fear: "Afraid",
-  shame: "Ashamed",
-  guilt: "Guilty",
-  joy: "Joyful",
-};
 
 const DEFAULT_SESSION_TITLES = new Set([
   "New chat",
@@ -99,42 +69,15 @@ const DEFAULT_SESSION_TITLES = new Set([
   "Cuộc trò chuyện mới",
 ]);
 
-async function welcomeMessages(mode: ChatMode): Promise<ChatMessage[]> {
-  if (mode === "medical") {
-    return [
-      {
-        role: "assistant",
-        content: getDefaultMedicalGreeting(),
-        timestamp: new Date(),
-        metadata: { chat_mode: "medical", message_type: "medical" },
-      },
-    ];
-  }
-  const user = await fetchCurrentUser();
+function welcomeMessages(): ChatMessage[] {
   return [
     {
       role: "assistant",
-      content: getDefaultLunaGreeting(user?.name),
+      content: getDefaultMedicalGreeting(),
       timestamp: new Date(),
-      metadata: { chat_mode: "psychologist" },
+      metadata: { message_type: "medical" },
     },
   ];
-}
-
-function resolveChatModeFromHistory(history: ChatMessage[]): ChatMode {
-  for (const msg of history) {
-    const m = msg.metadata?.chat_mode;
-    if (m === "medical" || m === "psychologist") return m;
-  }
-  return "psychologist";
-}
-
-function quickRepliesFromMessages(msgs: ChatMessage[]): QuickReply[] {
-  const last = [...msgs].reverse().find((m) => m.role === "assistant");
-  if (!last?.metadata) return [];
-  const raw = last.metadata.quick_replies;
-  if (!Array.isArray(raw)) return [];
-  return (raw as QuickReply[]).slice(0, 3);
 }
 
 function getSessionTitle(session: ChatSession): string {
@@ -168,20 +111,15 @@ export default function TherapyPage() {
   const [activeActivity, setActiveActivity] = useState<WellnessActivity | null>(null);
   const [activityPopupOpen, setActivityPopupOpen] = useState(false);
   const wellnessCompleteRef = useRef(false);
-  // Crisis state
-  const [crisisChoices, setCrisisChoices] = useState<CrisisChoice[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(
     params.sessionId as string
   );
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [inputQuickReplies, setInputQuickReplies] = useState<QuickReply[]>([]);
-  const [chatMode, setChatMode] = useState<ChatMode>("psychologist");
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
-  const isMedicalMode = chatMode === "medical";
 
   const handleSpeechTranscript = (text: string) => {
     setSpeechError(null);
@@ -220,33 +158,8 @@ export default function TherapyPage() {
       : "Based on selected knowledge";
   };
 
-  const applyHistoryToChat = (
-    activeSessionId: string,
-    mapped: ChatMessage[]
-  ) => {
-    const restoredMode = resolveChatModeFromHistory(mapped);
-    setChatMode(restoredMode);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        chatModeStorageKey(activeSessionId),
-        restoredMode
-      );
-    }
+  const applyHistoryToChat = (mapped: ChatMessage[]) => {
     setMessages(mapped);
-    const last = [...mapped].reverse().find((m) => m.role === "assistant");
-    if (restoredMode === "medical") {
-      setCrisisChoices([]);
-      setInputQuickReplies([]);
-      return;
-    }
-    const restoredChoices = normalizeCrisisChoices(last?.metadata?.crisis_choices);
-    if (last?.metadata?.chat_blocked && restoredChoices.length > 0) {
-      setCrisisChoices(restoredChoices);
-      setInputQuickReplies([]);
-    } else {
-      setCrisisChoices([]);
-      setInputQuickReplies(quickRepliesFromMessages(mapped));
-    }
   };
 
   const loadSessionIntoState = async (activeSessionId: string) => {
@@ -263,25 +176,12 @@ export default function TherapyPage() {
           ...msg,
           timestamp: new Date(msg.timestamp),
         }));
-        applyHistoryToChat(activeSessionId, mapped);
+        applyHistoryToChat(mapped);
         return;
       }
-      const stored =
-        typeof window !== "undefined"
-          ? (window.localStorage.getItem(
-              chatModeStorageKey(activeSessionId)
-            ) as ChatMode | null)
-          : null;
-      const mode: ChatMode = stored === "medical" ? "medical" : "psychologist";
-      setChatMode(mode);
-      setMessages(await welcomeMessages(mode));
-      setInputQuickReplies([]);
-      setCrisisChoices([]);
+      setMessages(welcomeMessages());
     } catch {
-      setMessages(await welcomeMessages("psychologist"));
-      setChatMode("psychologist");
-      setInputQuickReplies([]);
-      setCrisisChoices([]);
+      setMessages(welcomeMessages());
     }
   };
 
@@ -295,6 +195,7 @@ export default function TherapyPage() {
         messages: [],
         createdAt: new Date(),
         updatedAt: new Date(),
+        chatMode: "medical",
       };
       setSessions((prev) => [newSession, ...prev]);
       skipSessionInitRef.current = true;
@@ -304,16 +205,7 @@ export default function TherapyPage() {
       } catch {
         /* optional — chat still links on first message */
       }
-      setChatMode("psychologist");
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          chatModeStorageKey(newSessionId),
-          "psychologist"
-        );
-      }
-      setMessages(await welcomeMessages("psychologist"));
-      setInputQuickReplies([]);
-      setCrisisChoices([]);
+      setMessages(welcomeMessages());
       window.history.pushState({}, "", `/therapy/${newSessionId}`);
     } catch (error) {
       console.error("Failed to create new session:", error);
@@ -379,28 +271,21 @@ export default function TherapyPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages, isTyping, typingStatus]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const sendUserMessage = async (
-    text: string,
-    options?: { displayContent?: string }
-  ) => {
+  const sendUserMessage = async (text: string) => {
     const currentMessage = text.trim();
     if (!currentMessage || isTyping || !sessionId) return;
-    const displayContent = formatMessageForDisplay(
-      options?.displayContent?.trim() || currentMessage
-    );
 
     setIsTyping(true);
-    setTypingStatus("Analyzing your request");
-    setInputQuickReplies([]);
+    setTypingStatus("Đang phân tích yêu cầu");
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: displayContent, timestamp: new Date() },
+      { role: "user", content: currentMessage, timestamp: new Date() },
     ]);
     scrollToBottom();
 
@@ -408,44 +293,8 @@ export default function TherapyPage() {
       const response = await sendChatMessageWithStatus(
         sessionId,
         currentMessage,
-        chatMode,
         (label) => setTypingStatus(label)
       );
-
-      let quickReplies: QuickReply[] = [];
-      if (chatMode === "medical") {
-        setCrisisChoices([]);
-        setInputQuickReplies([]);
-      } else {
-        const nextCrisisChoices = response.crisis_choices ?? [];
-        const blocked = Boolean(
-          response.chat_blocked ?? response.metadata?.chat_blocked
-        );
-        if (blocked && nextCrisisChoices.length > 0) {
-          setCrisisChoices(nextCrisisChoices);
-          setInputQuickReplies([]);
-        } else {
-          setCrisisChoices([]);
-          quickReplies = (
-            (response.quick_replies as QuickReply[] | undefined) ||
-            (response.metadata?.quick_replies as QuickReply[] | undefined) ||
-            []
-          ).slice(0, 3);
-          setInputQuickReplies(quickReplies);
-        }
-      }
-
-      // Auto-open the appropriate wellness popup when an activity is chosen.
-      if (chatMode === "psychologist" && response.crisis_stage === "overwhelm_doing") {
-        const activityChip =
-          (response.metadata?.crisis_chip_id as string | undefined) ?? "";
-        if (activityChip === "crisis:calming_music") {
-          void openOcean();
-        } else {
-          // slow_breathing or grounding_exercise — open breathing popup
-          void openBreathing();
-        }
-      }
 
       setMessages((prev) => [
         ...prev,
@@ -455,25 +304,14 @@ export default function TherapyPage() {
           content:
             response.response ||
             response.message ||
-            (chatMode === "medical"
-              ? "I could not generate a response. Please try again."
-              : "I'm here with you. Would you like to share more?"),
+            "I could not generate a response. Please try again.",
           timestamp: new Date(),
           metadata: {
             message_type: response.message_type,
-            chat_blocked: response.chat_blocked,
-            crisis_choices: response.crisis_choices,
-            crisis_stage: response.crisis_stage,
-            emotion: response.emotion,
-            therapy_strategy: response.therapy_strategy,
-            quick_replies: quickReplies,
-            chat_mode: chatMode,
             ...(response.metadata || {}),
           },
         },
       ]);
-
-      // PHQ-2 is now analysed implicitly from conversation signals
     } catch (err) {
       console.error("Chat stream failed:", err);
       setMessages((prev) => [
@@ -494,7 +332,6 @@ export default function TherapyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isTyping) return;
-    if (!isMedicalMode && crisisChoices.length > 0) return;
 
     const currentMessage = message.trim();
     if (!currentMessage) return;
@@ -502,28 +339,9 @@ export default function TherapyPage() {
     await sendUserMessage(currentMessage);
   };
 
-  const handleChatModeChange = (mode: ChatMode) => {
-    if (hasUserMessages) return;
-    setChatMode(mode);
-    if (sessionId && typeof window !== "undefined") {
-      window.localStorage.setItem(chatModeStorageKey(sessionId), mode);
-    }
-    void (async () => {
-      setMessages(await welcomeMessages(mode));
-      setCrisisChoices([]);
-      setInputQuickReplies([]);
-    })();
-  };
-
   const handleSuggestedQuestion = (text: string) => {
     setMessage("");
     void sendUserMessage(text);
-  };
-
-  const handleCrisisChoice = (choice: CrisisChoice) => {
-    void sendUserMessage(`${CRISIS_CHIP_PREFIX}${choice.id}`, {
-      displayContent: choice.label,
-    });
   };
 
   useEffect(() => {
@@ -562,19 +380,10 @@ export default function TherapyPage() {
       await startWellnessSession(sessionId, activityId, {
         quiet: true,
         lang: "vi",
-        chatMode,
       });
     } catch {
       /* popup still opens */
     }
-  };
-
-  const openBreathing = async () => {
-    await openActivity("breathing_box");
-  };
-
-  const openOcean = async () => {
-    await openActivity("ocean_sound");
   };
 
   const handleWellnessComplete = async () => {
@@ -596,16 +405,13 @@ export default function TherapyPage() {
                 completion_id: result.completion_id,
                 rated: false,
               },
-              chat_mode: chatMode,
             }
-          : { chat_mode: chatMode };
+          : {};
 
       const assistantContent =
         result.checkin_message ||
         (result.show_activity_rating
-          ? chatMode === "medical"
-            ? "Bạn vừa hoàn thành bài tập. Bạn đánh giá thế nào?"
-            : "You finished the activity. How was it?"
+          ? "Bạn vừa hoàn thành bài tập. Bạn đánh giá thế nào?"
           : "");
 
       if (assistantContent && (result.show_activity_rating || result.checkin_message)) {
@@ -636,9 +442,6 @@ export default function TherapyPage() {
     try {
       await deleteChatSession(targetId);
       unregisterChatSessionId(targetId);
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(chatModeStorageKey(targetId));
-      }
       setSessions((prev) => prev.filter((s) => s.sessionId !== targetId));
       setSessionToDelete(null);
       if (sessionId === targetId) {
@@ -679,20 +482,6 @@ export default function TherapyPage() {
   const recentSessions = sessions.filter(
     (s) => !(s.sessionId === sessionId && !hasUserMessages)
   );
-
-  const latestFeedbackMessageId = (() => {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const msg = messages[i];
-      if (
-        msg.role === "assistant" &&
-        msg.metadata?.show_micro_feedback &&
-        msg.id
-      ) {
-        return msg.id;
-      }
-    }
-    return null;
-  })();
 
   return (
     <>
@@ -785,29 +574,21 @@ export default function TherapyPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-brand" />
               </div>
             )}
-            {messages.length === 0 ? (
+            {messages.length === 0 && !isTyping ? (
               <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden p-8 pb-36">
                 <div className="bg-arc-decorator opacity-50" aria-hidden />
                 <div className="relative z-10 mb-20 w-full max-w-xl space-y-10 text-center">
                   <div className="space-y-4">
                     <div className="mb-2 flex justify-center">
-                      {isMedicalMode ? (
-                        <HeliosAvatar size="lg" />
-                      ) : (
-                        <LunaAvatar size="lg" />
-                      )}
+                      <HeliosAvatar size="lg" />
                     </div>
-                    <h3 className="text-4xl font-bold text-gray-800">
-                      {isMedicalMode ? "Helios" : "Luna"}
-                    </h3>
+                    <h3 className="text-4xl font-bold text-gray-800">Helios</h3>
                     <p className="text-lg text-gray-500">
-                      {isMedicalMode
-                        ? "Hỏi Helios hoặc đính kèm ảnh, thêm ghi chú nếu cần, rồi bấm gửi."
-                        : "How can I help you today?"}
+                      Tra cứu hoặc trò chuyện về sức khỏe tâm thần — Helios sẽ lắng nghe và hỗ trợ bạn.
                     </p>
                   </div>
                   <div className="w-full space-y-3">
-                    {(isMedicalMode ? MEDICAL_SUGGESTED_QUESTIONS : SUGGESTED_QUESTIONS).map((q, index) => (
+                    {SUGGESTED_QUESTIONS.map((q, index) => (
                       <motion.button
                         key={q.text}
                         type="button"
@@ -827,15 +608,9 @@ export default function TherapyPage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 border-b border-brand-border/50 px-6 py-4">
-                  {isMedicalMode ? (
-                    <HeliosAvatar size="md" />
-                  ) : (
-                    <LunaAvatar size="md" />
-                  )}
+                  <HeliosAvatar size="md" />
                   <div>
-                    <h2 className="font-bold text-gray-800">
-                      {isMedicalMode ? "Helios" : "Luna"}
-                    </h2>
+                    <h2 className="font-bold text-gray-800">Helios</h2>
                     <p className="text-xs text-gray-500">
                       {messages.length} messages
                     </p>
@@ -856,11 +631,7 @@ export default function TherapyPage() {
                           transition={{ duration: 0.25 }}
                           className={cn(
                             "px-6 py-4",
-                            msg.role === "assistant"
-                              ? msg.metadata?.message_type === "crisis"
-                                ? "bg-red-50/40"
-                                : ""
-                              : "flex justify-end"
+                            msg.role === "user" ? "flex justify-end" : ""
                           )}
                         >
                           <motion.div
@@ -873,16 +644,7 @@ export default function TherapyPage() {
                           >
                             <div className="mt-1 h-10 w-10 shrink-0">
                               {msg.role === "assistant" ? (
-                                msg.metadata?.message_type === "crisis" ? (
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-600 ring-1 ring-red-200">
-                                    <AlertTriangle className="h-5 w-5" />
-                                  </div>
-                                ) : msg.metadata?.chat_mode === "medical" ||
-                                  isMedicalMode ? (
-                                  <HeliosAvatar />
-                                ) : (
-                                  <LunaAvatar />
-                                )
+                                <HeliosAvatar />
                               ) : (
                                 <motion.div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white">
                                   <User className="h-5 w-5" />
@@ -904,12 +666,7 @@ export default function TherapyPage() {
                                 )}
                               >
                                 <p className="text-sm font-medium text-gray-800">
-                                  {msg.role === "assistant"
-                                    ? msg.metadata?.chat_mode === "medical" ||
-                                      isMedicalMode
-                                      ? "Helios"
-                                      : "Luna"
-                                    : "You"}
+                                  {msg.role === "assistant" ? "Helios" : "You"}
                                 </p>
                                 {msg.role === "assistant" &&
                                   msg.metadata?.agent_name && (
@@ -920,20 +677,7 @@ export default function TherapyPage() {
                                       {String(msg.metadata.agent_name)}
                                     </Badge>
                                   )}
-                                {/* Emotion badge */}
-                                {!isMedicalMode &&
-                                  msg.role === "assistant" &&
-                                  msg.metadata?.emotion &&
-                                  msg.metadata.emotion !== "neutral" && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="rounded-full border-brand-border bg-brand-light text-xs text-brand"
-                                  >
-                                    {EMOTION_LABELS[msg.metadata.emotion as string] ?? msg.metadata.emotion}
-                                  </Badge>
-                                )}
                                 {msg.role === "assistant" &&
-                                  msg.metadata?.message_type !== "crisis" &&
                                   getRetrievalSummary(msg.metadata) && (
                                     <Badge
                                       variant="outline"
@@ -961,33 +705,12 @@ export default function TherapyPage() {
                                   />
                                 </motion.div>
                               ) : (
-                                <AssistantMessageBubble
-                                  variant={
-                                    msg.metadata?.message_type === "crisis"
-                                      ? "crisis"
-                                      : msg.metadata?.chat_mode === "medical" ||
-                                          isMedicalMode
-                                        ? "medical"
-                                        : "default"
-                                  }
-                                >
+                                <AssistantMessageBubble variant="medical">
                                   <ChatMessageMarkdown content={msg.content} />
                                 </AssistantMessageBubble>
                               )}
 
                               {msg.role === "assistant" &&
-                                msg.metadata?.show_micro_feedback &&
-                                msg.id === latestFeedbackMessageId &&
-                                sessionId && (
-                                  <MessageFeedback
-                                    sessionId={sessionId}
-                                    assistantMessageId={msg.id}
-                                  />
-                                )}
-
-                              {/* Wellness activity buttons */}
-                              {msg.role === "assistant" &&
-                                msg.metadata?.message_type !== "crisis" &&
                                 (() => {
                                   type ActivityEntry = { id: string; title: string };
                                   const activityIds = getSuggestedActivities(msg.metadata);
@@ -1019,9 +742,7 @@ export default function TherapyPage() {
                                           className="rounded-full bg-brand hover:bg-brand/90"
                                           onClick={() => void openActivity(entry.id)}
                                         >
-                                          {isMedicalMode
-                                            ? `Mở: ${entry.title}`
-                                            : `Open: ${entry.title}`}
+                                          {`Mở: ${entry.title}`}
                                         </Button>
                                       ))}
                                     </div>
@@ -1060,7 +781,6 @@ export default function TherapyPage() {
                                         ? msg.metadata.rating_thanks
                                         : undefined
                                     }
-                                    chatMode={chatMode}
                                     lang="vi"
                                     onRated={(rating, thankMessage) => {
                                       const pending = msg.metadata?.pending_activity_rating as
@@ -1113,11 +833,7 @@ export default function TherapyPage() {
                     </AnimatePresence>
 
                     {isTyping && (
-                      <LunaTypingIndicator
-                        label={isMedicalMode ? "Helios" : "Luna"}
-                        variant={isMedicalMode ? "helios" : "luna"}
-                        statusMessage={typingStatus}
-                      />
+                      <HeliosTypingIndicator statusMessage={typingStatus} />
                     )}
                     <div ref={messagesEndRef} />
                   </motion.div>
@@ -1134,108 +850,71 @@ export default function TherapyPage() {
                   : "border-t border-brand-border/40"
               )}
             >
-              {!isMedicalMode && crisisChoices.length > 0 ? (
-                <div className="w-full">
-                  <div className="grid grid-cols-2 gap-2">
-                    {crisisChoices.map((choice) => (
-                      <button
-                        key={choice.id}
-                        type="button"
-                        disabled={isTyping}
-                        onClick={() => handleCrisisChoice(choice)}
-                        className="rounded-xl border border-brand-border/80 bg-white px-4 py-3 text-sm text-gray-700 transition-colors hover:border-brand/40 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {choice.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full space-y-3">
-                  {!isMedicalMode && inputQuickReplies.length > 0 && (
-                    <QuickReplyChips
-                      replies={inputQuickReplies}
-                      onSelect={(text) => void sendUserMessage(text)}
-                      disabled={isTyping}
-                    />
-                  )}
-                  <form onSubmit={handleSubmit} className="min-w-0">
-                    <div
-                      className={cn(
-                        "flex flex-col rounded-2xl border-2 bg-brand-light transition-all focus-within:border-brand",
+              <div className="w-full space-y-3">
+                <form onSubmit={handleSubmit} className="min-w-0">
+                  <div
+                    className={cn(
+                      "flex flex-col rounded-2xl border-2 bg-brand-light transition-all focus-within:border-brand",
+                      voiceInput.isRecording
+                        ? "border-red-300 ring-2 ring-red-100"
+                        : "border-brand-border/80",
+                      isTyping && "opacity-50"
+                    )}
+                  >
+                    {voiceInput.isRecording && (
+                      <VoiceRecordingVisualizer level={voiceInput.audioLevel} />
+                    )}
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder={
                         voiceInput.isRecording
-                          ? "border-red-300 ring-2 ring-red-100"
-                          : "border-brand-border/80",
-                        isTyping && "opacity-50"
-                      )}
-                    >
-                      {voiceInput.isRecording && (
-                        <VoiceRecordingVisualizer level={voiceInput.audioLevel} />
-                      )}
-                      <textarea
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        placeholder={
-                          voiceInput.isRecording
-                            ? "Listening to your voice..."
-                            : isMedicalMode
-                              ? "Hỏi Helios về y khoa..."
-                              : "Share what's on your mind..."
+                          ? "Listening to your voice..."
+                          : "Chia sẻ hoặc hỏi về sức khỏe tâm thần..."
+                      }
+                      rows={1}
+                      disabled={isTyping}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSubmit(e);
                         }
-                        rows={1}
-                        disabled={isTyping}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSubmit(e);
-                          }
-                        }}
-                        className={cn(
-                          "w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3 text-gray-700 outline-none placeholder:text-gray-400 focus:ring-0",
-                          "min-h-[44px] max-h-[120px]",
-                          isTyping && "cursor-not-allowed"
-                        )}
-                      />
-                      <div className="flex items-center justify-between gap-2 px-2 pb-2">
-                        <div className="flex items-center gap-1">
-                          <ChatModeToggle
-                            value={chatMode}
-                            onChange={handleChatModeChange}
-                            disabled={hasUserMessages || isTyping}
-                          />
-                          <VoiceMicButton
-                            toggle={voiceInput.toggle}
-                            isRecording={voiceInput.isRecording}
-                            isTranscribing={voiceInput.isTranscribing}
-                            disabled={isTyping}
-                          />
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={isTyping || !message.trim()}
-                          className={cn(
-                            "rounded-full p-2.5 text-white transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                            isMedicalMode
-                              ? "bg-slate-700 hover:bg-slate-800"
-                              : "bg-brand/80 hover:bg-brand"
-                          )}
-                          aria-label="Send message"
-                        >
-                          <Send className="h-4 w-4" />
-                        </button>
+                      }}
+                      className={cn(
+                        "w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3 text-gray-700 outline-none placeholder:text-gray-400 focus:ring-0",
+                        "min-h-[44px] max-h-[120px]",
+                        isTyping && "cursor-not-allowed"
+                      )}
+                    />
+                    <div className="flex items-center justify-between gap-2 px-2 pb-2">
+                      <div className="flex items-center gap-1">
+                        <VoiceMicButton
+                          toggle={voiceInput.toggle}
+                          isRecording={voiceInput.isRecording}
+                          isTranscribing={voiceInput.isTranscribing}
+                          disabled={isTyping}
+                        />
                       </div>
+                      <button
+                        type="submit"
+                        disabled={isTyping || !message.trim()}
+                        className="rounded-full bg-slate-700 p-2.5 text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Send message"
+                      >
+                        <Send className="h-4 w-4" />
+                      </button>
                     </div>
-                  </form>
-                  {speechError && (
-                    <p className="px-1 text-xs text-red-500">{speechError}</p>
-                  )}
-                </div>
-              )}
+                  </div>
+                </form>
+                {speechError && (
+                  <p className="px-1 text-xs text-red-500">{speechError}</p>
+                )}
+              </div>
 
               <p className="mt-4 w-full text-center text-[10px] italic text-gray-400">
-                {isMedicalMode
-                  ? "Helios provides reference information only and does not replace medical diagnosis. Always consult a licensed physician."
-                  : "Luna offers emotional support, not medical diagnosis. If you are in crisis, contact a professional immediately."}
+                Helios chỉ cung cấp thông tin tham khảo và hỗ trợ sức khỏe tâm thần,
+                không thay thế chẩn đoán hay điều trị chuyên môn. Hãy liên hệ chuyên gia
+                khi cần hỗ trợ lâm sàng hoặc trong tình huống khẩn cấp.
               </p>
             </div>
           </section>

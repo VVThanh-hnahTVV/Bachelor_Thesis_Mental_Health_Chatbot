@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { useSession } from "@/lib/contexts/session-context";
-import { LunaLogo } from "@/components/luna-logo";
+import { HeliosAvatar } from "@/components/therapy/helios-avatar";
 
 export function Header() {
   const { isAuthenticated, logout, user } = useSession();
@@ -24,13 +24,13 @@ export function Header() {
           href="/"
           className="flex items-center gap-3 transition-colors hover:text-serene-accent"
         >
-          <LunaLogo className="h-14 w-14" priority />
+          <HeliosAvatar size="lg" className="!h-14 !w-14" />
           <div className="flex flex-col">
             <span className="text-xl font-bold tracking-tight text-gray-800">
-              Luna & Helios
+              Helios
             </span>
             <span className="text-[10px] uppercase tracking-widest text-serene-accent">
-              Wellness & medical AI companions
+              Tra cứu & tư vấn sức khỏe tâm thần
             </span>
           </div>
         </Link>

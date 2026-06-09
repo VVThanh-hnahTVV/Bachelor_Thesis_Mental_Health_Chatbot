@@ -39,7 +39,7 @@ export async function getActivityCatalog(
 export async function startWellnessSession(
   sessionId: string,
   activityId: string,
-  options?: { quiet?: boolean; lang?: "vi" | "en"; chatMode?: "psychologist" | "medical" }
+  options?: { quiet?: boolean; lang?: "vi" | "en" }
 ): Promise<{ reply: string; assistant_message_id?: string }> {
   const response = await fetch(`${API_BASE}/api/v1/wellness/start`, {
     method: "POST",
@@ -49,7 +49,6 @@ export async function startWellnessSession(
       activity_id: activityId,
       quiet: options?.quiet ?? false,
       lang: options?.lang,
-      chat_mode: options?.chatMode,
     }),
   });
   if (!response.ok) {
@@ -98,7 +97,6 @@ export async function rateActivity(
   activityId: string,
   completionId: string,
   rating: number,
-  chatMode?: "psychologist" | "medical",
   messageId?: string
 ): Promise<{ status: string; message: string }> {
   const response = await fetch(`${API_BASE}/api/v1/activities/rate`, {
@@ -109,7 +107,6 @@ export async function rateActivity(
       activity_id: activityId,
       completion_id: completionId,
       rating,
-      chat_mode: chatMode,
       message_id: messageId,
     }),
   });

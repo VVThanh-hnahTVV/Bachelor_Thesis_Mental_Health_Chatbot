@@ -5,11 +5,10 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import { formatMessageForDisplay } from "@/lib/api/chat";
 
 /** Normalize content so single newlines render as line breaks (remark-breaks). */
 export function prepareMarkdownContent(content: string): string {
-  return formatMessageForDisplay(content).replace(/\r\n/g, "\n").trim();
+  return content.replace(/\r\n/g, "\n").trim();
 }
 
 const markdownComponents: Components = {

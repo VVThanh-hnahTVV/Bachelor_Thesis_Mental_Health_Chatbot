@@ -43,7 +43,7 @@ async def create_conversation(
     *,
     session_id: str,
     title: str | None = None,
-    chat_mode: str = "psychologist",
+    chat_mode: str = "medical",
     user_id: ObjectId | None = None,
 ) -> dict[str, Any]:
     now = datetime.now(UTC)

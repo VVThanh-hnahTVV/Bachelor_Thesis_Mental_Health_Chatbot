@@ -1,44 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Minus, Plus, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { getDefaultLunaGreeting } from "@/lib/luna-greeting";
-import { fetchCurrentUser } from "@/lib/api/auth";
 
 export function FixedChat() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: getDefaultLunaGreeting(),
-      timestamp: new Date(),
-    },
-  ]);
-
-  useEffect(() => {
-    void fetchCurrentUser().then((user) => {
-      if (user?.name) {
-        setMessages([
-          {
-            role: "assistant",
-            content: getDefaultLunaGreeting(user.name),
-            timestamp: new Date(),
-          },
-        ]);
-      }
-    });
-  }, []);
-
   const router = useRouter();
 
   const handleClick = () => {
@@ -51,6 +17,7 @@ export function FixedChat() {
         size="icon"
         className="h-14 w-14 rounded-full shadow-lg hover:scale-105 transition-transform"
         onClick={handleClick}
+        aria-label="Start chat with Helios"
       >
         <MessageSquare className="h-6 w-6" />
       </Button>

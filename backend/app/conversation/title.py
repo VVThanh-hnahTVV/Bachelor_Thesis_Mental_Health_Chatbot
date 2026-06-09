@@ -7,7 +7,6 @@ import re
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import ProviderName
-from app.graph.nodes.response_generator import detect_language
 from app.llm.factory import default_provider, get_chat_model, invoke_with_fallback
 
 logger = logging.getLogger(__name__)
@@ -15,10 +14,16 @@ logger = logging.getLogger(__name__)
 _SYSTEM = """\
 Write a very short chat session title (3–8 words) based on the user's first message.
 - Match the message language (Vietnamese or English).
-- Capture the main topic or feeling; no quotes, no punctuation at the end.
-- Do not mention Luna, Helios, AI, or therapy.
+- Capture the main topic; no quotes, no punctuation at the end.
+- Do not mention Helios, AI, or chatbot.
 - Output only the title text, nothing else.
 """
+
+
+def _detect_language(text: str) -> str:
+    if re.search(r"[\u00C0-\u1EF9]", text):
+        return "vi"
+    return "en"
 
 
 def _sanitize_title(raw: str, *, max_len: int = 48) -> str:
@@ -38,7 +43,7 @@ async def generate_conversation_title(
     if not msg:
         return "New conversation"
 
-    lang = detect_language(msg, [])
+    lang = _detect_language(msg)
     fallback = msg if len(msg) <= 40 else f"{msg[:39].rstrip()}…"
 
     try:

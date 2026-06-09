@@ -43,21 +43,21 @@ export default function Home() {
 
   const welcomeSteps = [
     {
-      title: "Meet Luna & Helios 👋",
+      title: "Gặp gỡ Helios 👋",
       description:
-        "Luna supports emotional wellness; Helios helps with medical information. Together they offer a safe, judgment-free space to talk, learn, and feel supported.",
+        "Helios là trợ lý AI hỗ trợ tra cứu và tư vấn sức khỏe tâm thần — giúp bạn hiểu cảm xúc, lo âu, căng thẳng bằng ngôn ngữ dễ hiểu và nhẹ nhàng.",
       icon: Waves,
     },
     {
-      title: "Personalized Support 🌱",
+      title: "Thông tin có căn cứ 🌱",
       description:
-        "Luna adapts to your emotional state with evidence-based techniques. Helios answers health questions with clear, reference-grounded guidance when you need it.",
+        "Helios tra cứu tài liệu tham khảo, trả lời câu hỏi và gợi ý bài tập thư giãn khi bạn cần hỗ trợ thêm.",
       icon: Brain,
     },
     {
-      title: "Your Privacy Matters 🛡️",
+      title: "Riêng tư & an toàn 🛡️",
       description:
-        "Your conversations are private and secure. Luna & Helios follow strict ethical guidelines and respect your boundaries.",
+        "Cuộc trò chuyện của bạn được bảo mật. Helios tuân thủ nguyên tắc đạo đức và không thay thế chuyên gia khi bạn cần hỗ trợ lâm sàng.",
       icon: Shield,
     },
   ];
@@ -69,26 +69,26 @@ export default function Home() {
   const features = [
     {
       icon: HeartPulse,
-      title: "24/7 Support",
-      description: "Always here to listen and support you, any time of day",
+      title: "Hỗ trợ 24/7",
+      description: "Luôn sẵn sàng tra cứu và trò chuyện về sức khỏe tâm thần mọi lúc",
       delay: 0.2,
     },
     {
       icon: Lightbulb,
-      title: "Smart Insights",
-      description: "Personalized guidance powered by emotional intelligence",
+      title: "Tư vấn dễ hiểu",
+      description: "Giải thích lo âu, trầm cảm, stress và các chủ đề tâm lý bằng ngôn ngữ gần gũi",
       delay: 0.4,
     },
     {
       icon: Lock,
-      title: "Private & Secure",
-      description: "Your conversations are always confidential and encrypted",
+      title: "Riêng tư",
+      description: "Cuộc trò chuyện được bảo mật và tôn trọng ranh giới của bạn",
       delay: 0.6,
     },
     {
       icon: MessageSquareHeart,
-      title: "Evidence-Based",
-      description: "Therapeutic techniques backed by clinical research",
+      title: "Có căn cứ",
+      description: "Thông tin tham khảo từ tài liệu đã chọn lọc, kèm bài tập thư giãn",
       delay: 0.8,
     },
   ];
@@ -118,20 +118,21 @@ export default function Home() {
         >
           <div className="mb-8 px-4 py-1.5 rounded-full border border-serene-green/30 bg-white/50 text-serene-accent text-xs font-medium flex items-center gap-2">
             <Waves className="w-3.5 h-3.5 opacity-70" />
-            <span>Wellness & Medical AI Companions</span>
+            <span>Tra cứu & tư vấn sức khỏe tâm thần</span>
           </div>
 
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-gray-800 leading-tight mb-6">
-            Find Peace
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-gray-800 leading-tight mb-6">
+            An tâm trong
             <br />
             <span className="text-serene-accent italic font-normal">
-              of Mind
+              từng cuộc trò chuyện
             </span>
           </h1>
 
           <p className="text-lg text-gray-500 max-w-xl mb-16 leading-relaxed">
-            Luna for emotional wellness, Helios for medical information — your AI
-            companions are here to listen, understand, and guide you.
+            Helios hỗ trợ bạn tra cứu thông tin và tư vấn về sức khỏe tâm thần —
+            từ lo âu, căng thẳng đến các chủ đề tâm lý — kèm gợi ý bài tập thư giãn
+            khi cần.
           </p>
 
           {/* Mood tracker */}
@@ -195,7 +196,7 @@ export default function Home() {
               onClick={() => setShowDialog(true)}
               className="group relative inline-flex items-center justify-center px-10 py-6 h-auto text-base font-bold text-white bg-serene-green rounded-full hover:bg-serene-accent shadow-lg shadow-serene-green/30 transition-all duration-200"
             >
-              <span className="mr-3">Begin Your Journey</span>
+              <span className="mr-3">Bắt đầu trò chuyện</span>
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Button>
           </div>
@@ -218,11 +219,10 @@ export default function Home() {
             viewport={{ once: true }}
           >
             <h2 className="text-3xl font-bold text-gray-800">
-              How Luna & Helios Help You
+              Helios hỗ trợ bạn như thế nào
             </h2>
             <p className="text-gray-500 max-w-2xl mx-auto text-lg">
-              Emotional support and medical guidance, powered by thoughtful AI
-              companions
+              Tra cứu, tư vấn sức khỏe tâm thần và bài tập thư giãn — với sự hỗ trợ của AI
             </p>
           </motion.div>
 
@@ -309,7 +309,7 @@ export default function Home() {
               <span className="flex items-center gap-2">
                 {currentStep === welcomeSteps.length - 1 ? (
                   <>
-                    Let&apos;s Begin
+                    Bắt đầu
                     <Sparkles className="w-4 h-4" />
                   </>
                 ) : (

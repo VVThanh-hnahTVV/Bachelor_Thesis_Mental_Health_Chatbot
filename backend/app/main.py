@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     s = get_settings()
     app = FastAPI(
-        title="Mental Health Chat API",
+        title="Helios — Tra cứu & tư vấn sức khỏe tâm thần",
         version="0.1.0",
         lifespan=lifespan,
     )

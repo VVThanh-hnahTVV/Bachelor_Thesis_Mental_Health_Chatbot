@@ -1,1 +1,0 @@
-"""Mental health screening instruments."""

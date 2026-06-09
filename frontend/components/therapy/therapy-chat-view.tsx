@@ -8,42 +8,25 @@ import {
 } from "@/components/therapy/chat-message-markdown";
 import {
   Send,
-  Bot,
   User,
   Loader2,
-  Moon,
   Plus,
   MessageSquare,
-  AlertTriangle,
   BookOpenCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { ChatMessage, ChatSession, CrisisChoice } from "@/lib/api/chat";
+import type { ChatMessage, ChatSession } from "@/lib/api/chat";
+import { HeliosAvatar } from "@/components/therapy/helios-avatar";
+import { HeliosTypingIndicator } from "@/components/therapy/helios-typing-indicator";
 
 const SUGGESTED_QUESTIONS = [
-  "How can I manage anxiety better?",
-  "I've been feeling a lot of pressure lately",
-  "I want to talk about my sleep",
-  "I need help with work-life balance",
+  "Làm sao để quản lý lo âu và căng thẳng hàng ngày?",
+  "Dấu hiệu trầm cảm thường gặp là gì?",
+  "Tôi cảm thấy quá tải — nên làm gì để ổn định cảm xúc?",
 ];
-
-const EMOTION_LABELS: Record<string, string> = {
-  anxiety: "Anxious",
-  sadness: "Sad",
-  anger: "Angry",
-  hopeless: "Hopeless",
-  neutral: "Neutral",
-  overwhelmed: "Overwhelmed",
-  lonely: "Lonely",
-  grief: "Grief",
-  fear: "Afraid",
-  shame: "Ashamed",
-  guilt: "Guilty",
-  joy: "Joyful",
-};
 
 const DEFAULT_SESSION_TITLES = new Set([
   "New chat",
@@ -91,14 +74,12 @@ export interface TherapyChatViewProps {
   message: string;
   isLoading: boolean;
   isTyping: boolean;
-  crisisChoices: CrisisChoice[];
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onMessageChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onSuggestedQuestion: (text: string) => void;
-  onCrisisChoice: (choice: CrisisChoice) => void;
   onBreathingExercise?: () => void;
   onOceanSounds?: () => void;
   getSuggestedActivities: (metadata: ChatMessage["metadata"]) => string[];
@@ -114,14 +95,12 @@ export function TherapyChatView(props: TherapyChatViewProps) {
     message,
     isLoading,
     isTyping,
-    crisisChoices,
     messagesEndRef,
     onMessageChange,
     onSubmit,
     onNewSession,
     onSelectSession,
     onSuggestedQuestion,
-    onCrisisChoice,
     onBreathingExercise,
     onOceanSounds,
     getSuggestedActivities,
@@ -131,7 +110,6 @@ export function TherapyChatView(props: TherapyChatViewProps) {
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* Sidebar */}
       <aside className="flex w-72 shrink-0 flex-col border-r border-gray-200/80 bg-[#F3F5F2]">
         <div className="p-5 pb-4">
           <div className="mb-5 flex items-center justify-between">
@@ -188,7 +166,6 @@ export function TherapyChatView(props: TherapyChatViewProps) {
         </ScrollArea>
       </aside>
 
-      {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden bg-white">
         {messages.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 pb-8">
@@ -197,8 +174,8 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                 <div className="h-[min(420px,70vw)] w-[min(420px,70vw)] rounded-full border border-serene-green/10" />
               </div>
               <div className="relative z-10 flex flex-col items-center px-4 text-center">
-                <Moon className="mb-6 h-10 w-10 stroke-[1.25] text-serene-accent" />
-                <h1 className="mb-3 text-3xl font-bold text-gray-800 md:text-4xl">Luna</h1>
+                <HeliosAvatar size="lg" className="mb-6" />
+                <h1 className="mb-3 text-3xl font-bold text-gray-800 md:text-4xl">Helios</h1>
                 <p className="mb-10 text-lg text-gray-500">How can I help you today?</p>
                 <div className="w-full max-w-md space-y-3">
                   {SUGGESTED_QUESTIONS.map((text, index) => (
@@ -237,46 +214,28 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                       className={cn(
                         "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
                         msg.role === "assistant"
-                          ? msg.metadata?.message_type === "crisis"
-                            ? "bg-red-100 text-red-600"
-                            : "bg-[#E8F0E7] text-serene-accent"
+                          ? "bg-[#E8F0E7] text-serene-accent"
                           : "bg-gray-100 text-gray-600"
                       )}
                     >
                       {msg.role === "assistant" ? (
-                        msg.metadata?.message_type === "crisis" ? (
-                          <AlertTriangle className="h-4 w-4" />
-                        ) : (
-                          <Bot className="h-4 w-4" />
-                        )
+                        <HeliosAvatar size="sm" className="!h-8 !w-8" />
                       ) : (
                         <User className="h-4 w-4" />
                       )}
                     </div>
 
                     <div className="max-w-[85%]">
-                      {/* Emotion badge (therapy strategy hidden from users) */}
-                      {msg.role === "assistant" && (
+                      {msg.role === "assistant" && getRetrievalSummary(msg.metadata) && (
                         <div className="mb-2 flex flex-wrap gap-1">
-                          {msg.metadata?.emotion && msg.metadata.emotion !== "neutral" && (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-2 py-0 text-[10px]"
-                            >
-                              {EMOTION_LABELS[msg.metadata.emotion as string] ?? msg.metadata.emotion}
-                            </Badge>
-                          )}
-                          {msg.metadata?.message_type !== "crisis" &&
-                            getRetrievalSummary(msg.metadata) && (
-                              <Badge
-                                variant="outline"
-                                className="gap-1 rounded-full px-2 py-0 text-[10px]"
-                                title={getRetrievalSummary(msg.metadata) ?? undefined}
-                              >
-                                <BookOpenCheck className="h-3 w-3" />
-                                Sourced
-                              </Badge>
-                            )}
+                          <Badge
+                            variant="outline"
+                            className="gap-1 rounded-full px-2 py-0 text-[10px]"
+                            title={getRetrievalSummary(msg.metadata) ?? undefined}
+                          >
+                            <BookOpenCheck className="h-3 w-3" />
+                            Sourced
+                          </Badge>
                         </div>
                       )}
 
@@ -288,17 +247,12 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                           />
                         </div>
                       ) : (
-                        <AssistantMessageBubble
-                          variant={
-                            msg.metadata?.message_type === "crisis" ? "crisis" : "default"
-                          }
-                        >
+                        <AssistantMessageBubble variant="medical">
                           <ChatMessageMarkdown content={msg.content} />
                         </AssistantMessageBubble>
                       )}
 
-                      {/* Wellness activity buttons */}
-                      {msg.role === "assistant" && msg.metadata?.message_type !== "crisis" &&
+                      {msg.role === "assistant" &&
                         (() => {
                           const activityIds = getSuggestedActivities(msg.metadata);
                           const showBreathing =
@@ -338,69 +292,41 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                 ))}
               </AnimatePresence>
 
-              {isTyping && (
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#E8F0E7]">
-                    <Loader2 className="h-4 w-4 animate-spin text-serene-accent" />
-                  </div>
-                  <div className="rounded-2xl bg-[#F9FAF7] px-4 py-3 text-sm text-gray-500">
-                    Luna is typing…
-                  </div>
-                </div>
-              )}
+              {isTyping && <HeliosTypingIndicator />}
               <div ref={messagesEndRef} />
             </div>
           </div>
         )}
 
-        {/* Input area */}
         <div className="border-t border-gray-100 bg-white px-6 py-4">
-          {crisisChoices.length > 0 ? (
-            <div className="mx-auto max-w-3xl">
-              <div className="grid grid-cols-2 gap-2">
-                {crisisChoices.map((choice) => (
-                  <button
-                    key={choice.id}
-                    type="button"
-                    disabled={isTyping}
-                    onClick={() => onCrisisChoice(choice)}
-                    className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition-colors hover:border-serene-green/30 hover:bg-[#F9FAF7] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {choice.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl items-end gap-3">
-              <textarea
-                value={message}
-                onChange={(e) => onMessageChange(e.target.value)}
-                placeholder="Share what's on your mind..."
-                className={cn(
-                  "max-h-[160px] min-h-[52px] flex-1 resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800",
-                  "placeholder:text-gray-400 focus:border-serene-green/40 focus:outline-none focus:ring-2 focus:ring-serene-green/30",
-                  isTyping && "cursor-not-allowed opacity-50"
-                )}
-                rows={1}
-                disabled={isTyping}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    onSubmit(e);
-                  }
-                }}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                className="h-[52px] w-[52px] shrink-0 rounded-2xl bg-serene-green text-white shadow-sm hover:bg-serene-accent disabled:opacity-50"
-                disabled={isTyping || !message.trim()}
-              >
-                <Send className="h-5 w-5" />
-              </Button>
-            </form>
-          )}
+          <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl items-end gap-3">
+            <textarea
+              value={message}
+              onChange={(e) => onMessageChange(e.target.value)}
+              placeholder="Ask Helios about health and wellness..."
+              className={cn(
+                "max-h-[160px] min-h-[52px] flex-1 resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800",
+                "placeholder:text-gray-400 focus:border-serene-green/40 focus:outline-none focus:ring-2 focus:ring-serene-green/30",
+                isTyping && "cursor-not-allowed opacity-50"
+              )}
+              rows={1}
+              disabled={isTyping}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmit(e);
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="h-[52px] w-[52px] shrink-0 rounded-2xl bg-serene-green text-white shadow-sm hover:bg-serene-accent disabled:opacity-50"
+              disabled={isTyping || !message.trim()}
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </form>
         </div>
       </div>
     </div>

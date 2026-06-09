@@ -7,28 +7,27 @@ import { Heart, Target, Sparkles } from "lucide-react";
 const missions = [
   {
     icon: <Heart className="w-8 h-8 text-primary" />,
-    title: "Our Mission",
+    title: "Sứ mệnh",
     description:
-      "To democratize access to mental health support through ethical AI and blockchain technology, making quality therapeutic care available to everyone, everywhere, at any time.",
+      "Mang đến không gian an toàn để mọi người tra cứu và được tư vấn về sức khỏe tâm thần — dễ tiếp cận, dễ hiểu và tôn trọng quyền riêng tư.",
   },
   {
     icon: <Target className="w-8 h-8 text-primary" />,
-    title: "Our Vision",
+    title: "Tầm nhìn",
     description:
-      "A world where mental health support is accessible, private, and personalized, powered by trusted AI agents and secured by blockchain technology.",
+      "Một nền tảng nơi thông tin sức khỏe tâm thần minh bạch, có căn cứ và được hỗ trợ bởi AI có trách nhiệm.",
   },
   {
     icon: <Sparkles className="w-8 h-8 text-primary" />,
-    title: "Our Values",
+    title: "Giá trị",
     description:
-      "Privacy, Innovation, Empathy, and Trust form the cornerstone of our platform, ensuring the highest standards of care and security.",
+      "Riêng tư, đồng cảm, minh bạch và an toàn — Helios luôn nhắc bạn đây là hỗ trợ tham khảo, không thay thế chuyên gia.",
   },
 ];
 
 export default function AboutPage() {
   return (
     <div className="container mx-auto px-4 py-24">
-      {/* Hero Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -36,15 +35,15 @@ export default function AboutPage() {
         className="text-center mb-20"
       >
         <h1 className="text-4xl font-bold mb-6 bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-          About Luna & Helios
+          Về Helios
         </h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          Luna supports emotional wellness; Helios helps with medical information.
-          Together they combine thoughtful AI with a focus on privacy and trust.
+          Helios là nền tảng hỗ trợ <strong>tra cứu và tư vấn sức khỏe tâm thần</strong> —
+          kết hợp trò chuyện AI, tài liệu tham khảo và bài tập thư giãn trong một không gian
+          nhẹ nhàng, riêng tư.
         </p>
       </motion.div>
 
-      {/* Mission Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
         {missions.map((mission, index) => (
           <motion.div

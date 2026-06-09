@@ -1,8 +1,8 @@
-"""Medical-mode chat handlers (monolith, no sidecar)."""
+"""Medical (Helios) chat handlers."""
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -12,37 +12,21 @@ from app.config import get_settings
 from app.db.repository import append_message, create_conversation
 from app.medical.service import get_medical_service
 
-ChatMode = Literal["psychologist", "medical"]
+CHAT_MODE = "medical"
 
 
-def normalize_chat_mode(value: str | None) -> ChatMode:
-    if value == "medical":
-        return "medical"
-    return "psychologist"
-
-
-async def resolve_conversation_mode(
+async def resolve_conversation(
     db: AsyncIOMotorDatabase,
     *,
     session_id: str,
-    requested_mode: str | None,
     conv: dict[str, Any] | None,
     user_id: ObjectId | None = None,
-) -> tuple[dict[str, Any], ChatMode]:
-    mode = normalize_chat_mode(requested_mode)
+) -> dict[str, Any]:
     if conv is None:
-        conv = await create_conversation(
-            db, session_id=session_id, chat_mode=mode, user_id=user_id
+        return await create_conversation(
+            db, session_id=session_id, chat_mode=CHAT_MODE, user_id=user_id
         )
-        return conv, mode
-
-    stored = normalize_chat_mode(conv.get("chat_mode"))
-    if requested_mode and normalize_chat_mode(requested_mode) != stored:
-        raise HTTPException(
-            400,
-            detail="Cannot change chat mode during an active session.",
-        )
-    return conv, stored
+    return conv
 
 
 async def handle_medical_chat_turn(
@@ -68,7 +52,7 @@ async def handle_medical_chat_turn(
         raise HTTPException(500, detail=f"Medical assistant error: {exc}") from exc
 
     meta: dict[str, Any] = {
-        "chat_mode": "medical",
+        "chat_mode": CHAT_MODE,
         "agent_name": turn.agent_name,
         "message_type": "medical",
     }

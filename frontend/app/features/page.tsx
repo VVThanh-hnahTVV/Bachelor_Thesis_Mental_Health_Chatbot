@@ -7,63 +7,63 @@ import { Button } from "@/components/ui/button";
 import {
   MessageCircleHeart,
   BookOpen,
-  Smile,
   LayoutDashboard,
   History,
   Wind,
   ShieldAlert,
   UserCircle,
   ArrowRight,
+  Brain,
 } from "lucide-react";
 
 const features = [
   {
     icon: MessageCircleHeart,
-    title: "AI Companion Chat",
+    title: "Trò chuyện sức khỏe tâm thần",
     description:
-      "Talk with Luna for emotional support or Helios for medical questions. Conversations use LangGraph with multi-turn memory, empathetic replies, and local, Groq, OpenAI, or Gemini models.",
+      "Trao đổi với Helios về lo âu, căng thẳng, trầm cảm và các chủ đề tâm lý. Hệ thống ghi nhớ ngữ cảnh trong phiên và trả lời bằng ngôn ngữ dễ hiểu.",
   },
   {
     icon: BookOpen,
-    title: "Knowledge-Grounded Guidance",
+    title: "Tra cứu có căn cứ",
     description:
-      "Luna draws on a curated wellness knowledge base for supportive guidance. Helios uses medical references to keep health answers clear and source-aware.",
+      "Helios tra cứu tài liệu tham khảo đã chọn lọc để giải thích khái niệm và hướng dẫn chăm sóc bản thân một cách rõ ràng.",
   },
   {
-    icon: Smile,
-    title: "Mood Check-ins",
+    icon: Brain,
+    title: "Tư vấn & gợi ý thực hành",
     description:
-      "Log how you feel on a simple mood scale from the home page or dashboard. Track patterns over time and pair mood entries with your daily activities.",
+      "Ngoài giải thích thông tin, Helios có thể gợi ý bài tập thở, âm thanh thư giãn khi phù hợp với nội dung trò chuyện.",
   },
   {
     icon: LayoutDashboard,
-    title: "Wellness Dashboard",
+    title: "Bảng điều khiển wellness",
     description:
-      "On the dashboard, track your mood, view today’s wellness stats, see how many therapy sessions you’ve started, and read short insights based on your recent patterns.",
+      "Theo dõi phiên trò chuyện và hoạt động thư giãn đã hoàn thành trong ngày từ một màn hình tổng quan gọn gàng.",
   },
   {
     icon: History,
-    title: "Therapy & Medical Sessions",
+    title: "Lịch sử phiên chat",
     description:
-      "Start a new chat with Luna or Helios from the dashboard, or resume past conversations. Each companion remembers context within its session and can suggest next steps when you need them.",
+      "Tạo phiên mới hoặc tiếp tục cuộc trò chuyện trước đó. Mỗi phiên giữ ngữ cảnh riêng để bạn kể tiếp câu chuyện của mình.",
   },
   {
     icon: Wind,
-    title: "Calming Mini-Games",
+    title: "Bài tập thư giãn",
     description:
-      "Take a break with interactive exercises: breathing patterns, Zen Garden, Mindful Forest, and Ocean Waves—available from the dashboard and inside chat when you need to ground yourself.",
+      "Hít thở, mini-game thư giãn và âm thanh calming — dùng ngay trong chat hoặc từ dashboard khi cần ổn định cảm xúc.",
   },
   {
     icon: ShieldAlert,
-    title: "Built-in Safety Checks",
+    title: "An toàn nội dung",
     description:
-      "Each message is screened for elevated risk. When needed, Luna & Helios share crisis resources and remind you this app is for wellness support, not emergency or clinical care.",
+      "Helios kiểm tra nội dung đầu vào/đầu ra và nhắc rõ: đây là hỗ trợ tham khảo, không phải cấp cứu hay chẩn đoán lâm sàng.",
   },
   {
     icon: UserCircle,
-    title: "Your Private Account",
+    title: "Tài khoản riêng tư",
     description:
-      "Sign up to save chat sessions and mood check-ins to your account. Your data is tied to secure authentication—so your journey stays personal and persistent.",
+      "Đăng ký để lưu phiên chat và đồng bộ trên nhiều thiết bị. Dữ liệu được bảo vệ bằng xác thực an toàn.",
   },
 ];
 
@@ -78,16 +78,15 @@ export default function FeaturesPage() {
           className="text-center mb-16"
         >
           <p className="text-xs uppercase tracking-widest text-serene-accent font-medium mb-4">
-            Luna & Helios
+            Tra cứu & tư vấn sức khỏe tâm thần
           </p>
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6">
-            What Luna & Helios Offer
+            Tính năng của Helios
           </h1>
           <p className="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-            A calm space for emotional support and medical guidance—AI
-            conversation, mood tracking, wellness tools, and grounding
-            exercises. Built for everyday well-being, not as a replacement for
-            professional care.
+            Không gian nhẹ nhàng để tra cứu thông tin, được tư vấn về sức khỏe tâm thần
+            và thực hành thư giãn — bổ trợ chăm sóc hằng ngày, không thay thế điều trị
+            chuyên môn.
           </p>
         </motion.div>
 
@@ -121,11 +120,10 @@ export default function FeaturesPage() {
           className="text-center mt-16 p-8 rounded-2xl bg-white/60 border border-serene-green/15"
         >
           <h2 className="text-2xl font-semibold text-gray-800 mb-3">
-            Ready to begin?
+            Sẵn sàng bắt đầu?
           </h2>
           <p className="text-gray-500 mb-6 max-w-lg mx-auto">
-            Create an account or sign in, then open the dashboard to log your
-            mood, start a chat session, or try a calming exercise.
+            Mở dashboard để bắt đầu trò chuyện với Helios hoặc thử một bài tập thư giãn.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button
@@ -133,7 +131,7 @@ export default function FeaturesPage() {
               className="rounded-full bg-serene-green hover:bg-serene-accent text-white px-8"
             >
               <Link href="/dashboard">
-                Go to Dashboard
+                Vào Dashboard
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Link>
             </Button>
@@ -142,12 +140,12 @@ export default function FeaturesPage() {
               variant="outline"
               className="rounded-full border-serene-green/30 text-serene-accent hover:bg-[#E8F0E7]"
             >
-              <Link href="/signup">Create account</Link>
+              <Link href="/signup">Tạo tài khoản</Link>
             </Button>
           </div>
           <p className="text-xs text-gray-400 mt-6 italic">
-            Luna & Helios are for educational and wellness support only—not
-            medical advice, diagnosis, or emergency services.
+            Helios chỉ cung cấp thông tin tham khảo và hỗ trợ sức khỏe tâm thần — không
+            thay thế chẩn đoán, điều trị hay dịch vụ cấp cứu.
           </p>
         </motion.div>
       </div>
