@@ -1,6 +1,13 @@
 import logging
 from typing import List, Dict, Any, Optional, Union
 
+from app.medical.agents.structured_output import (
+    ACTIVITIES_INTRO_RULES,
+    SUGGEST_ACTIVITIES_RULES,
+    merge_activities_intro,
+    parse_rag_output,
+    rag_format_instructions,
+)
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS
 
 class ResponseGenerator:
@@ -53,14 +60,25 @@ class ResponseGenerator:
 
         response_format_instructions = f"""Instructions:
         1. Answer the query based ONLY on the information provided in the context.
-        2. If the context doesn't contain relevant information to answer the query, state: "I don't have enough information to answer this question based on the provided context."
+        2. If the context cannot fully answer the query, still write the best partial answer you can in "answer", and set "web_search" to true.
         3. Do not use prior knowledge not contained in the context.
-        5. Be concise and accurate.
-        6. Only provide sections that are meaningful to have in a chatbot reply. For example, do not explicitly mention references.
-        7. If values are involved, make sure to respond with perfect values present in context. Do not make up values.
-        8. Do not repeat the question in the answer or response.
+        4. Be concise and accurate.
+        5. Only provide sections that are meaningful to have in a chatbot reply. Do not add a separate references section in "answer".
+        6. If values are involved, use only values present in context. Do not make up values.
+        7. Do not repeat the question in the answer.
 
-        {MARKDOWN_RESPONSE_INSTRUCTIONS}"""
+        {SUGGEST_ACTIVITIES_RULES}
+
+        {ACTIVITIES_INTRO_RULES}
+
+        ### web_search
+        Set to true when the retrieved context is missing key information the user asked for (treatments, mechanisms,
+        guidelines, etc.) and a broader web search would likely help. Set to false when the context fully answers the question.
+
+        {MARKDOWN_RESPONSE_INSTRUCTIONS}
+
+        Respond with JSON only (no markdown fences):
+        {rag_format_instructions()}"""
             
         # Build the prompt
         prompt = f"""You are a medical assistant providing accurate information based on verified medical sources.
@@ -80,12 +98,9 @@ class ResponseGenerator:
 
         {response_format_instructions}
 
-        Based on the provided information, please answer the user's question thoroughly but concisely.
-        If the information doesn't contain the answer, acknowledge the limitations of the available information.
+        Based on the provided information, answer the user's question and set web_search / suggest_activities accordingly.
 
-        Do not provide any source link that is not present in the context. Do not make up any source link.
-
-        Medical Assistant Response:"""
+        Do not include source links inside the JSON "answer" field. Sources are appended separately by the system."""
 
         return prompt
 
@@ -118,9 +133,15 @@ class ResponseGenerator:
             # Build the prompt
             prompt = self._build_prompt(query, context, chat_history)
             
-            # Generate response
-            response = self.response_generator_model.invoke(prompt)
-            
+            # Generate structured response
+            raw_response = self.response_generator_model.invoke(prompt)
+            structured = parse_rag_output(raw_response)
+            answer_text = merge_activities_intro(
+                structured.answer,
+                suggest_activities=structured.suggest_activities,
+                activities_intro=structured.activities_intro,
+            )
+
             # Extract sources for citation
             sources = self._extract_sources(retrieved_docs) if hasattr(self, 'include_sources') and self.include_sources else []
             
@@ -128,25 +149,26 @@ class ResponseGenerator:
             confidence = self._calculate_confidence(retrieved_docs)
 
             # Add sources to response
-            if hasattr(self, 'include_sources') and self.include_sources:
-                response_with_source = response.content + "\n\n##### Source documents:"
+            if hasattr(self, 'include_sources') and self.include_sources and sources:
+                answer_text += "\n\n##### Source documents:"
                 for current_source in sources:
                     source_path = current_source['path']
                     source_title = current_source['title']
-                    response_with_source += f"\n- [{source_title}]({source_path})"
-            else:
-                response_with_source = response.content
+                    answer_text += f"\n- [{source_title}]({source_path})"
             
             # Add picture paths to response
-            response_with_source_and_picture_paths = response_with_source + "\n\n##### Reference images:"
-            for picture_path in picture_paths:
-                response_with_source_and_picture_paths += f"\n- [{picture_path.split('/')[-1]}]({picture_path})"
+            if picture_paths:
+                answer_text += "\n\n##### Reference images:"
+                for picture_path in picture_paths:
+                    answer_text += f"\n- [{picture_path.split('/')[-1]}]({picture_path})"
             
             # Format final response
             result = {
-                "response": response_with_source_and_picture_paths,
+                "response": answer_text,
                 "sources": sources,
-                "confidence": confidence
+                "confidence": confidence,
+                "web_search": structured.web_search,
+                "suggest_activities": structured.suggest_activities,
             }
             
             return result
@@ -156,7 +178,9 @@ class ResponseGenerator:
             return {
                 "response": "I apologize, but I encountered an error while generating a response. Please try rephrasing your question.",
                 "sources": [],
-                "confidence": 0.0
+                "confidence": 0.0,
+                "web_search": True,
+                "suggest_activities": False,
             }
 
     def _extract_sources(self, documents: List[Dict[str, Any]]) -> List[Dict[str, str]]:

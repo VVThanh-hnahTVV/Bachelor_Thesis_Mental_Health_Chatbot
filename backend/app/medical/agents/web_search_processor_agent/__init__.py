@@ -1,5 +1,7 @@
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
+
 from .web_search_processor import WebSearchProcessor
+
 
 class WebSearchProcessorAgent:
     """
@@ -9,6 +11,8 @@ class WebSearchProcessorAgent:
     def __init__(self, config):
         self.web_search_processor = WebSearchProcessor(config)
     
-    def process_web_search_results(self, query: str, chat_history: Optional[str] = None) -> str:
-        """Processes web search results and returns a user-friendly response."""
+    def process_web_search_results(
+        self, query: str, chat_history: Optional[str] = None
+    ) -> dict[str, Any]:
+        """Processes web search results and returns answer + suggest_activities flag."""
         return self.web_search_processor.process_web_results(query, chat_history)

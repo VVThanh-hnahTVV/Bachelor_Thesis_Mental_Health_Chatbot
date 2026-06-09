@@ -47,7 +47,9 @@ class AgentState(MessagesState):
     output: Optional[str]  # Final output to user
     retrieval_confidence: float  # Confidence in retrieval (for RAG agent)
     bypass_routing: bool  # Flag to bypass agent routing for guardrails
-    insufficient_info: bool  # Flag indicating RAG response has insufficient information
+    insufficient_info: bool  # Deprecated alias; use web_search
+    web_search: bool  # RAG requests follow-up web search when context is incomplete
+    suggest_activities: bool  # Agent decision: show wellness activity buttons
     suggested_activities: Optional[List[Dict[str, str]]]  # Wellness activity suggestions for UI
     wellness_retrieval_score: Optional[float]
     wellness_retrieval_source: Optional[str]
@@ -285,54 +287,35 @@ def create_agent_graph():
 
         response = rag_agent.process_query(query, chat_history=memory_context)
         retrieval_confidence = response.get("confidence", 0.0)  # Default to 0.0 if not provided
+        web_search = bool(response.get("web_search", False))
+        suggest_activities = bool(response.get("suggest_activities", False))
 
         print(f"Retrieval Confidence: {retrieval_confidence}")
+        print(f"RAG web_search: {web_search}, suggest_activities: {suggest_activities}")
         print(f"Sources: {len(response['sources'])}")
 
-        # Check if response indicates insufficient information
-        insufficient_info = False
         response_content = response["response"]
-        
-        # Extract the content properly based on type
-        if isinstance(response_content, dict) and hasattr(response_content, 'content'):
-            # If it's an AIMessage or similar object with a content attribute
+        if isinstance(response_content, dict) and hasattr(response_content, "content"):
             response_text = response_content.content
         else:
-            # If it's already a string
             response_text = response_content
-            
-        print(f"Response text type: {type(response_text)}")
-        print(f"Response text preview: {response_text[:100]}...")
-        
-        if isinstance(response_text, str) and (
-            "I don't have enough information to answer this question based on the provided context" in response_text or 
-            "I don't have enough information" in response_text or 
-            "don't have enough information" in response_text.lower() or
-            "not enough information" in response_text.lower() or
-            "insufficient information" in response_text.lower() or
-            "cannot answer" in response_text.lower() or
-            "unable to answer" in response_text.lower()
-            ):
-            
-            print("RAG response indicates insufficient information")
-            print(f"Response text that triggered insufficient_info: {response_text[:100]}...")
-            insufficient_info = True
 
-        print(f"Insufficient info flag set to: {insufficient_info}")
+        print(f"Response text preview: {str(response_text)[:100]}...")
 
-        # Store RAG output ONLY if confidence is high
-        if retrieval_confidence >= config.rag.min_retrieval_confidence:
-            # response_output = response["response"]
-            response_output = AIMessage(content=response_text)
-        else:
+        # Keep partial RAG answer unless we are delegating to web search
+        if web_search or retrieval_confidence < config.rag.min_retrieval_confidence:
             response_output = AIMessage(content="")
-        
+        else:
+            response_output = AIMessage(content=str(response_text))
+
         return {
             **state,
             "output": response_output,
             "retrieval_confidence": retrieval_confidence,
             "agent_name": "RAG_AGENT",
-            "insufficient_info": insufficient_info
+            "web_search": web_search,
+            "insufficient_info": web_search,
+            "suggest_activities": suggest_activities,
         }
 
     # Web Search Processor Node
@@ -347,15 +330,12 @@ def create_agent_graph():
         memory_context = _agent_memory_context(state)
         web_search_processor = WebSearchProcessorAgent(config)
 
-        processed_response = web_search_processor.process_web_search_results(
+        processed = web_search_processor.process_web_search_results(
             query=state["current_input"],
             chat_history=memory_context,
         )
-        response_content = (
-            processed_response.content
-            if hasattr(processed_response, "content")
-            else str(processed_response)
-        )
+        response_content = str(processed.get("response", ""))
+        suggest_activities = bool(processed.get("suggest_activities", False))
 
         if state['agent_name'] != None:
             involved_agents = f"{state['agent_name']}, WEB_SEARCH_PROCESSOR_AGENT"
@@ -365,24 +345,25 @@ def create_agent_graph():
         return {
             **state,
             "output": AIMessage(content=response_content),
-            "agent_name": involved_agents
+            "agent_name": involved_agents,
+            "suggest_activities": suggest_activities,
+            "web_search": False,
         }
 
     # Define Routing Logic
     def confidence_based_routing(state: AgentState) -> Dict[str, str]:
-        """Route based on RAG confidence score and response content."""
-        # Debug prints
-        print(f"Routing check - Retrieval confidence: {state.get('retrieval_confidence', 0.0)}")
-        print(f"Routing check - Insufficient info flag: {state.get('insufficient_info', False)}")
-        
-        # Redirect if confidence is low or if response indicates insufficient info
-        if (state.get("retrieval_confidence", 0.0) < config.rag.min_retrieval_confidence or 
-            state.get("insufficient_info", False)):
+        """Route to web search when RAG explicitly requests it or retrieval confidence is low."""
+        web_search = bool(state.get("web_search", False))
+        low_confidence = state.get("retrieval_confidence", 0.0) < config.rag.min_retrieval_confidence
+        print(f"Routing check - web_search: {web_search}, retrieval_confidence: {state.get('retrieval_confidence', 0.0)}")
+
+        if web_search or low_confidence:
             from app.chat_progress import emit_progress
 
             emit_progress("WEB_SEARCH_PROCESSOR_AGENT")
-            print("Re-routed to Web Search Agent due to low confidence or insufficient information...")
-            return "WEB_SEARCH_PROCESSOR_AGENT"  # Correct format
+            reason = "web_search flag" if web_search else "low retrieval confidence"
+            print(f"Re-routed to Web Search Agent ({reason})...")
+            return "WEB_SEARCH_PROCESSOR_AGENT"
         return "apply_guardrails"
     
     # Check output through guardrails
@@ -478,6 +459,8 @@ def init_agent_state() -> AgentState:
         "retrieval_confidence": 0.0,
         "bypass_routing": False,
         "insufficient_info": False,
+        "web_search": False,
+        "suggest_activities": False,
         "suggested_activities": [],
         "wellness_retrieval_score": None,
         "wellness_retrieval_source": None,

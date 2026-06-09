@@ -152,8 +152,11 @@ def attach_wellness_after_retrieval(
     *,
     lang: str = "vi",
 ) -> dict[str, Any]:
-    """After RAG / web search, attach activity buttons if wellness score passes threshold."""
+    """After RAG / web search, attach activity buttons when the agent opted in."""
     if state.get("suggested_activities"):
+        return state
+
+    if not state.get("suggest_activities"):
         return state
 
     agent_name = str(state.get("agent_name") or "")

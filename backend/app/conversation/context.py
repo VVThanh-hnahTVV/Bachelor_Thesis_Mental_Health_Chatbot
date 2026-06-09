@@ -25,7 +25,7 @@ def build_agent_memory_context(
         f"CONVERSATION SUMMARY (rolling, may be empty on first turn):\n"
         f"{summary}\n\n"
         f"RECENT USER QUESTIONS (up to {recent_questions_limit} prior turns, "
-        f"excluding current input):\n"
+        f"excluding current input — 1 = most recent, higher = older):\n"
         f"{recent_questions}"
     )
 
@@ -36,7 +36,7 @@ def format_recent_user_questions(
     limit: int = 5,
     exclude_current: str | None = None,
 ) -> str:
-    """Return up to `limit` prior user questions (newest last), excluding the current turn."""
+    """Return up to `limit` prior user questions, newest first (1 = most recent)."""
     exclude = (exclude_current or "").strip()
     picked: list[str] = []
     for msg in reversed(messages):
@@ -48,10 +48,9 @@ def format_recent_user_questions(
         picked.append(text)
         if len(picked) >= limit:
             break
-    picked.reverse()
     if not picked:
         return "(none)"
-    return "\n".join(f"- {line}" for line in picked)
+    return "\n".join(f"{i}. {line}" for i, line in enumerate(picked, start=1))
 
 
 async def load_conversation_summary(

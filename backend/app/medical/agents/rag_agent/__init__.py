@@ -229,5 +229,7 @@ class MedicalRAG:
                 "response": f"I encountered an error while processing your query: {str(e)}",
                 "sources": [],
                 "confidence": 0.0,
+                "web_search": True,
+                "suggest_activities": False,
                 "processing_time": time.time() - start_time
             }

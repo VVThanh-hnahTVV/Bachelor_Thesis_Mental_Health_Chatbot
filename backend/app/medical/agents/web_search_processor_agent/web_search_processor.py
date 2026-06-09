@@ -5,6 +5,13 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+from app.medical.agents.structured_output import (
+    ACTIVITIES_INTRO_RULES,
+    SUGGEST_ACTIVITIES_RULES,
+    merge_activities_intro,
+    parse_web_search_output,
+    web_search_format_instructions,
+)
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS
 from .tavily_search import sanitize_tavily_query
 from .web_search_agent import WebSearchAgent
@@ -86,7 +93,7 @@ class WebSearchProcessor:
 
         return prompt
     
-    def process_web_results(self, query: str, chat_history: Optional[str] = None) -> str:
+    def process_web_results(self, query: str, chat_history: Optional[str] = None) -> dict:
         """
         Fetches web search results, processes them using LLM, and returns a user-friendly response.
         """
@@ -103,10 +110,13 @@ class WebSearchProcessor:
         if len(search_query) < 3:
             search_query = sanitize_tavily_query(query)
         if len(search_query) < 3:
-            return (
-                "I could not form a valid web search query from your message. "
-                "Please rephrase your question."
-            )
+            return {
+                "response": (
+                    "I could not form a valid web search query from your message. "
+                    "Please rephrase your question."
+                ),
+                "suggest_activities": False,
+            }
 
         web_results = self.web_search_agent.search(search_query)
 
@@ -116,14 +126,25 @@ class WebSearchProcessor:
         llm_prompt = (
             "You are an AI assistant specialized in medical information. Below are search results "
             "from Tavily (general web) and/or PubMed (peer-reviewed medical literature). "
-            "Summarize and generate a helpful, concise response. "
+            "Summarize and generate a helpful, concise response in the JSON \"answer\" field. "
             "Prefer PubMed evidence when available. Cite source URLs or PMIDs when relevant. "
             "Do not diagnose or prescribe; recommend professional care for serious concerns.\n\n"
             f"{_web_search_time_instructions(for_query_rewrite=False)}\n"
+            f"{SUGGEST_ACTIVITIES_RULES}\n"
+            f"{ACTIVITIES_INTRO_RULES}\n"
             f"{MARKDOWN_RESPONSE_INSTRUCTIONS}\n\n"
-            f"Query: {query}\n\nSearch Results:\n{web_results}\n\nResponse:"
+            f"Query: {query}\n\nSearch Results:\n{web_results}\n\n"
+            f"Respond with JSON only (no markdown fences):\n{web_search_format_instructions()}"
         )
         
         # Invoke the LLM to process the results
         response = self.llm.invoke(llm_prompt)
-        return response.content if hasattr(response, "content") else str(response)
+        structured = parse_web_search_output(response)
+        return {
+            "response": merge_activities_intro(
+                structured.answer,
+                suggest_activities=structured.suggest_activities,
+                activities_intro=structured.activities_intro,
+            ),
+            "suggest_activities": structured.suggest_activities,
+        }

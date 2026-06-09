@@ -37,6 +37,19 @@ def test_attach_only_after_rag_or_web():
     state = {
         "agent_name": "CONVERSATION_AGENT",
         "current_input": "tôi lo âu",
+        "suggest_activities": True,
+        "suggested_activities": [],
+    }
+    out = attach_wellness_after_retrieval(state)
+    assert not out.get("suggested_activities")
+
+
+def test_attach_blocked_when_agent_declines_activities(monkeypatch):
+    monkeypatch.setenv("WELLNESS_SUGGESTION_MIN_SCORE", "0.35")
+    state = {
+        "agent_name": "RAG_AGENT",
+        "current_input": "Sao để giảm ADHD",
+        "suggest_activities": False,
         "suggested_activities": [],
     }
     out = attach_wellness_after_retrieval(state)
@@ -48,6 +61,7 @@ def test_attach_after_rag_when_score_ok(monkeypatch):
     state = {
         "agent_name": "RAG_AGENT",
         "current_input": "bệnh lo âu có bài tập gì không",
+        "suggest_activities": True,
         "suggested_activities": [],
     }
     out = attach_wellness_after_retrieval(state)

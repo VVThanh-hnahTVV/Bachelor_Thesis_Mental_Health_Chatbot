@@ -21,7 +21,8 @@ class LocalGuardrails:
             CONVERSATION SUMMARY (rolling, may be empty on first turn):
             {conversation_summary}
 
-            RECENT USER QUESTIONS (up to 5 prior turns, excluding current input):
+            RECENT USER QUESTIONS (up to 5 prior turns, excluding current input;
+            numbering: 1 = most recent prior user message, larger numbers = older):
             {recent_user_questions}
 
             CURRENT USER INPUT:
