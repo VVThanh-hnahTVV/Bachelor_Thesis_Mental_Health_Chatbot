@@ -54,7 +54,7 @@ class WebSearchProcessor:
         # Initialize LLM for processing web search results
         self.llm = config.web_search.llm
     
-    def _build_prompt_for_web_search(self, query: str, chat_history: List[Dict[str, str]] = None) -> str:
+    def _build_prompt_for_web_search(self, query: str, chat_history: Optional[str] = None) -> str:
         """
         Build the prompt for the web search.
         
@@ -69,9 +69,9 @@ class WebSearchProcessor:
         # print("Chat History:", chat_history)
             
         # Build the prompt
-        prompt = f"""Here are the last few messages from our conversation:
+        prompt = f"""Conversation memory (summary + recent user questions):
 
-        {chat_history}
+        {chat_history or "(none yet)"}
 
         The user asked the following question:
 
@@ -86,7 +86,7 @@ class WebSearchProcessor:
 
         return prompt
     
-    def process_web_results(self, query: str, chat_history: Optional[List[Dict[str, str]]] = None) -> str:
+    def process_web_results(self, query: str, chat_history: Optional[str] = None) -> str:
         """
         Fetches web search results, processes them using LLM, and returns a user-friendly response.
         """

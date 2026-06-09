@@ -159,7 +159,7 @@ class MedicalRAG:
                 "processing_time": time.time() - start_time
             }
         
-    def process_query(self, query: str, chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    def process_query(self, query: str, chat_history: Optional[str] = None) -> Dict[str, Any]:
         """
         Process a query with the RAG system.
         

@@ -23,7 +23,7 @@ class ResponseGenerator:
             self,
             query: str, 
             context: str,
-            chat_history: Optional[List[Dict[str, str]]] = None
+            chat_history: Optional[str] = None,
         ) -> str:
         """
         Build the prompt for the language model.
@@ -65,9 +65,9 @@ class ResponseGenerator:
         # Build the prompt
         prompt = f"""You are a medical assistant providing accurate information based on verified medical sources.
 
-        Here are the last few messages from our conversation:
+        Conversation memory (summary + recent user questions):
         
-        {chat_history}
+        {chat_history or "(none yet)"}
 
         The user has asked the following question:
         {query}
@@ -94,7 +94,7 @@ class ResponseGenerator:
             query: str,
             retrieved_docs: List[Dict[str, Any]],
             picture_paths: List[str],
-            chat_history: Optional[List[Dict[str, str]]] = None,
+            chat_history: Optional[str] = None,
         ) -> Dict[str, Any]:
         """
         Generate a response based on retrieved documents.

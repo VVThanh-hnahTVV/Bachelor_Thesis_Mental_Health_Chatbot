@@ -60,6 +60,25 @@ class AgentDecision(TypedDict):
     confidence: float
 
 
+def _input_text_from_state(state: AgentState) -> str:
+    current_input = state.get("current_input")
+    if isinstance(current_input, str):
+        return current_input
+    if isinstance(current_input, dict):
+        return str(current_input.get("text", ""))
+    return ""
+
+
+def _agent_memory_context(state: AgentState) -> str:
+    from app.conversation.context import build_agent_memory_context
+
+    return build_agent_memory_context(
+        conversation_summary=str(state.get("conversation_summary") or ""),
+        messages=state.get("messages") or [],
+        current_input=_input_text_from_state(state),
+    )
+
+
 def create_agent_graph():
     """Create and configure the LangGraph for agent orchestration."""
     config = get_medical_config()
@@ -127,30 +146,14 @@ def create_agent_graph():
         from app.chat_progress import emit_progress
 
         emit_progress("medical_route")
-        messages = state["messages"]
-        current_input = state["current_input"]
-        
-        # Prepare input for decision model
-        input_text = ""
-        if isinstance(current_input, str):
-            input_text = current_input
-        elif isinstance(current_input, dict):
-            input_text = current_input.get("text", "")
-        
-        # Create context from recent conversation history (last 3 messages)
-        recent_context = ""
-        for msg in messages[-6:]:  # Get last 3 exchanges (6 messages)  # Not provided control from config
-            if isinstance(msg, HumanMessage):
-                recent_context += f"User: {msg.content}\n"
-            elif isinstance(msg, AIMessage):
-                recent_context += f"Assistant: {msg.content}\n"
-        
-        # Combine everything for the decision input
+        input_text = _input_text_from_state(state)
+        memory_context = _agent_memory_context(state)
+
         decision_input = f"""
         User query: {input_text}
 
-        Recent conversation context:
-        {recent_context}
+        Conversation memory:
+        {memory_context}
 
         Based on this information, which agent should handle this query?
         """
@@ -193,36 +196,19 @@ def create_agent_graph():
         emit_progress("CONVERSATION_AGENT")
         print(f"Selected agent: CONVERSATION_AGENT")
 
-        messages = state["messages"]
-        current_input = state["current_input"]
-        
-        # Prepare input for decision model
-        input_text = ""
-        if isinstance(current_input, str):
-            input_text = current_input
-        elif isinstance(current_input, dict):
-            input_text = current_input.get("text", "")
-        
-        # Create context from recent conversation history
-        recent_context = ""
-        for msg in messages:#[-20:]:  # Get last 10 exchanges (20 messages)  # currently considering complete history - limit control from config
-            if isinstance(msg, HumanMessage):
-                # print("######### DEBUG 1:", msg)
-                recent_context += f"User: {msg.content}\n"
-            elif isinstance(msg, AIMessage):
-                # print("######### DEBUG 2:", msg)
-                recent_context += f"Assistant: {msg.content}\n"
-        
-        # Combine everything for the decision input
+        input_text = _input_text_from_state(state)
+        memory_context = _agent_memory_context(state)
+
         conversation_prompt = f"""User query: {input_text}
 
-        Recent conversation context: {recent_context}
+        Conversation memory:
+        {memory_context}
 
         You are Helios, an AI-powered medical conversation assistant. Your goal is to facilitate smooth and informative conversations with users, handling both casual and medical-related queries. You must respond naturally while ensuring medical accuracy and clarity.
 
         ### Identity & tone
         - Say "Mình là Helios" (or introduce yourself by name) ONLY on the first turn of a chat, when the user greets you, or when they explicitly ask who you are.
-        - If there is prior conversation in Recent conversation context, do NOT re-introduce yourself — answer the user's question directly.
+        - If there is prior conversation in the memory context above, do NOT re-introduce yourself — answer the user's question directly.
         - Never open follow-up replies with "Mình là Helios" or similar self-introductions.
 
         ### Role & Capabilities
@@ -294,21 +280,10 @@ def create_agent_graph():
         print(f"Selected agent: RAG_AGENT")
 
         rag_agent = MedicalRAG(config)
-        
-        messages = state["messages"]
         query = state["current_input"]
-        rag_context_limit = config.rag.context_limit
+        memory_context = _agent_memory_context(state)
 
-        recent_context = ""
-        for msg in messages[-rag_context_limit:]:# limit controlled from config
-            if isinstance(msg, HumanMessage):
-                # print("######### DEBUG 1:", msg)
-                recent_context += f"User: {msg.content}\n"
-            elif isinstance(msg, AIMessage):
-                # print("######### DEBUG 2:", msg)
-                recent_context += f"Assistant: {msg.content}\n"
-
-        response = rag_agent.process_query(query, chat_history=recent_context)
+        response = rag_agent.process_query(query, chat_history=memory_context)
         retrieval_confidence = response.get("confidence", 0.0)  # Default to 0.0 if not provided
 
         print(f"Retrieval Confidence: {retrieval_confidence}")
@@ -369,21 +344,13 @@ def create_agent_graph():
         print(f"Selected agent: WEB_SEARCH_PROCESSOR_AGENT")
         print("[WEB_SEARCH_PROCESSOR_AGENT] Processing Web Search Results...")
         
-        messages = state["messages"]
-        web_search_context_limit = config.web_search.context_limit
-
-        recent_context = ""
-        for msg in messages[-web_search_context_limit:]: # limit controlled from config
-            if isinstance(msg, HumanMessage):
-                # print("######### DEBUG 1:", msg)
-                recent_context += f"User: {msg.content}\n"
-            elif isinstance(msg, AIMessage):
-                # print("######### DEBUG 2:", msg)
-                recent_context += f"Assistant: {msg.content}\n"
-
+        memory_context = _agent_memory_context(state)
         web_search_processor = WebSearchProcessorAgent(config)
 
-        processed_response = web_search_processor.process_web_search_results(query=state["current_input"], chat_history=recent_context)
+        processed_response = web_search_processor.process_web_search_results(
+            query=state["current_input"],
+            chat_history=memory_context,
+        )
         response_content = (
             processed_response.content
             if hasattr(processed_response, "content")

@@ -1,9 +1,10 @@
 /** Welcome when starting a medical-mode session. */
 export function getDefaultMedicalGreeting(): string {
   return (
-    "Hello. I'm Helios — your medical information assistant. " +
-    "I can help with medical knowledge from ingested documents, recent research, and analysis of uploaded medical images. " +
-    "This is for educational reference only — not a diagnosis. How can I help?"
+    "Hello! I'm Helios — your companion for health and wellness questions. " +
+    "I'm here to help you understand symptoms, self-care, and health topics in clear, calm language. " +
+    "What I share is for education and support only — not a diagnosis or prescription. " +
+    "How can I support you today?"
   );
 }
 

@@ -7,6 +7,29 @@ from typing import Any
 from langchain_core.messages import BaseMessage, HumanMessage
 
 
+def build_agent_memory_context(
+    *,
+    conversation_summary: str = "",
+    messages: list[BaseMessage] | list[Any],
+    current_input: str = "",
+    recent_questions_limit: int = 5,
+) -> str:
+    """Memory block for Helios agents — same shape as guardrails input check."""
+    summary = (conversation_summary or "").strip() or "(none yet)"
+    recent_questions = format_recent_user_questions(
+        messages,
+        limit=recent_questions_limit,
+        exclude_current=current_input,
+    )
+    return (
+        f"CONVERSATION SUMMARY (rolling, may be empty on first turn):\n"
+        f"{summary}\n\n"
+        f"RECENT USER QUESTIONS (up to {recent_questions_limit} prior turns, "
+        f"excluding current input):\n"
+        f"{recent_questions}"
+    )
+
+
 def format_recent_user_questions(
     messages: list[BaseMessage] | list[Any],
     *,
