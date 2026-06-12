@@ -1,16 +1,29 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { AuthDialog } from "@/components/auth/auth-dialog";
 
 interface SignInButtonProps {
   className?: string;
+  onOpen?: () => void;
 }
 
-export function SignInButton({ className }: SignInButtonProps) {
+export function SignInButton({ className, onOpen }: SignInButtonProps) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Button asChild className={className}>
-      <Link href="/login">Sign In</Link>
-    </Button>
+    <>
+      <Button
+        className={className}
+        onClick={() => {
+          setOpen(true);
+          onOpen?.();
+        }}
+      >
+        Đăng nhập
+      </Button>
+      <AuthDialog open={open} onOpenChange={setOpen} />
+    </>
   );
 }

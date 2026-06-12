@@ -46,6 +46,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   addDays,
@@ -483,6 +484,11 @@ export default function Dashboard() {
             </p>
           </motion.div>
           <div className="flex items-center gap-4">
+            {user?.role === "admin" && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/knowledge">Admin</Link>
+              </Button>
+            )}
             <Button variant="outline" size="icon">
               <Bell className="h-5 w-5" />
             </Button>

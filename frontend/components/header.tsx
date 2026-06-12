@@ -71,7 +71,7 @@ export function Header() {
                 className="hidden md:flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full"
               >
                 <LogOut className="w-4 h-4" />
-                Sign out
+                Đăng xuất
               </Button>
             </>
           ) : (
@@ -115,7 +115,7 @@ export function Header() {
             </Button>
             {!isAuthenticated && (
               <div className="mt-2">
-                <SignInButton />
+                <SignInButton onOpen={() => setIsMenuOpen(false)} />
               </div>
             )}
           </nav>

@@ -69,6 +69,18 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     jwt_expire_hours: int = 168
 
+    frontend_url: str = "http://localhost:3000"
+    password_reset_expire_minutes: int = 60
+
+    maildev_incoming_user: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("MAILDEV_INCOMING_USER"),
+    )
+    maildev_incoming_pass: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("MAILDEV_INCOMING_PASS"),
+    )
+
     debug_llm_prompts: bool = True
 
     enable_internal_mcp_server: bool = False

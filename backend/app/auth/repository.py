@@ -20,6 +20,11 @@ SESSION_LINKS = "session_links"
 
 async def ensure_auth_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[USERS].create_index([("email", 1)], unique=True)
+    await db[USERS].create_index(
+        [("password_reset_token_hash", 1)],
+        sparse=True,
+        name="password_reset_token_hash_sparse",
+    )
     await db[SESSION_LINKS].create_index([("session_id", 1)], unique=True)
     await db[SESSION_LINKS].create_index([("user_id", 1)])
 
@@ -104,6 +109,59 @@ async def delete_session_link(
     session_id: str,
 ) -> None:
     await db[SESSION_LINKS].delete_one({"session_id": session_id})
+
+
+async def set_password_reset_token(
+    db: AsyncIOMotorDatabase,
+    *,
+    user_id: ObjectId,
+    token_hash: str,
+    expires_at: datetime,
+) -> None:
+    await db[USERS].update_one(
+        {"_id": user_id},
+        {
+            "$set": {
+                "password_reset_token_hash": token_hash,
+                "password_reset_expires_at": expires_at,
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+
+
+async def get_user_by_reset_token_hash(
+    db: AsyncIOMotorDatabase,
+    token_hash: str,
+) -> dict[str, Any] | None:
+    now = datetime.now(UTC)
+    return await db[USERS].find_one(
+        {
+            "password_reset_token_hash": token_hash,
+            "password_reset_expires_at": {"$gt": now},
+        }
+    )
+
+
+async def update_user_password(
+    db: AsyncIOMotorDatabase,
+    *,
+    user_id: ObjectId,
+    password_hash: str,
+) -> None:
+    await db[USERS].update_one(
+        {"_id": user_id},
+        {
+            "$set": {
+                "password_hash": password_hash,
+                "updated_at": datetime.now(UTC),
+            },
+            "$unset": {
+                "password_reset_token_hash": "",
+                "password_reset_expires_at": "",
+            },
+        },
+    )
 
 
 async def link_session_to_user(

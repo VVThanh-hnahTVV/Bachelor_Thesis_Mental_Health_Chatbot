@@ -7,6 +7,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  role?: string;
 }
 
 export interface AuthResponse {
@@ -108,4 +109,33 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
 
 export function logoutUser(): void {
   clearAuthToken();
+}
+
+export async function requestPasswordReset(email: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+  const data: { message: string } = await res.json();
+  return data.message;
+}
+
+export async function resetPassword(
+  token: string,
+  password: string
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+  if (!res.ok) {
+    throw new Error(await parseError(res));
+  }
+  const data: { message: string } = await res.json();
+  return data.message;
 }

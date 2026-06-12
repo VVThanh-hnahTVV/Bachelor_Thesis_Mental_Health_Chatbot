@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Slider } from "@/components/ui/slider";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,6 @@ const RING_SIZES = [200, 400, 600, 800];
 
 export default function Home() {
   const [emotion, setEmotion] = useState(50);
-  const [mounted, setMounted] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -61,10 +60,6 @@ export default function Home() {
       icon: Shield,
     },
   ];
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const features = [
     {
@@ -112,7 +107,7 @@ export default function Home() {
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: mounted ? 1 : 0, y: mounted ? 0 : 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
           className="relative z-10 text-center max-w-3xl mx-auto flex flex-col items-center"
         >
