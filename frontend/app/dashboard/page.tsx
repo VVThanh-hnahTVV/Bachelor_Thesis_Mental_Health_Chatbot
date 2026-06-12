@@ -413,7 +413,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-4">
             {user?.role === "admin" && (
               <Button variant="outline" size="sm" asChild>
-                <Link href="/admin/knowledge">Admin</Link>
+                <Link href="/admin">Admin</Link>
               </Button>
             )}
             <Button variant="outline" size="icon">

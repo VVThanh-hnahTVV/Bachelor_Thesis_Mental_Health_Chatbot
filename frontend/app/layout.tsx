@@ -3,7 +3,7 @@ import { Inter, Noto_Serif } from "next/font/google";
 
 import "./globals.css";
 import { ConditionalFooter } from "@/components/conditional-footer";
-import { Header } from "@/components/header";
+import { ConditionalHeader } from "@/components/conditional-header";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 
@@ -43,7 +43,7 @@ export default function RootLayout({
         className={`${inter.variable} ${notoSerif.variable} font-serif antialiased bg-serene-bg text-[#2D3436]`}
       >
         <Providers>
-          <Header />
+          <ConditionalHeader />
           <main>{children}</main>
           <ConditionalFooter />
           <Toaster />

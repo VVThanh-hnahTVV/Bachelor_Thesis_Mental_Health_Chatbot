@@ -5,11 +5,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.auth.dependencies import require_admin
 from app.crawl.pipeline import run_crawl
+from app.db.repository import get_admin_overview_stats
 from app.crawl.staging import (
     DEFAULT_STAGING_DIR,
     count_by_status,
@@ -46,6 +47,34 @@ class BulkArticleBody(BaseModel):
 
 def _staging_dir() -> str:
     return get_medical_config().web_corpus.staging_dir
+
+
+def _get_db(request: Request):
+    db = getattr(request.app.state, "db", None)
+    if db is None:
+        raise HTTPException(503, "Database not ready")
+    return db
+
+
+@router.get("/overview")
+async def admin_overview(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    stats = await get_admin_overview_stats(db, days=days)
+    staging = count_by_status(base_dir=_staging_dir())
+    stats["knowledge_staging"] = {
+        "pending": staging.get("pending", 0),
+        "approved": staging.get("approved", 0),
+        "rejected": staging.get("rejected", 0),
+        "indexed": staging.get("indexed", 0),
+    }
+    approved = staging.get("approved", 0) + staging.get("indexed", 0)
+    total_staged = sum(staging.values()) or 1
+    stats["knowledge_staging_health_pct"] = round((approved / total_staged) * 100)
+    return stats
 
 
 @router.post("/crawl/run")

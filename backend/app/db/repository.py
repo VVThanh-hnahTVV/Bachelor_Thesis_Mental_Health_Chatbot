@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bson import ObjectId
@@ -474,3 +474,125 @@ async def get_activity_completion_by_id(
     completion_id: ObjectId,
 ) -> dict[str, Any] | None:
     return await db[ACTIVITY_COMPLETIONS].find_one({"_id": completion_id})
+
+
+def _day_bounds(day: datetime) -> tuple[datetime, datetime]:
+    start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(days=1)
+
+
+async def get_admin_overview_stats(
+    db: AsyncIOMotorDatabase,
+    *,
+    days: int = 7,
+) -> dict[str, Any]:
+    from app.auth.repository import USERS, get_user_by_id
+
+    now = datetime.now(UTC)
+    today_start, _ = _day_bounds(now)
+
+    total_users = await db[USERS].count_documents({})
+    total_conversations = await db[CONVERSATIONS].count_documents({})
+    total_messages = await db[MESSAGES].count_documents({})
+
+    messages_today = await db[MESSAGES].count_documents(
+        {"created_at": {"$gte": today_start}}
+    )
+    conversations_today = await db[CONVERSATIONS].count_documents(
+        {"created_at": {"$gte": today_start}}
+    )
+
+    month_start = today_start.replace(day=1)
+    prev_month_end = month_start
+    prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
+    users_this_month = await db[USERS].count_documents(
+        {"created_at": {"$gte": month_start}}
+    )
+    users_prev_month = await db[USERS].count_documents(
+        {"created_at": {"$gte": prev_month_start, "$lt": prev_month_end}}
+    )
+    user_growth_pct: float | None = None
+    if users_prev_month > 0:
+        user_growth_pct = round(
+            ((users_this_month - users_prev_month) / users_prev_month) * 100, 1
+        )
+
+    messages_by_day: list[dict[str, Any]] = []
+    clamped_days = max(1, min(days, 30))
+    for offset in range(clamped_days - 1, -1, -1):
+        day_start, day_end = _day_bounds(today_start - timedelta(days=offset))
+        msg_count = await db[MESSAGES].count_documents(
+            {"created_at": {"$gte": day_start, "$lt": day_end}}
+        )
+        session_count = await db[CONVERSATIONS].count_documents(
+            {"updated_at": {"$gte": day_start, "$lt": day_end}}
+        )
+        messages_by_day.append(
+            {
+                "date": day_start.strftime("%Y-%m-%d"),
+                "label": day_start.strftime("%d/%m"),
+                "messages": msg_count,
+                "active_sessions": session_count,
+            }
+        )
+
+    completions_today = await db[ACTIVITY_COMPLETIONS].count_documents(
+        {"created_at": {"$gte": today_start}}
+    )
+    total_completions = await db[ACTIVITY_COMPLETIONS].count_documents({})
+
+    rating_rows = await db[WELLNESS_ACTIVITIES].aggregate(
+        [
+            {
+                "$group": {
+                    "_id": None,
+                    "avg_rating": {"$avg": "$avg_rating"},
+                    "total_ratings": {"$sum": "$rating_count"},
+                }
+            }
+        ]
+    ).to_list(1)
+    avg_wellness_rating: float | None = None
+    total_wellness_ratings = 0
+    if rating_rows:
+        avg_wellness_rating = rating_rows[0].get("avg_rating")
+        total_wellness_ratings = int(rating_rows[0].get("total_ratings") or 0)
+        if avg_wellness_rating is not None:
+            avg_wellness_rating = round(float(avg_wellness_rating), 1)
+
+    recent_conversations: list[dict[str, Any]] = []
+    cursor = db[CONVERSATIONS].find({}).sort("updated_at", -1).limit(5)
+    async for conv in cursor:
+        user_label = "Khách"
+        user_id = conv.get("user_id")
+        if isinstance(user_id, ObjectId):
+            user_doc = await get_user_by_id(db, user_id)
+            if user_doc:
+                user_label = str(user_doc.get("name") or user_doc.get("email") or "User")
+
+        updated = conv.get("updated_at")
+        recent_conversations.append(
+            {
+                "session_id": str(conv.get("session_id") or ""),
+                "title": str(conv.get("title") or "Cuộc trò chuyện mới"),
+                "user_label": user_label,
+                "updated_at": updated.isoformat() if hasattr(updated, "isoformat") else None,
+            }
+        )
+
+    return {
+        "total_users": total_users,
+        "users_this_month": users_this_month,
+        "user_growth_pct": user_growth_pct,
+        "total_conversations": total_conversations,
+        "total_messages": total_messages,
+        "messages_today": messages_today,
+        "conversations_today": conversations_today,
+        "messages_by_day": messages_by_day,
+        "wellness_completions_today": completions_today,
+        "wellness_completions_total": total_completions,
+        "avg_wellness_rating": avg_wellness_rating,
+        "total_wellness_ratings": total_wellness_ratings,
+        "recent_conversations": recent_conversations,
+        "updated_at": now.isoformat(),
+    }

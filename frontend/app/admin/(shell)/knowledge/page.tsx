@@ -1,21 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Loader2, RefreshCw, Database, Globe } from "lucide-react";
-
+import { Globe, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Container } from "@/components/ui/container";
-import { useSession } from "@/lib/contexts/session-context";
 import {
   type ArticleStatus,
   type IndexStats,
   type StagedArticle,
-  buildIndex,
   bulkArticles,
-  getIndexJob,
   getIndexStats,
   listArticles,
   patchArticle,
@@ -25,16 +18,12 @@ import {
 const STATUSES: ArticleStatus[] = ["pending", "approved", "rejected", "indexed"];
 
 export default function AdminKnowledgePage() {
-  const router = useRouter();
-  const { user, loading, isAuthenticated } = useSession();
   const [status, setStatus] = useState<ArticleStatus>("pending");
   const [articles, setArticles] = useState<StagedArticle[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<IndexStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [indexJobId, setIndexJobId] = useState<string | null>(null);
-  const [indexProgress, setIndexProgress] = useState("");
 
   const load = useCallback(async () => {
     const [listRes, statsRes] = await Promise.all([
@@ -47,49 +36,10 @@ export default function AdminKnowledgePage() {
   }, [status]);
 
   useEffect(() => {
-    if (loading) return;
-    if (!isAuthenticated) {
-      router.replace("/login");
-      return;
-    }
-    if (user?.role !== "admin") {
-      router.replace("/dashboard");
-      return;
-    }
     void load().catch((err) =>
       setMessage(err instanceof Error ? err.message : "Load failed")
     );
-  }, [loading, isAuthenticated, user, router, load]);
-
-  useEffect(() => {
-    if (!indexJobId) return;
-    const timer = setInterval(async () => {
-      try {
-        const job = await getIndexJob(indexJobId);
-        const prog = job.progress || {};
-        setIndexProgress(
-          `${job.status}: ${prog.title || ""} (${prog.current || 0}/${prog.total || 0})`
-        );
-        if (job.status === "done" || job.status === "error") {
-          clearInterval(timer);
-          setIndexJobId(null);
-          setBusy(false);
-          if (job.result) {
-            setMessage(
-              `Indexed ${job.result.indexed_articles} articles, ${job.result.chunks_indexed} chunks`
-            );
-          } else if (job.error) {
-            setMessage(job.error);
-          }
-          void load();
-        }
-      } catch {
-        clearInterval(timer);
-        setBusy(false);
-      }
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [indexJobId, load]);
+  }, [load]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -109,8 +59,12 @@ export default function AdminKnowledgePage() {
       if (res.site_added) extras.push(`${res.site_added} WHO/Vinmec`);
       if (res.research_added) extras.push(`${res.research_added} research`);
       const extra = extras.length ? ` (${extras.join(", ")})` : "";
-      const old = res.skipped_too_old ? `, skipped ${res.skipped_too_old} old links` : "";
-      setMessage(`Crawl done: ${res.added_to_pending} new in pending${extra}${old}`);
+      const old = res.skipped_too_old
+        ? `, skipped ${res.skipped_too_old} old links`
+        : "";
+      setMessage(
+        `Crawl done: ${res.added_to_pending} new in pending${extra}${old}`
+      );
       setStatus("pending");
       await load();
     } catch (err) {
@@ -146,39 +100,14 @@ export default function AdminKnowledgePage() {
     }
   };
 
-  const handleBuildIndex = async () => {
-    setBusy(true);
-    setMessage("");
-    try {
-      const res = await buildIndex();
-      setIndexJobId(res.job_id);
-      setIndexProgress("running...");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Index failed");
-      setBusy(false);
-    }
-  };
-
-  if (loading || user?.role !== "admin") {
-    return (
-      <Container className="py-16 flex justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </Container>
-    );
-  }
-
   return (
-    <Container className="py-8 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Admin — Knowledge Corpus</h1>
-          <p className="text-muted-foreground text-sm">
-            Crawl mental-health news, review, then build Qdrant web index.
-          </p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
+    <div className="mx-auto max-w-7xl space-y-6 px-12 py-8">
+      <div>
+        <h1 className="font-serif text-3xl italic">Tri thức — Crawl & Duyệt</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Thu thập và duyệt bài viết sức khỏe tâm thần. Tạo vector index tại
+          trang Vector DB.
+        </p>
       </div>
 
       {stats && (
@@ -198,35 +127,24 @@ export default function AdminKnowledgePage() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">Actions</CardTitle>
+          <CardTitle className="text-base">Thao tác</CardTitle>
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleCrawl} disabled={busy} size="sm">
-              <Globe className="h-4 w-4 mr-1" />
+              <Globe className="mr-1 h-4 w-4" />
               Crawl mới
             </Button>
             <Button
-              onClick={handleBuildIndex}
-              disabled={busy || (stats?.staging?.approved ?? 0) === 0}
+              onClick={() => void load()}
+              disabled={busy}
               size="sm"
-              variant="default"
+              variant="outline"
             >
-              <Database className="h-4 w-4 mr-1" />
-              Tạo Vector DB
-            </Button>
-            <Button onClick={() => void load()} disabled={busy} size="sm" variant="outline">
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refresh
+              <RefreshCw className="mr-1 h-4 w-4" />
+              Làm mới
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-1">
-          {stats && (
-            <p>
-              Web collection <code>{stats.web_collection}</code>:{" "}
-              {stats.web_collection_points ?? 0} points
-            </p>
-          )}
-          {indexProgress && <p>{indexProgress}</p>}
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
           {message && <p className="text-foreground">{message}</p>}
         </CardContent>
       </Card>
@@ -244,7 +162,11 @@ export default function AdminKnowledgePage() {
         ))}
         {status === "pending" && selected.size > 0 && (
           <>
-            <Button size="sm" onClick={() => void handleBulk("approve")} disabled={busy}>
+            <Button
+              size="sm"
+              onClick={() => void handleBulk("approve")}
+              disabled={busy}
+            >
               Approve ({selected.size})
             </Button>
             <Button
@@ -261,11 +183,13 @@ export default function AdminKnowledgePage() {
 
       <div className="space-y-3">
         {articles.length === 0 && (
-          <p className="text-muted-foreground text-sm">No articles in {status}.</p>
+          <p className="text-sm text-muted-foreground">
+            No articles in {status}.
+          </p>
         )}
         {articles.map((article) => (
           <Card key={article.source_id}>
-            <CardContent className="pt-4 space-y-2">
+            <CardContent className="space-y-2 pt-4">
               <div className="flex items-start gap-3">
                 {status === "pending" && (
                   <input
@@ -275,32 +199,36 @@ export default function AdminKnowledgePage() {
                     className="mt-1"
                   />
                 )}
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <a
                     href={article.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium hover:underline line-clamp-2"
+                    className="line-clamp-2 font-medium hover:underline"
                   >
                     {article.title}
                   </a>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {article.publisher} · {article.language}
-                    {article.content_type === "research_article" ? " · nghiên cứu" : ""}
+                    {article.content_type === "research_article"
+                      ? " · nghiên cứu"
+                      : ""}
                     {" · "}score {article.relevance_score} ·{" "}
                     {article.matched_keywords?.join(", ")}
                   </p>
                   {article.preview && (
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
+                    <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
                       {article.preview}
                     </p>
                   )}
                 </div>
                 {status === "pending" && (
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex shrink-0 gap-1">
                     <Button
                       size="sm"
-                      onClick={() => void handleSingle(article.source_id, "approve")}
+                      onClick={() =>
+                        void handleSingle(article.source_id, "approve")
+                      }
                       disabled={busy}
                     >
                       Approve
@@ -308,7 +236,9 @@ export default function AdminKnowledgePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => void handleSingle(article.source_id, "reject")}
+                      onClick={() =>
+                        void handleSingle(article.source_id, "reject")
+                      }
                       disabled={busy}
                     >
                       Reject
@@ -320,6 +250,12 @@ export default function AdminKnowledgePage() {
           </Card>
         ))}
       </div>
-    </Container>
+
+      {busy && (
+        <div className="fixed bottom-8 right-8">
+          <Loader2 className="h-6 w-6 animate-spin text-serene-accent" />
+        </div>
+      )}
+    </div>
   );
 }

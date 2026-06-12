@@ -9,6 +9,11 @@ const nextConfig = {
 
   experimental: {
     missingSuspenseWithCSRBailout: false,
+    serverComponentsExternalPackages: [
+      "@opentelemetry/api",
+      "@opentelemetry/sdk-trace-base",
+      "@opentelemetry/exporter-trace-otlp-proto",
+    ],
   },
 
   skipMiddlewareUrlNormalize: true,
@@ -26,13 +31,21 @@ const nextConfig = {
   ),
 
   // Configure webpack
-  webpack: (config, { isServer, dev }) => {
-    // Ignore specific modules that might cause issues
+  webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       sharp$: false,
       canvas$: false,
     };
+
+    if (isServer) {
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : []),
+        "@opentelemetry/api",
+        "@opentelemetry/sdk-trace-base",
+        "@opentelemetry/exporter-trace-otlp-proto",
+      ];
+    }
 
     return config;
   },
