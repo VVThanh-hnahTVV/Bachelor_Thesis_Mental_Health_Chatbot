@@ -58,6 +58,8 @@ async def handle_medical_chat_turn(
         "sender_name": "Helios",
         "visibility": "all",
     }
+    if turn.agent_name == "HUMAN_HANDOFF":
+        meta["handoff_consent_prompt"] = True
     if turn.suggested_activities:
         meta["suggested_activities"] = turn.suggested_activities
     if getattr(turn, "wellness_retrieval_score", None) is not None:

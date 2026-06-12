@@ -51,8 +51,13 @@ import {
 import { HeliosTypingIndicator } from "@/components/therapy/helios-typing-indicator";
 import { HandoffButton } from "@/components/therapy/handoff-button";
 import {
+  HandoffConsentCard,
+  isHandoffConsentPrompt,
+} from "@/components/therapy/handoff-consent-card";
+import {
+  confirmHandoff,
   getConversationStatus,
-  requestHandoff,
+  requestHandoffConsent,
   type SupportMode,
 } from "@/lib/api/handoff";
 import { useChatWs } from "@/lib/hooks/use-chat-ws";
@@ -135,6 +140,24 @@ export default function TherapyPage() {
     null
   );
   const [handoffLoading, setHandoffLoading] = useState(false);
+  const [handoffConfirmLoading, setHandoffConfirmLoading] = useState(false);
+
+  const hasPendingHandoffConsent = messages.some(
+    (m) => m.role === "assistant" && isHandoffConsentPrompt(m.metadata)
+  );
+
+  const markHandoffConsentResolved = () => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        isHandoffConsentPrompt(m.metadata)
+          ? {
+              ...m,
+              metadata: { ...m.metadata, handoff_consent_resolved: true },
+            }
+          : m
+      )
+    );
+  };
 
   const appendWsMessage = (msg: {
     id?: string;
@@ -438,9 +461,36 @@ export default function TherapyPage() {
 
   const handleHandoffRequest = async () => {
     if (!sessionId || handoffLoading || supportMode !== "ai") return;
+    if (hasPendingHandoffConsent) return;
     setHandoffLoading(true);
     try {
-      const res = await requestHandoff(sessionId);
+      const res = await requestHandoffConsent(sessionId);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: res.assistant_message_id ?? undefined,
+          role: "assistant",
+          content: res.reply,
+          timestamp: new Date(),
+          metadata: {
+            sender_name: "Helios",
+            ...(res.metadata || {}),
+          },
+        },
+      ]);
+    } catch (err) {
+      console.error("Handoff consent failed:", err);
+    } finally {
+      setHandoffLoading(false);
+    }
+  };
+
+  const handleHandoffConfirm = async () => {
+    if (!sessionId || handoffConfirmLoading || supportMode !== "ai") return;
+    setHandoffConfirmLoading(true);
+    try {
+      const res = await confirmHandoff(sessionId);
+      markHandoffConsentResolved();
       setSupportMode(res.support_mode);
       setMessages((prev) => [
         ...prev,
@@ -456,9 +506,60 @@ export default function TherapyPage() {
         },
       ]);
     } catch (err) {
-      console.error("Handoff failed:", err);
+      console.error("Handoff confirm failed:", err);
     } finally {
-      setHandoffLoading(false);
+      setHandoffConfirmLoading(false);
+    }
+  };
+
+  const handleHandoffNewSession = async () => {
+    if (handoffConfirmLoading || isChatLoading) return;
+    setHandoffConfirmLoading(true);
+    try {
+      markHandoffConsentResolved();
+      setIsChatLoading(true);
+      const newSessionId = await createChatSession();
+      registerChatSessionId(newSessionId);
+      const newSession: ChatSession = {
+        sessionId: newSessionId,
+        messages: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        chatMode: "medical",
+      };
+      setSessions((prev) => [newSession, ...prev]);
+      skipSessionInitRef.current = true;
+      setSessionId(newSessionId);
+      setSupportMode("ai");
+      setAssignedSupportName(null);
+      try {
+        await linkChatSession(newSessionId);
+      } catch {
+        /* optional */
+      }
+      setMessages(welcomeMessages());
+      window.history.pushState({}, "", `/therapy/${newSessionId}`);
+
+      const res = await confirmHandoff(newSessionId);
+      setSupportMode(res.support_mode);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: res.assistant_message_id ?? undefined,
+          role: "assistant",
+          content: res.reply,
+          timestamp: new Date(),
+          metadata: {
+            sender_name: "Helios",
+            ...(res.metadata || {}),
+          },
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to start new session for handoff:", err);
+    } finally {
+      setIsChatLoading(false);
+      setHandoffConfirmLoading(false);
     }
   };
 
@@ -930,6 +1031,16 @@ export default function TherapyPage() {
                                     </div>
                                   );
                                 })()}
+
+                              {msg.role === "assistant" &&
+                                isHandoffConsentPrompt(msg.metadata) && (
+                                  <HandoffConsentCard
+                                    onConnect={() => void handleHandoffConfirm()}
+                                    onNewSession={() => void handleHandoffNewSession()}
+                                    disabled={supportMode !== "ai"}
+                                    loading={handoffConfirmLoading}
+                                  />
+                                )}
 
                               {msg.role === "assistant" &&
                                 Boolean(msg.metadata?.pending_activity_rating) &&

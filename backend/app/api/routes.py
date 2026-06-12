@@ -75,6 +75,7 @@ class ChatResponse(BaseModel):
 
 class HandoffRequestBody(BaseModel):
     session_id: str = Field(..., min_length=8, max_length=128)
+    confirm: bool = False
 
 
 class ConversationStatusOut(BaseModel):
@@ -110,7 +111,6 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     from app.conversation.summary import schedule_conversation_summary_update
     from app.conversation.title import generate_conversation_title
     from app.db.repository import count_user_messages, update_conversation_title
-    from app.handoff.escalate import escalate_to_awaiting_support
     from app.handoff.messages import CLOSED_SESSION_NOTICE, handoff_ack
 
     db = get_db(request)
@@ -208,16 +208,7 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
     suggested = meta.get("suggested_activities") or []
 
-    if meta.get("agent_name") == "HUMAN_HANDOFF":
-        await escalate_to_awaiting_support(
-            db,
-            redis,
-            conversation_id=cid,
-            session_id=req.session_id,
-            source="guard",
-        )
-        support_mode = "awaiting_support"
-    else:
+    if meta.get("agent_name") != "HUMAN_HANDOFF":
         schedule_conversation_summary_update(
             db,
             redis,
@@ -246,7 +237,7 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
 async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatResponse:
     from app.api.medical_handlers import resolve_conversation
     from app.handoff.escalate import escalate_to_awaiting_support
-    from app.handoff.messages import handoff_ack
+    from app.handoff.messages import handoff_ack, handoff_consent_notice
 
     db = get_db(request)
     redis = get_redis(request)
@@ -267,6 +258,34 @@ async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatRes
             assigned_support_name=conv.get("assigned_support_name"),
         )
 
+    if not body.confirm:
+        consent = handoff_consent_notice("vi")
+        meta = {
+            "chat_mode": CHAT_MODE,
+            "agent_name": "HUMAN_HANDOFF",
+            "message_type": "medical",
+            "sender_name": "Helios",
+            "visibility": "all",
+            "handoff_consent_prompt": True,
+        }
+        assistant_doc = await append_message(
+            db,
+            conversation_id=cid,
+            role="assistant",
+            content=consent,
+            metadata=meta,
+        )
+        aid = assistant_doc.get("_id")
+        return ChatResponse(
+            reply=consent,
+            session_id=body.session_id,
+            conversation_id=str(cid),
+            assistant_message_id=str(aid) if aid else None,
+            provider=default_provider(),
+            metadata=meta,
+            support_mode="ai",
+        )
+
     await escalate_to_awaiting_support(
         db,
         redis,
@@ -281,6 +300,7 @@ async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatRes
         "message_type": "medical",
         "sender_name": "Helios",
         "visibility": "all",
+        "handoff_confirmed": True,
     }
     assistant_doc = await append_message(
         db,

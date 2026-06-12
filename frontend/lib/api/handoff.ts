@@ -32,11 +32,22 @@ export async function getConversationStatus(
   return res.json();
 }
 
-export async function requestHandoff(sessionId: string): Promise<HandoffResponse> {
+export async function requestHandoffConsent(sessionId: string): Promise<HandoffResponse> {
+  return requestHandoff(sessionId, false);
+}
+
+export async function confirmHandoff(sessionId: string): Promise<HandoffResponse> {
+  return requestHandoff(sessionId, true);
+}
+
+export async function requestHandoff(
+  sessionId: string,
+  confirm = false
+): Promise<HandoffResponse> {
   const res = await fetch(`${API_BASE}/api/v1/handoff/request`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId }),
+    body: JSON.stringify({ session_id: sessionId, confirm }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

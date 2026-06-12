@@ -157,12 +157,12 @@ def create_agent_graph():
                     "user_language": user_language,
                 }
 
-            from app.handoff.messages import handoff_ack
+            from app.handoff.messages import handoff_consent_notice
 
             threshold = settings.handoff_confidence_threshold
             if guard_result.needs_human and guard_result.handoff_confidence >= threshold:
                 emit_progress("HUMAN_HANDOFF")
-                ack_text = handoff_ack(user_language)
+                ack_text = handoff_consent_notice(user_language)
                 ack = AIMessage(content=ack_text)
                 print(
                     f"Selected agent: HUMAN_HANDOFF "
