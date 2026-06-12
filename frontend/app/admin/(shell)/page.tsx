@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import {
@@ -22,38 +21,22 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import {
-  getAdminOverview,
-  type AdminOverviewStats,
-} from "@/lib/api/admin-overview";
+import { useAdminOverview } from "@/lib/hooks/admin-queries";
 
 function formatNum(n: number) {
   return n.toLocaleString("vi-VN");
 }
 
 export default function AdminOverviewPage() {
-  const [stats, setStats] = useState<AdminOverviewStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const {
+    data: stats,
+    isPending,
+    isFetching,
+    error,
+    refetch,
+  } = useAdminOverview(7);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await getAdminOverview(7);
-      setStats(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tải được dữ liệu");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading && !stats) {
+  if (isPending && !stats) {
     return (
       <div className="flex justify-center py-32">
         <Loader2 className="h-8 w-8 animate-spin text-serene-accent" />
@@ -93,11 +76,11 @@ export default function AdminOverviewPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void load()}
-            disabled={loading}
+            onClick={() => void refetch()}
+            disabled={isFetching}
           >
             <RefreshCw
-              className={`mr-1 h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              className={`mr-1 h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
             />
             Làm mới
           </Button>
@@ -105,7 +88,9 @@ export default function AdminOverviewPage() {
       </div>
 
       {error && (
-        <p className="mb-6 text-sm text-destructive">{error}</p>
+        <p className="mb-6 text-sm text-destructive">
+          {error instanceof Error ? error.message : "Không tải được dữ liệu"}
+        </p>
       )}
 
       {stats && (

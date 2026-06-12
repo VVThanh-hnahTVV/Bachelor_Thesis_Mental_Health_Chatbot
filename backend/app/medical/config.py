@@ -105,11 +105,11 @@ class RAGConfig:
         self.summarizer_model = build_ingest_llm(temperature=0.5, for_vision=True)
         self.chunker_model = build_ingest_llm(temperature=0.0)
         self.response_generator_model = build_chat_llm(temperature=0.3)
-        self.top_k = 5
+        self.top_k = 20
         self.vector_search_type = "similarity"
         self.huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
         self.reranker_model = "cross-encoder/ms-marco-TinyBERT-L-6"
-        self.reranker_top_k = 3
+        self.reranker_top_k = 5
         self.max_context_length = 8192
         self.include_sources = True
         self.min_retrieval_confidence = 0.20

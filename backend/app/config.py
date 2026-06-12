@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     # OpenAI (chat + optional embeddings)
     openai_api_key: str | None = None
+    openai_admin_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_ADMIN_API_KEY"),
+    )
     openai_model: str = Field(
         default="gpt-4o-mini",
         validation_alias=AliasChoices("OPENAI_MODEL", "COMPLETION_MODEL"),
@@ -83,6 +87,15 @@ class Settings(BaseSettings):
 
     debug_llm_prompts: bool = True
 
+    enable_input_guardrails: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_INPUT_GUARDRAILS"),
+    )
+    enable_output_guardrails: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_OUTPUT_GUARDRAILS"),
+    )
+
     enable_internal_mcp_server: bool = False
     enable_external_mcp_gateway: bool = False
     enable_graph_external_enrichment: bool = False
@@ -97,7 +110,6 @@ class Settings(BaseSettings):
     graph_external_mcp_server: str | None = None
     graph_external_mcp_tool: str | None = None
 
-    enable_vector_rag: bool = True
     # None = auto: OpenAI embeddings when OPENAI_API_KEY is set, else Ollama
     embedding_provider: str | None = Field(
         default=None,
@@ -112,8 +124,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_EMBEDDING_MODEL"),
     )
     ollama_base_url: str = "http://localhost:11434"
-    rag_top_k: int = 3
-    rag_min_score: float = 0.25
     llm_judge_provider: str = "openai"
     llm_judge_model: str = "gpt-4o-mini"
 

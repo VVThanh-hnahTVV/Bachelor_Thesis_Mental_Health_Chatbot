@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import {
   ChevronLeft,
@@ -43,11 +43,14 @@ import {
 import {
   createAdminUser,
   deleteAdminUser,
-  listAdminUsers,
   updateAdminUser,
   type AdminUser,
   type UserRole,
 } from "@/lib/api/admin-users";
+import {
+  useAdminQueryInvalidation,
+  useAdminUsers,
+} from "@/lib/hooks/admin-queries";
 import { useSession } from "@/lib/contexts/session-context";
 import { cn } from "@/lib/utils";
 
@@ -86,15 +89,12 @@ const EMPTY_FORM: FormState = {
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useSession();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const { users: invalidateUsers } = useAdminQueryInvalidation();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [roleFilter, setRoleFilter] = useState<"" | UserRole>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -103,29 +103,28 @@ export default function AdminUsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await listAdminUsers({
-        page,
-        page_size: PAGE_SIZE,
-        search: search || undefined,
-        role: roleFilter || undefined,
-      });
-      setUsers(res.users);
-      setTotal(res.total);
-      setTotalPages(res.total_pages);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không tải được danh sách");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, roleFilter]);
+  const {
+    data,
+    isPending,
+    error: queryError,
+  } = useAdminUsers({
+    page,
+    page_size: PAGE_SIZE,
+    search: search || undefined,
+    role: roleFilter || undefined,
+  });
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const users = data?.users ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 1;
+  const loading = isPending && !data;
+  const error =
+    actionError ||
+    (queryError instanceof Error
+      ? queryError.message
+      : queryError
+        ? "Không tải được danh sách"
+        : "");
 
   const openCreate = () => {
     setEditing(null);
@@ -148,7 +147,7 @@ export default function AdminUsersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setError("");
+    setActionError("");
     try {
       if (editing) {
         await updateAdminUser(editing.id, {
@@ -165,9 +164,9 @@ export default function AdminUsersPage() {
         });
       }
       setDialogOpen(false);
-      await load();
+      await invalidateUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Thao tác thất bại");
+      setActionError(err instanceof Error ? err.message : "Thao tác thất bại");
     } finally {
       setBusy(false);
     }
@@ -176,14 +175,14 @@ export default function AdminUsersPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setBusy(true);
-    setError("");
+    setActionError("");
     try {
       await deleteAdminUser(deleteTarget.id);
       setDeleteTarget(null);
       if (users.length === 1 && page > 1) setPage(page - 1);
-      else await load();
+      else await invalidateUsers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Xóa thất bại");
+      setActionError(err instanceof Error ? err.message : "Xóa thất bại");
     } finally {
       setBusy(false);
     }

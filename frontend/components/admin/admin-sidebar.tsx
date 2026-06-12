@@ -13,20 +13,28 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+  disabled?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Tổng quan", icon: LayoutDashboard, exact: true },
   { href: "/admin/knowledge", label: "Tri thức", icon: BookOpen, exact: true },
-  { href: "/admin/wellness", label: "Wellness", icon: Sparkles, disabled: true },
+  { href: "/admin/wellness", label: "Wellness", icon: Sparkles, exact: true },
   { href: "/admin/users", label: "Người dùng", icon: Users, exact: true },
   {
     href: "/admin/conversations",
     label: "Hội thoại",
     icon: MessageSquare,
-    disabled: true,
+    exact: true,
   },
   { href: "/admin/analytics", label: "Phân tích", icon: BarChart3, disabled: true },
-  { href: "/admin/settings", label: "Cài đặt", icon: Settings, disabled: true },
-] as const;
+  { href: "/admin/settings", label: "Cài đặt", icon: Settings, exact: true },
+];
 
 export function AdminSidebar() {
   const pathname = usePathname();

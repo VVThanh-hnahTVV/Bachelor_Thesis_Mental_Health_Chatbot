@@ -25,7 +25,17 @@ from app.auth.repository import (
 )
 from app.auth.security import hash_password
 from app.crawl.pipeline import run_crawl
-from app.db.repository import get_admin_overview_stats
+from app.db.repository import (
+    count_conversations_admin,
+    count_wellness_activities,
+    get_admin_overview_stats,
+    get_conversation_admin_stats,
+    get_wellness_activity_by_id,
+    list_conversations_admin,
+    list_wellness_activities,
+    upsert_wellness_activity,
+    wellness_activity_admin_dict,
+)
 from app.crawl.staging import (
     DEFAULT_STAGING_DIR,
     count_by_status,
@@ -46,6 +56,9 @@ from app.admin.vector_cleanup import (
     unindex_web_article,
 )
 from app.crawl.web_ingest import build_web_vector_index, count_web_collection_points
+from app.admin.settings_snapshot import build_admin_settings_snapshot
+from app.llm.openai_platform_usage import get_admin_usage_stats
+
 from app.medical.agents.rag_agent import MedicalRAG
 from app.medical.config import get_medical_config
 
@@ -100,6 +113,19 @@ class PdfIngestBody(BaseModel):
     )
 
 
+class WellnessActivityPatchBody(BaseModel):
+    active: bool | None = None
+    implemented: bool | None = None
+    title_vi: str | None = Field(None, min_length=1, max_length=200)
+    title_en: str | None = Field(None, min_length=1, max_length=200)
+    description_vi: str | None = Field(None, max_length=2000)
+    description_en: str | None = Field(None, max_length=2000)
+    duration_min: int | None = Field(None, ge=1, le=180)
+    tags: list[str] | None = None
+    benefits: list[str] | None = None
+    benefits_en: list[str] | None = None
+
+
 def _staging_dir() -> str:
     return get_medical_config().web_corpus.staging_dir
 
@@ -130,6 +156,21 @@ async def admin_overview(
     total_staged = sum(staging.values()) or 1
     stats["knowledge_staging_health_pct"] = round((approved / total_staged) * 100)
     return stats
+
+
+@router.get("/settings")
+async def admin_settings(
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    return build_admin_settings_snapshot()
+
+
+@router.get("/settings/usage")
+async def admin_settings_usage(
+    days: int = Query(7, ge=1, le=90),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    return await get_admin_usage_stats(days=days)
 
 
 @router.post("/crawl/run")
@@ -491,6 +532,44 @@ async def _ensure_not_last_admin(
         raise HTTPException(400, "Cannot remove the last admin account")
 
 
+@router.get("/conversations/stats")
+async def admin_conversation_stats(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    return await get_conversation_admin_stats(db, days=days)
+
+
+@router.get("/conversations")
+async def admin_list_conversations(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None, max_length=120),
+    owner: Literal["registered", "guest"] | None = Query(None),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    skip = (page - 1) * page_size
+    total = await count_conversations_admin(db, search=search, owner=owner)
+    conversations = await list_conversations_admin(
+        db,
+        skip=skip,
+        limit=page_size,
+        search=search,
+        owner=owner,
+    )
+    return {
+        "conversations": conversations,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }
+
+
 @router.get("/users")
 async def admin_list_users(
     request: Request,
@@ -579,6 +658,207 @@ async def admin_update_user(
     if not updated:
         raise HTTPException(404, "User not found")
     return updated
+
+
+@router.get("/wellness/stats")
+async def admin_wellness_stats(
+    request: Request,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.medical.agents.wellness_agent.vectorstore import count_wellness_collection_points
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    db_total = await count_wellness_activities(db)
+    db_active = await count_wellness_activities(db, active_only=True)
+    db_implemented = await count_wellness_activities(db, implemented_only=True)
+    seed_count = len(DEFAULT_WELLNESS_ACTIVITIES)
+    vector_points = await asyncio.to_thread(count_wellness_collection_points)
+    cfg = get_medical_config()
+
+    return {
+        "db_total": db_total,
+        "db_active": db_active,
+        "db_implemented": db_implemented,
+        "seed_catalog_count": seed_count,
+        "using_seed_fallback": db_total == 0,
+        "vector_points": vector_points,
+        "vector_collection": cfg.wellness.collection_name,
+    }
+
+
+@router.get("/wellness/activities")
+async def admin_list_wellness_activities(
+    request: Request,
+    active_only: bool = Query(False),
+    implemented_only: bool = Query(False),
+    scope: str | None = Query(None),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    rows = await list_wellness_activities(
+        db,
+        scope=scope,
+        active_only=active_only,
+        implemented_only=implemented_only,
+        limit=200,
+    )
+    source = "mongodb"
+    if not rows:
+        source = "seed"
+        rows = [
+            d
+            for d in DEFAULT_WELLNESS_ACTIVITIES
+            if (not scope or scope in (d.get("scope") or []))
+            and (not active_only or d.get("active"))
+            and (not implemented_only or d.get("implemented"))
+        ]
+
+    return {
+        "source": source,
+        "count": len(rows),
+        "activities": [wellness_activity_admin_dict(r) for r in rows],
+    }
+
+
+@router.get("/wellness/activities/{activity_id}")
+async def admin_get_wellness_activity(
+    request: Request,
+    activity_id: str,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    doc = await get_wellness_activity_by_id(db, activity_id)
+    if doc:
+        return {"source": "mongodb", "activity": wellness_activity_admin_dict(doc)}
+
+    for seed_doc in DEFAULT_WELLNESS_ACTIVITIES:
+        if str(seed_doc.get("id")) == activity_id:
+            return {
+                "source": "seed",
+                "activity": wellness_activity_admin_dict(seed_doc),
+            }
+
+    raise HTTPException(404, "Activity not found")
+
+
+@router.patch("/wellness/activities/{activity_id}")
+async def admin_patch_wellness_activity(
+    request: Request,
+    activity_id: str,
+    body: WellnessActivityPatchBody,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    doc = await get_wellness_activity_by_id(db, activity_id)
+    if not doc:
+        for seed_doc in DEFAULT_WELLNESS_ACTIVITIES:
+            if str(seed_doc.get("id")) == activity_id:
+                doc = dict(seed_doc)
+                break
+    if not doc:
+        raise HTTPException(404, "Activity not found")
+
+    if body.active is not None:
+        doc["active"] = body.active
+    if body.implemented is not None:
+        doc["implemented"] = body.implemented
+    if body.duration_min is not None:
+        doc["duration_min"] = body.duration_min
+    if body.tags is not None:
+        doc["tags"] = body.tags
+    if body.benefits is not None:
+        doc["benefits"] = body.benefits
+    if body.benefits_en is not None:
+        doc["benefits_en"] = body.benefits_en
+
+    title = doc.get("title")
+    if not isinstance(title, dict):
+        title = {"vi": str(title or ""), "en": str(title or "")}
+    description = doc.get("description")
+    if not isinstance(description, dict):
+        description = {"vi": str(description or ""), "en": str(description or "")}
+
+    if body.title_vi is not None:
+        title["vi"] = body.title_vi
+    if body.title_en is not None:
+        title["en"] = body.title_en
+    if body.description_vi is not None:
+        description["vi"] = body.description_vi
+    if body.description_en is not None:
+        description["en"] = body.description_en
+
+    doc["title"] = title
+    doc["description"] = description
+
+    await upsert_wellness_activity(db, doc)
+    updated = await get_wellness_activity_by_id(db, activity_id)
+    if not updated:
+        raise HTTPException(500, "Failed to save activity")
+    return {"activity": wellness_activity_admin_dict(updated)}
+
+
+@router.post("/wellness/seed")
+async def admin_seed_wellness_activities(
+    request: Request,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    seeded = 0
+    for doc in DEFAULT_WELLNESS_ACTIVITIES:
+        await upsert_wellness_activity(db, dict(doc))
+        seeded += 1
+
+    return {"seeded": seeded, "total": len(DEFAULT_WELLNESS_ACTIVITIES)}
+
+
+@router.delete("/wellness/vectors")
+async def admin_clear_wellness_vectors(
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.medical.agents.wellness_agent.vectorstore import clear_wellness_vectors
+
+    return await asyncio.to_thread(clear_wellness_vectors)
+
+
+@router.delete("/wellness/activities/{activity_id}/vectors")
+async def admin_delete_wellness_activity_vectors(
+    activity_id: str,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.medical.agents.wellness_agent.vectorstore import delete_wellness_activity_vectors
+
+    return await asyncio.to_thread(delete_wellness_activity_vectors, activity_id)
+
+
+@router.post("/wellness/reindex")
+async def admin_reindex_wellness_vectors(
+    request: Request,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.medical.agents.wellness_agent.vectorstore import rebuild_wellness_index
+    from app.wellness.catalog_seed import DEFAULT_WELLNESS_ACTIVITIES
+
+    db = _get_db(request)
+    rows = await list_wellness_activities(
+        db, active_only=True, implemented_only=True, limit=200
+    )
+    if not rows:
+        rows = [
+            d
+            for d in DEFAULT_WELLNESS_ACTIVITIES
+            if d.get("active") and d.get("implemented")
+        ]
+
+    return await asyncio.to_thread(rebuild_wellness_index, rows)
 
 
 @router.delete("/users/{user_id}")

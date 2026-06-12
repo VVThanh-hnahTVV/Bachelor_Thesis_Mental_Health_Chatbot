@@ -7,8 +7,17 @@ import uuid
 from typing import Any
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, PointStruct, VectorParams
+from qdrant_client.http.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointIdsList,
+    PointStruct,
+    VectorParams,
+)
 
+from app.medical.agents.rag_agent.vectorstore_qdrant import build_qdrant_client
 from app.medical.config import get_medical_config
 from app.medical.embeddings import build_embeddings, get_embedding_dim
 
@@ -17,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _client() -> QdrantClient:
     cfg = get_medical_config().wellness
-    return QdrantClient(path=cfg.vector_local_path)
+    return build_qdrant_client(vector_local_path=cfg.vector_local_path)
 
 
 def _collection_name() -> str:
@@ -93,21 +102,114 @@ def _point_id(activity_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"helios-wellness:{activity_id}"))
 
 
-def upsert_activity(doc: dict[str, Any]) -> None:
-    cfg = get_medical_config().wellness
+def count_wellness_collection_points() -> int:
     client = _client()
+    return _collection_point_count(client, _collection_name())
+
+
+def clear_wellness_vectors() -> dict[str, object]:
+    """Delete the entire wellness Qdrant collection (MongoDB unchanged)."""
+    client = _client()
+    collection = _collection_name()
+    points_deleted = 0
+    if client.collection_exists(collection):
+        info = client.get_collection(collection)
+        points_deleted = int(info.points_count or 0)
+        client.delete_collection(collection)
+    return {
+        "success": True,
+        "points_deleted": points_deleted,
+        "collection": collection,
+    }
+
+
+def _collection_point_count(client: QdrantClient, collection: str) -> int:
+    try:
+        if not client.collection_exists(collection):
+            return 0
+        info = client.get_collection(collection)
+        return int(info.points_count or 0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Wellness vector count failed: %s", exc)
+        return 0
+
+
+def delete_wellness_activity_vectors(activity_id: str) -> dict[str, object]:
+    """Remove all Qdrant points for one activity (including legacy duplicate ids)."""
+    client = _client()
+    collection = _collection_name()
+    if not client.collection_exists(collection):
+        return {"success": True, "points_deleted": 0, "activity_id": activity_id}
+
+    before = _collection_point_count(client, collection)
+
+    client.delete(
+        collection_name=collection,
+        points_selector=Filter(
+            should=[
+                FieldCondition(key="activity_id", match=MatchValue(value=activity_id)),
+                FieldCondition(key="id", match=MatchValue(value=activity_id)),
+            ]
+        ),
+    )
+
+    # Older indexes may have used the raw activity id as the point id.
+    client.delete(
+        collection_name=collection,
+        points_selector=PointIdsList(points=[activity_id, _point_id(activity_id)]),
+    )
+
+    after = _collection_point_count(client, collection)
+    return {
+        "success": True,
+        "points_deleted": max(0, before - after),
+        "activity_id": activity_id,
+    }
+
+
+def rebuild_wellness_index(docs: list[dict[str, Any]]) -> dict[str, object]:
+    """Drop and rebuild the wellness vector collection (one point per activity)."""
+    client = _client()
+    collection = _collection_name()
+    if client.collection_exists(collection):
+        client.delete_collection(collection)
+
+    indexed = 0
+    errors: list[str] = []
+    for doc in docs:
+        try:
+            upsert_activity(doc, client=client)
+            indexed += 1
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{doc.get('id')}: {exc}")
+            logger.exception("Failed to index %s", doc.get("id"))
+
+    return {
+        "success": indexed > 0 and not errors,
+        "indexed": indexed,
+        "total": len(docs),
+        "errors": errors,
+    }
+
+
+def upsert_activity(
+    doc: dict[str, Any],
+    *,
+    client: QdrantClient | None = None,
+) -> None:
+    qdrant = client or _client()
     collection = _collection_name()
     dim = get_embedding_dim()
 
-    if not client.collection_exists(collection):
-        client.create_collection(
+    if not qdrant.collection_exists(collection):
+        qdrant.create_collection(
             collection_name=collection,
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
 
     activity_id = str(doc["id"])
     vector = _embed_text(_activity_embed_text(doc))
-    client.upsert(
+    qdrant.upsert(
         collection_name=collection,
         points=[
             PointStruct(

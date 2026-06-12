@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import {
   Bolt,
@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   type ArticleStatus,
-  type IndexStats,
   type KnowledgeJob,
   type PdfFile,
   type StagedArticle,
@@ -27,16 +26,19 @@ import {
   deletePdf,
   deleteWebArticle,
   removePdfVectors,
-  getIndexJob,
-  getIndexStats,
-  listArticles,
-  listIndexJobs,
-  listPdfFiles,
   patchArticle,
   runCrawl,
   triggerPdfIngest,
   uploadPdf,
 } from "@/lib/api/admin-knowledge";
+import {
+  useAdminQueryInvalidation,
+  useKnowledgeArticles,
+  useKnowledgeJob,
+  useKnowledgeJobs,
+  useKnowledgePdfs,
+  useKnowledgeStats,
+} from "@/lib/hooks/admin-queries";
 
 type Tab = "web" | "pdf" | "jobs";
 
@@ -188,23 +190,28 @@ function jobSummary(job: KnowledgeJob) {
 }
 
 export default function AdminKnowledgePage() {
+  const {
+    knowledgeStats: invalidateStats,
+    knowledgeArticles: invalidateArticles,
+    knowledgePdfs: invalidatePdfs,
+    knowledgeJobs: invalidateJobs,
+    refetchKnowledgeAll,
+    updateKnowledgeJobs,
+  } = useAdminQueryInvalidation();
+
   const [tab, setTab] = useState<Tab>("web");
-  const [stats, setStats] = useState<IndexStats | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   // Web corpus
   const [webStatus, setWebStatus] = useState<ArticleStatus>("pending");
-  const [articles, setArticles] = useState<StagedArticle[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // PDF corpus
-  const [pdfs, setPdfs] = useState<PdfFile[]>([]);
   const [pdfMenu, setPdfMenu] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Jobs
-  const [jobs, setJobs] = useState<KnowledgeJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const [deletePending, setDeletePending] = useState<DeletePending | null>(
@@ -213,72 +220,53 @@ export default function AdminKnowledgePage() {
   const [indexPending, setIndexPending] = useState<IndexPending | null>(null);
   const confirmAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  const loadStats = useCallback(async () => {
-    setStats(await getIndexStats());
-  }, []);
+  const { data: stats, error: statsError } = useKnowledgeStats();
+  const { data: articles = [], error: articlesError } =
+    useKnowledgeArticles(webStatus);
+  const { data: pdfs = [], error: pdfsError } = useKnowledgePdfs();
+  const { data: jobs = [], error: jobsError } = useKnowledgeJobs();
+  const { data: activeJob } = useKnowledgeJob(activeJobId);
 
-  const loadWeb = useCallback(async () => {
-    const res = await listArticles(webStatus);
-    setArticles(res.articles || []);
+  const handledJobRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const err = statsError || articlesError || pdfsError || jobsError;
+    if (err) {
+      setMessage(err instanceof Error ? err.message : "Không tải được dữ liệu");
+    }
+  }, [statsError, articlesError, pdfsError, jobsError]);
+
+  useEffect(() => {
     setSelected(new Set());
-  }, [webStatus]);
-
-  const loadPdfs = useCallback(async () => {
-    const res = await listPdfFiles();
-    setPdfs(res.files || []);
-  }, []);
-
-  const loadJobs = useCallback(async () => {
-    const res = await listIndexJobs();
-    setJobs(res.jobs || []);
-  }, []);
-
-  const loadAll = useCallback(async () => {
-    await Promise.all([loadStats(), loadWeb(), loadPdfs(), loadJobs()]);
-  }, [loadStats, loadWeb, loadPdfs, loadJobs]);
+  }, [webStatus, articles]);
 
   useEffect(() => {
-    void loadAll().catch((err) =>
-      setMessage(err instanceof Error ? err.message : "Không tải được dữ liệu")
-    );
-  }, [loadAll]);
-
-  useEffect(() => {
-    void loadWeb().catch(() => undefined);
-  }, [loadWeb]);
-
-  useEffect(() => {
-    if (!activeJobId) return;
-    const timer = setInterval(async () => {
-      try {
-        const job = await getIndexJob(activeJobId);
-        setJobs((prev) => {
-          const rest = prev.filter((j) => j.job_id !== job.job_id);
-          return [job, ...rest];
-        });
-        if (job.status === "done" || job.status === "error") {
-          clearInterval(timer);
-          setActiveJobId(null);
-          setBusy(false);
-          setMessage(jobSummary(job));
-          void loadAll();
-        }
-      } catch {
-        clearInterval(timer);
-        setBusy(false);
-      }
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [activeJobId, loadAll]);
+    if (!activeJob || !activeJobId) return;
+    updateKnowledgeJobs((prev) => {
+      const rest = prev.filter((j) => j.job_id !== activeJob.job_id);
+      return [activeJob, ...rest];
+    });
+    if (
+      (activeJob.status === "done" || activeJob.status === "error") &&
+      handledJobRef.current !== activeJob.job_id
+    ) {
+      handledJobRef.current = activeJob.job_id;
+      setActiveJobId(null);
+      setBusy(false);
+      setMessage(jobSummary(activeJob));
+      void refetchKnowledgeAll();
+    }
+  }, [activeJob, activeJobId, refetchKnowledgeAll, updateKnowledgeJobs]);
 
   const startJob = async (fn: () => Promise<{ job_id: string }>) => {
     setBusy(true);
     setMessage("");
+    handledJobRef.current = null;
     try {
       const res = await fn();
       setActiveJobId(res.job_id);
       setTab("jobs");
-      await loadJobs();
+      await invalidateJobs();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Tác vụ thất bại");
       setBusy(false);
@@ -291,8 +279,7 @@ export default function AdminKnowledgePage() {
       const res = await runCrawl();
       setMessage(`Thu thập: +${res.added_to_pending} bài chờ duyệt`);
       setWebStatus("pending");
-      await loadWeb();
-      await loadStats();
+      await Promise.all([invalidateArticles(), invalidateStats()]);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Thu thập thất bại");
     } finally {
@@ -318,7 +305,7 @@ export default function AdminKnowledgePage() {
         if (res.action === "recycled") {
           setWebStatus("pending");
         }
-        await Promise.all([loadWeb(), loadStats()]);
+        await Promise.all([invalidateArticles(), invalidateStats()]);
       } else {
         const { pdf } = deletePending;
         const res = await deletePdf(pdf.path);
@@ -327,7 +314,7 @@ export default function AdminKnowledgePage() {
             ? `Đã xóa tệp và gỡ ${res.vectors_removed} điểm vector`
             : "Đã xóa tệp PDF"
         );
-        await Promise.all([loadPdfs(), loadStats()]);
+        await Promise.all([invalidatePdfs(), invalidateStats()]);
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Thao tác thất bại");
@@ -343,14 +330,15 @@ export default function AdminKnowledgePage() {
     setBusy(true);
     try {
       await bulkArticles([...selected], action);
-      await loadStats();
+      await invalidateStats();
       if (action === "approve") {
         setWebStatus("approved");
         setMessage(
           `Đã duyệt ${selected.size} bài — bấm "Tạo chỉ mục web" để đưa vào vector DB`
         );
+        await invalidateArticles();
       } else {
-        await loadWeb();
+        await invalidateArticles(webStatus);
         setMessage(`Đã từ chối ${selected.size} bài`);
       }
     } catch (err) {
@@ -368,8 +356,7 @@ export default function AdminKnowledgePage() {
         await uploadPdf(file);
       }
       setMessage(`Đã tải lên ${files.length} PDF`);
-      await loadPdfs();
-      await loadStats();
+      await Promise.all([invalidatePdfs(), invalidateStats()]);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Tải lên thất bại");
     } finally {
@@ -492,7 +479,7 @@ export default function AdminKnowledgePage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => void loadAll()}
+                onClick={() => void refetchKnowledgeAll()}
                 disabled={busy}
               >
                 <RefreshCw className="mr-1 h-4 w-4" />
@@ -629,7 +616,7 @@ export default function AdminKnowledgePage() {
                                     setMessage(
                                       "Đã duyệt — bấm \"Tạo chỉ mục\" để đưa vào vector DB"
                                     );
-                                    await loadStats();
+                                    await invalidateStats();
                                   })
                                   .finally(() => setBusy(false));
                               }}
@@ -831,7 +818,7 @@ export default function AdminKnowledgePage() {
                                             ? `Đã gỡ ${res.points_deleted} điểm vector khỏi ${pdf.name}`
                                             : `Không tìm thấy vector cho ${pdf.name}`
                                         );
-                                        return loadStats();
+                                        return invalidateStats();
                                       })
                                       .catch((e) => setMessage(e.message))
                                       .finally(() => setBusy(false));

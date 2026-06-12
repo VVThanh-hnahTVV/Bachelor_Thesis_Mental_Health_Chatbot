@@ -109,7 +109,17 @@ def create_agent_graph():
 
         # Check input through guardrails if text is present
         if input_text:
+            from app.config import get_settings
             from app.conversation.context import format_recent_user_questions
+            from app.medical.agents.guardrails.schemas import detect_user_language_fallback
+
+            settings = get_settings()
+            if not settings.enable_input_guardrails:
+                return {
+                    **state,
+                    "bypass_routing": False,
+                    "user_language": detect_user_language_fallback(input_text),
+                }
 
             summary = str(state.get("conversation_summary") or "").strip()
             recent_questions = format_recent_user_questions(
@@ -405,6 +415,22 @@ def create_agent_graph():
             input_text = current_input
         elif isinstance(current_input, dict):
             input_text = current_input.get("text", "")
+
+        from app.config import get_settings
+
+        settings = get_settings()
+        if not settings.enable_output_guardrails:
+            sanitized_message = (
+                output if isinstance(output, AIMessage) else AIMessage(content=output_text)
+            )
+            updated: AgentState = {
+                **state,
+                "messages": sanitized_message,
+                "output": sanitized_message,
+            }
+            from app.medical.agents.wellness_agent.retrieval import attach_wellness_after_retrieval
+
+            return attach_wellness_after_retrieval(updated)
         
         # Apply output sanitization
         user_language = str(state.get("user_language") or "en")
