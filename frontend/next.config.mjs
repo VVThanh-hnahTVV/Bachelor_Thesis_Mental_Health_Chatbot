@@ -13,6 +13,9 @@ const nextConfig = {
       "@opentelemetry/api",
       "@opentelemetry/sdk-trace-base",
       "@opentelemetry/exporter-trace-otlp-proto",
+      "tailwind-merge",
+      "clsx",
+      "class-variance-authority",
     ],
   },
 
@@ -31,7 +34,7 @@ const nextConfig = {
   ),
 
   // Configure webpack
-  webpack: (config, { isServer }) => {
+  webpack: (config, { dev, isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       sharp$: false,
@@ -44,7 +47,18 @@ const nextConfig = {
         "@opentelemetry/api",
         "@opentelemetry/sdk-trace-base",
         "@opentelemetry/exporter-trace-otlp-proto",
+        "tailwind-merge",
+        "clsx",
+        "class-variance-authority",
       ];
+
+      // Avoid stale vendor-chunk refs in dev (e.g. tailwind-merge.js missing)
+      if (dev) {
+        config.optimization = {
+          ...config.optimization,
+          splitChunks: false,
+        };
+      }
     }
 
     return config;

@@ -24,7 +24,7 @@ const NAV_ITEMS = [
     exact: true,
   },
   { href: "/admin/wellness", label: "Wellness", icon: Sparkles, disabled: true },
-  { href: "/admin/users", label: "Người dùng", icon: Users, disabled: true },
+  { href: "/admin/users", label: "Người dùng", icon: Users, exact: true },
   {
     href: "/admin/conversations",
     label: "Hội thoại",

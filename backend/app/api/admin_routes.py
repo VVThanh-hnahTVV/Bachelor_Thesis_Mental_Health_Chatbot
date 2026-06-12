@@ -5,10 +5,23 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.auth.dependencies import require_admin
+from app.auth.repository import (
+    admin_user_public,
+    count_admins,
+    count_users,
+    create_user,
+    delete_user_by_id,
+    get_user_by_email,
+    get_user_by_id,
+    list_users,
+    update_user_by_id,
+)
+from app.auth.security import hash_password
 from app.crawl.pipeline import run_crawl
 from app.db.repository import get_admin_overview_stats
 from app.crawl.staging import (
@@ -43,6 +56,19 @@ class ArticlePatchBody(BaseModel):
 class BulkArticleBody(BaseModel):
     source_ids: list[str] = Field(..., min_length=1)
     action: Literal["approve", "reject"]
+
+
+class AdminUserCreateBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    role: Literal["user", "admin"] = "user"
+
+
+class AdminUserUpdateBody(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=120)
+    role: Literal["user", "admin"] | None = None
+    password: str | None = Field(None, min_length=8, max_length=128)
 
 
 def _staging_dir() -> str:
@@ -249,3 +275,134 @@ async def admin_index_stats(
         "web_collection_points": points,
         "web_collection": get_medical_config().web_corpus.collection_name,
     }
+
+
+def _parse_user_id(user_id: str) -> ObjectId:
+    try:
+        return ObjectId(user_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, "Invalid user id") from exc
+
+
+async def _ensure_not_last_admin(
+    db: Any,
+    *,
+    target_user_id: ObjectId,
+    new_role: str | None = None,
+    deleting: bool = False,
+) -> None:
+    target = await get_user_by_id(db, target_user_id)
+    if not target or target.get("role") != "admin":
+        return
+    admin_count = await count_admins(db)
+    if admin_count <= 1 and (deleting or new_role == "user"):
+        raise HTTPException(400, "Cannot remove the last admin account")
+
+
+@router.get("/users")
+async def admin_list_users(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None, max_length=120),
+    role: Literal["user", "admin"] | None = Query(None),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    skip = (page - 1) * page_size
+    total = await count_users(db, search=search, role=role)
+    users = await list_users(
+        db, skip=skip, limit=page_size, search=search, role=role
+    )
+    return {
+        "users": users,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+    }
+
+
+@router.post("/users")
+async def admin_create_user(
+    request: Request,
+    body: AdminUserCreateBody,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    existing = await get_user_by_email(db, body.email)
+    if existing:
+        raise HTTPException(409, "Email already registered")
+    doc = await create_user(
+        db,
+        email=body.email,
+        name=body.name,
+        password_hash=hash_password(body.password),
+        role=body.role,
+    )
+    return admin_user_public(doc)
+
+
+@router.get("/users/{user_id}")
+async def admin_get_user(
+    request: Request,
+    user_id: str,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    oid = _parse_user_id(user_id)
+    doc = await get_user_by_id(db, oid)
+    if not doc:
+        raise HTTPException(404, "User not found")
+    return admin_user_public(doc)
+
+
+@router.patch("/users/{user_id}")
+async def admin_update_user(
+    request: Request,
+    user_id: str,
+    body: AdminUserUpdateBody,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    oid = _parse_user_id(user_id)
+    if not await get_user_by_id(db, oid):
+        raise HTTPException(404, "User not found")
+
+    if body.role is not None:
+        await _ensure_not_last_admin(db, target_user_id=oid, new_role=body.role)
+
+    password_hash = hash_password(body.password) if body.password else None
+    try:
+        updated = await update_user_by_id(
+            db,
+            oid,
+            name=body.name,
+            role=body.role,
+            password_hash=password_hash,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if not updated:
+        raise HTTPException(404, "User not found")
+    return updated
+
+
+@router.delete("/users/{user_id}")
+async def admin_delete_user(
+    request: Request,
+    user_id: str,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, str]:
+    db = _get_db(request)
+    oid = _parse_user_id(user_id)
+    admin_oid = admin.get("_id")
+    if isinstance(admin_oid, ObjectId) and admin_oid == oid:
+        raise HTTPException(400, "Cannot delete your own account")
+
+    await _ensure_not_last_admin(db, target_user_id=oid, deleting=True)
+    deleted = await delete_user_by_id(db, oid)
+    if not deleted:
+        raise HTTPException(404, "User not found")
+    return {"message": "User deleted"}

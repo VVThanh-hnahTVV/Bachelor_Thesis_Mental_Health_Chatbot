@@ -87,6 +87,103 @@ def user_public(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def admin_user_public(doc: dict[str, Any]) -> dict[str, Any]:
+    created = doc.get("created_at")
+    return {
+        "id": str(doc["_id"]),
+        "email": doc["email"],
+        "name": doc["name"],
+        "role": str(doc.get("role") or "user"),
+        "created_at": created.isoformat() if hasattr(created, "isoformat") else None,
+    }
+
+
+def _users_filter_query(
+    *,
+    search: str | None = None,
+    role: str | None = None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {}
+    if role in ("user", "admin"):
+        query["role"] = role
+    if search and search.strip():
+        term = search.strip()
+        query["$or"] = [
+            {"email": {"$regex": term, "$options": "i"}},
+            {"name": {"$regex": term, "$options": "i"}},
+        ]
+    return query
+
+
+async def count_users(
+    db: AsyncIOMotorDatabase,
+    *,
+    search: str | None = None,
+    role: str | None = None,
+) -> int:
+    return await db[USERS].count_documents(_users_filter_query(search=search, role=role))
+
+
+async def count_admins(db: AsyncIOMotorDatabase) -> int:
+    return await db[USERS].count_documents({"role": "admin"})
+
+
+async def list_users(
+    db: AsyncIOMotorDatabase,
+    *,
+    skip: int = 0,
+    limit: int = 20,
+    search: str | None = None,
+    role: str | None = None,
+) -> list[dict[str, Any]]:
+    query = _users_filter_query(search=search, role=role)
+    cursor = (
+        db[USERS]
+        .find(query, {"password_hash": 0, "password_reset_token_hash": 0})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+    return [admin_user_public(doc) async for doc in cursor]
+
+
+async def update_user_by_id(
+    db: AsyncIOMotorDatabase,
+    user_id: ObjectId,
+    *,
+    name: str | None = None,
+    role: str | None = None,
+    password_hash: str | None = None,
+) -> dict[str, Any] | None:
+    updates: dict[str, Any] = {"updated_at": datetime.now(UTC)}
+    if name is not None:
+        updates["name"] = name.strip()
+    if role is not None:
+        if role not in ("user", "admin"):
+            raise ValueError("role must be user or admin")
+        updates["role"] = role
+    if password_hash is not None:
+        updates["password_hash"] = password_hash
+
+    if len(updates) == 1:
+        doc = await get_user_by_id(db, user_id)
+        return admin_user_public(doc) if doc else None
+
+    result = await db[USERS].update_one({"_id": user_id}, {"$set": updates})
+    if result.matched_count == 0:
+        return None
+    doc = await get_user_by_id(db, user_id)
+    return admin_user_public(doc) if doc else None
+
+
+async def delete_user_by_id(db: AsyncIOMotorDatabase, user_id: ObjectId) -> bool:
+    result = await db[USERS].delete_one({"_id": user_id})
+    if result.deleted_count == 0:
+        return False
+    await db[SESSION_LINKS].delete_many({"user_id": user_id})
+    return True
+
+
 async def set_user_role(
     db: AsyncIOMotorDatabase,
     *,
