@@ -33,6 +33,32 @@ export interface IndexStats {
   staging: Record<string, number>;
   web_collection_points: number | null;
   web_collection: string;
+  pdf_collection_points: number | null;
+  pdf_collection: string;
+  pdf_files_count: number;
+  raw_documents_dir: string;
+  chunk_size: number;
+  chunk_overlap: number;
+  embedding_provider: string;
+}
+
+export interface PdfFile {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified_at: string | null;
+}
+
+export interface KnowledgeJob {
+  job_id: string;
+  job_type?: "web" | "pdf";
+  title?: string;
+  status: string;
+  progress?: { current?: number; total?: number; title?: string };
+  result?: Record<string, unknown>;
+  error?: string;
+  started_at?: string;
+  finished_at?: string;
 }
 
 async function adminFetch(path: string, init?: RequestInit) {
@@ -82,10 +108,6 @@ export async function listArticles(status: ArticleStatus) {
   return adminFetch(`/api/v1/admin/articles?status=${status}`);
 }
 
-export async function getArticle(sourceId: string) {
-  return adminFetch(`/api/v1/admin/articles/${sourceId}`);
-}
-
 export async function patchArticle(
   sourceId: string,
   body: { action?: "approve" | "reject"; topics?: string[] }
@@ -106,14 +128,114 @@ export async function bulkArticles(
   });
 }
 
-export async function buildIndex() {
-  return adminFetch("/api/v1/admin/index/build", { method: "POST" });
+export async function buildIndex(sourceIds?: string[]) {
+  return adminFetch("/api/v1/admin/index/build", {
+    method: "POST",
+    body: JSON.stringify({
+      source_ids: sourceIds?.length ? sourceIds : null,
+    }),
+  });
+}
+
+export async function triggerPdfIngest(path?: string) {
+  return adminFetch("/api/v1/admin/pdf/ingest", {
+    method: "POST",
+    body: JSON.stringify({ path: path ?? null }),
+  });
 }
 
 export async function getIndexJob(jobId: string) {
   return adminFetch(`/api/v1/admin/index/jobs/${jobId}`);
 }
 
+export async function listIndexJobs(): Promise<{ jobs: KnowledgeJob[] }> {
+  return adminFetch("/api/v1/admin/index/jobs");
+}
+
 export async function getIndexStats(): Promise<IndexStats> {
   return adminFetch("/api/v1/admin/index/stats");
+}
+
+export async function listPdfFiles(): Promise<{ files: PdfFile[]; count: number }> {
+  return adminFetch("/api/v1/admin/pdf");
+}
+
+export async function uploadPdf(file: File): Promise<PdfFile> {
+  const token = getAuthToken();
+  if (!token) throw new Error("Not authenticated");
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/v1/admin/pdf/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    let message = "Upload failed";
+    try {
+      const data = await res.json();
+      message = data.detail || message;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+export interface VectorRemovalResult {
+  found?: boolean;
+  points_deleted: number;
+  staging_updated?: boolean;
+  source_id?: string;
+  source?: string;
+  path?: string;
+}
+
+export interface WebArticleDeleteResult {
+  found?: boolean;
+  action: "recycled" | "blocked" | "not_found" | "error";
+  points_deleted: number;
+  moved_to?: string;
+  source_id?: string;
+}
+
+export async function deleteWebArticle(
+  sourceId: string
+): Promise<WebArticleDeleteResult> {
+  return adminFetch(`/api/v1/admin/articles/${encodeURIComponent(sourceId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function removeWebArticleVectors(
+  sourceId: string
+): Promise<VectorRemovalResult> {
+  return adminFetch(
+    `/api/v1/admin/articles/${encodeURIComponent(sourceId)}/vectors`,
+    { method: "DELETE" }
+  );
+}
+
+export async function removePdfVectors(path: string): Promise<VectorRemovalResult> {
+  return adminFetch(
+    `/api/v1/admin/pdf/vectors?path=${encodeURIComponent(path)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function deletePdf(
+  path: string,
+  options?: { removeVectors?: boolean }
+): Promise<{ message: string; vectors_removed?: number }> {
+  const params = new URLSearchParams({ path });
+  if (options?.removeVectors === false) {
+    params.set("remove_vectors", "false");
+  }
+  return adminFetch(`/api/v1/admin/pdf?${params.toString()}`, {
+    method: "DELETE",
+  });
 }

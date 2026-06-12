@@ -22,7 +22,7 @@ from app.crawl.site_sources import (
     fetch_vinmec_candidates,
     fetch_who_mental_health_pages,
 )
-from app.crawl.staging import DEFAULT_STAGING_DIR, upsert_to_pending
+from app.crawl.staging import DEFAULT_STAGING_DIR, is_source_blocked, upsert_to_pending
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +108,15 @@ def _ingest_item(
     if not skip_age_check and _is_too_old(item.published_at, max_age_days):
         return "old", None
 
+    canonical = _canonical_url(item.link)
+    if is_source_blocked(_source_id(canonical), base_dir=staging_path):
+        return "duplicate", None
+
     if not passes_strict_mental_health_filter(
         item.title, item.description, content_type=content_type
     )[0]:
         return "filter", None
 
-    canonical = _canonical_url(item.link)
     try:
         full_text = fetch_article_text(
             item.link,
@@ -342,6 +345,10 @@ def run_crawl(
                     continue
 
                 canonical = _canonical_url(hit.url)
+                if is_source_blocked(_source_id(canonical), base_dir=staging_path):
+                    skipped_duplicate += 1
+                    continue
+
                 article = CrawledArticle(
                     source_id=_source_id(canonical),
                     url=hit.url,

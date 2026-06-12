@@ -20,7 +20,7 @@ from app.medical.config import get_medical_config
 logger = logging.getLogger(__name__)
 
 
-def _refresh_web_catalog(*, base_dir: Path, catalog_path: Path) -> None:
+def refresh_web_catalog(*, base_dir: Path, catalog_path: Path) -> None:
     indexed = list_articles("indexed", base_dir=base_dir, include_full_text=False)
     entries = [
         {
@@ -44,14 +44,19 @@ def build_web_vector_index(
     *,
     staging_dir: str | Path = DEFAULT_STAGING_DIR,
     on_progress: Any | None = None,
+    source_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Index all approved articles into the web Qdrant collection.
+    Index approved articles into the web Qdrant collection.
     Moves successfully indexed articles to indexed staging.
+    When source_ids is set, only those approved articles are indexed.
     """
     cfg = get_medical_config()
     base_dir = Path(staging_dir)
     approved = list_articles("approved", base_dir=base_dir, include_full_text=True)
+    if source_ids is not None:
+        wanted = set(source_ids)
+        approved = [row for row in approved if row.get("source_id") in wanted]
     indexed_hashes = list_indexed_content_hashes(base_dir=base_dir)
 
     store = CorpusVectorStore.for_web_corpus(cfg)
@@ -111,7 +116,7 @@ def build_web_vector_index(
             logger.exception("Failed to index %s", article.source_id)
             errors.append(f"{article.source_id}: {exc}")
 
-    _refresh_web_catalog(
+    refresh_web_catalog(
         base_dir=base_dir,
         catalog_path=Path(cfg.web_corpus.web_catalog_path),
     )

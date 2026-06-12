@@ -28,6 +28,10 @@ def _staging_path(status: StagingStatus, base_dir: str | Path) -> Path:
     return _resolve_base_dir(base_dir) / f"{status}.json"
 
 
+def _blocklist_path(base_dir: str | Path) -> Path:
+    return _resolve_base_dir(base_dir) / "blocklist.json"
+
+
 def _empty_store() -> dict[str, Any]:
     return {"updated_at": "", "articles": []}
 
@@ -77,6 +81,27 @@ def _all_known_ids(base_dir: str | Path) -> set[str]:
     return known
 
 
+def blocked_source_ids(*, base_dir: str | Path = DEFAULT_STAGING_DIR) -> set[str]:
+    path = _blocklist_path(base_dir)
+    store = _read_store(path)
+    entries = store.get("entries", [])
+    if not isinstance(entries, list):
+        return set()
+    return {
+        str(entry.get("source_id", ""))
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("source_id")
+    }
+
+
+def is_source_blocked(
+    source_id: str,
+    *,
+    base_dir: str | Path = DEFAULT_STAGING_DIR,
+) -> bool:
+    return source_id in blocked_source_ids(base_dir=base_dir)
+
+
 def list_articles(
     status: StagingStatus,
     *,
@@ -122,7 +147,9 @@ def upsert_to_pending(
     """Insert article into pending if URL not seen in any bucket. Returns True if added."""
     base = _resolve_base_dir(base_dir)
     with _lock:
-        if article.source_id in _all_known_ids(base):
+        if article.source_id in _all_known_ids(base) or article.source_id in blocked_source_ids(
+            base_dir=base
+        ):
             return False
 
         article.status = "pending"
@@ -169,6 +196,11 @@ def move_article(
             moved["reviewed_at"] = now
         if to_status == "indexed":
             moved["indexed_at"] = now
+        elif from_status == "indexed":
+            moved["indexed_at"] = ""
+        if to_status == "pending":
+            moved["reviewed_at"] = ""
+            moved["reviewed_by"] = ""
         if extra:
             moved.update(extra)
 
@@ -207,6 +239,66 @@ def update_article(
                 _write_store(path, store)
                 return updated
     return None
+
+
+def remove_article(
+    source_id: str,
+    *,
+    from_status: StagingStatus | None = None,
+    base_dir: str | Path = DEFAULT_STAGING_DIR,
+) -> CrawledArticle | None:
+    """Remove an article from a staging bucket and return it."""
+    base = _resolve_base_dir(base_dir)
+    statuses: tuple[StagingStatus, ...] = (from_status,) if from_status else STATUSES
+    with _lock:
+        for status in statuses:
+            path = _staging_path(status, base)
+            store = _read_store(path)
+            articles = store.get("articles", [])
+            removed: dict[str, Any] | None = None
+            remaining: list[dict[str, Any]] = []
+            for raw in articles:
+                if isinstance(raw, dict) and raw.get("source_id") == source_id:
+                    removed = dict(raw)
+                else:
+                    remaining.append(raw)
+            if removed is not None:
+                store["articles"] = remaining
+                _write_store(path, store)
+                article = CrawledArticle.from_dict(removed)
+                article.status = status
+                return article
+    return None
+
+
+def add_to_blocklist(
+    article: CrawledArticle,
+    *,
+    base_dir: str | Path = DEFAULT_STAGING_DIR,
+) -> None:
+    """Permanently block an article from being re-crawled."""
+    base = _resolve_base_dir(base_dir)
+    with _lock:
+        path = _blocklist_path(base)
+        store = _read_store(path)
+        entries = store.setdefault("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        entries = [
+            entry
+            for entry in entries
+            if not (isinstance(entry, dict) and entry.get("source_id") == article.source_id)
+        ]
+        entries.append(
+            {
+                "source_id": article.source_id,
+                "canonical_url": article.canonical_url,
+                "title": article.title,
+                "deleted_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        store["entries"] = entries
+        _write_store(path, store)
 
 
 def list_indexed_content_hashes(*, base_dir: str | Path = DEFAULT_STAGING_DIR) -> set[str]:

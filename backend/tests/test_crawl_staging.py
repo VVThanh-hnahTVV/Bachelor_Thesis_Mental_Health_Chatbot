@@ -3,9 +3,12 @@ from pathlib import Path
 
 from app.crawl.models import CrawledArticle
 from app.crawl.staging import (
+    add_to_blocklist,
+    blocked_source_ids,
     get_article,
     list_articles,
     move_article,
+    remove_article,
     upsert_to_pending,
 )
 
@@ -52,3 +55,53 @@ def test_staging_upsert_and_move(tmp_path: Path):
     assert moved is not None
     assert moved.status == "approved"
     assert get_article("abc123", base_dir=base).status == "approved"
+
+
+def test_blocklist_prevents_reinsert(tmp_path: Path):
+    base = tmp_path / "staging"
+    base.mkdir()
+    for name in ("pending", "approved", "rejected", "indexed"):
+        (base / f"{name}.json").write_text(
+            json.dumps({"updated_at": "", "articles": []}),
+            encoding="utf-8",
+        )
+
+    article = _article("blocked1", "Blocked article")
+    assert upsert_to_pending(article, base_dir=base) is True
+
+    removed = remove_article("blocked1", from_status="pending", base_dir=base)
+    assert removed is not None
+    assert get_article("blocked1", base_dir=base) is None
+
+    add_to_blocklist(removed, base_dir=base)
+    assert "blocked1" in blocked_source_ids(base_dir=base)
+    assert upsert_to_pending(article, base_dir=base) is False
+
+
+def test_indexed_recycle_to_pending_clears_review_fields(tmp_path: Path):
+    base = tmp_path / "staging"
+    base.mkdir()
+    for name in ("pending", "approved", "rejected", "indexed"):
+        (base / f"{name}.json").write_text(
+            json.dumps({"updated_at": "", "articles": []}),
+            encoding="utf-8",
+        )
+
+    article = _article("idx1", "Indexed article")
+    assert upsert_to_pending(article, base_dir=base) is True
+    move_article("idx1", from_status="pending", to_status="approved", base_dir=base)
+    moved = move_article("idx1", from_status="approved", to_status="indexed", base_dir=base)
+    assert moved is not None
+    assert moved.indexed_at
+
+    recycled = move_article(
+        "idx1",
+        from_status="indexed",
+        to_status="pending",
+        base_dir=base,
+    )
+    assert recycled is not None
+    assert recycled.status == "pending"
+    assert recycled.indexed_at == ""
+    assert recycled.reviewed_at == ""
+    assert recycled.reviewed_by == ""

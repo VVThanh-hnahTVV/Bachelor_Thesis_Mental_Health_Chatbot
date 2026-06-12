@@ -8,7 +8,15 @@ from langchain_core.documents import Document
 from langchain_classic.storage import LocalFileStore
 from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
 from qdrant_client import QdrantClient, models
-from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams
+from qdrant_client.http.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
+    SparseVectorParams,
+    VectorParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +179,78 @@ class CorpusVectorStore:
         )
         qdrant_vectorstore, docstore = self.load_vectorstore()
         return qdrant_vectorstore, docstore, doc_ids
+
+    @staticmethod
+    def _extract_doc_id(payload: Dict[str, Any] | None) -> str | None:
+        if not payload:
+            return None
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict):
+            doc_id = metadata.get("doc_id")
+            if doc_id:
+                return str(doc_id)
+        doc_id = payload.get("doc_id")
+        return str(doc_id) if doc_id else None
+
+    def delete_by_metadata_field(self, *, field: str, value: str) -> int:
+        """
+        Delete all points whose payload metadata[field] equals value.
+        Also removes matching entries from the local docstore.
+        Returns the number of Qdrant points deleted.
+        """
+        if not self.collection_exists():
+            return 0
+
+        metadata_key = f"metadata.{field}"
+        q_filter = Filter(
+            must=[
+                FieldCondition(
+                    key=metadata_key,
+                    match=MatchValue(value=value),
+                )
+            ]
+        )
+
+        doc_ids: list[str] = []
+        point_count = 0
+        offset: Any = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=q_filter,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            point_count += len(points)
+            for point in points:
+                doc_id = self._extract_doc_id(point.payload)
+                if doc_id:
+                    doc_ids.append(doc_id)
+            if offset is None:
+                break
+
+        if point_count == 0:
+            return 0
+
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=FilterSelector(filter=q_filter),
+        )
+
+        if doc_ids:
+            docstore = LocalFileStore(self.docstore_local_path)
+            docstore.mdelete(list(dict.fromkeys(doc_ids)))
+
+        self.logger.info(
+            "Deleted %d point(s) from %s where %s=%r",
+            point_count,
+            self.collection_name,
+            field,
+            value,
+        )
+        return point_count
 
     def retrieve_relevant_chunks(
         self,

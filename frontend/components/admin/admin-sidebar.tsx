@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
-  Database,
   LayoutDashboard,
   MessageSquare,
   Settings,
@@ -17,12 +16,6 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "Tổng quan", icon: LayoutDashboard, exact: true },
   { href: "/admin/knowledge", label: "Tri thức", icon: BookOpen, exact: true },
-  {
-    href: "/admin/knowledge/vectors",
-    label: "Vector DB",
-    icon: Database,
-    exact: true,
-  },
   { href: "/admin/wellness", label: "Wellness", icon: Sparkles, disabled: true },
   { href: "/admin/users", label: "Người dùng", icon: Users, exact: true },
   {

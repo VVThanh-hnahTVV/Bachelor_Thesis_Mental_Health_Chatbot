@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 
 from app.auth.dependencies import require_admin
@@ -32,7 +34,19 @@ from app.crawl.staging import (
     move_article,
     update_article,
 )
+from app.admin.pdf_corpus import (
+    count_pdf_collection_points,
+    delete_pdf_file,
+    list_pdf_files,
+    raw_documents_dir,
+)
+from app.admin.vector_cleanup import (
+    delete_web_article,
+    unindex_pdf_vectors,
+    unindex_web_article,
+)
 from app.crawl.web_ingest import build_web_vector_index, count_web_collection_points
+from app.medical.agents.rag_agent import MedicalRAG
 from app.medical.config import get_medical_config
 
 router = APIRouter(prefix="/api/v1/admin")
@@ -58,6 +72,14 @@ class BulkArticleBody(BaseModel):
     action: Literal["approve", "reject"]
 
 
+class BuildIndexBody(BaseModel):
+    source_ids: list[str] | None = Field(
+        None,
+        min_length=1,
+        description="Omit to index all approved articles",
+    )
+
+
 class AdminUserCreateBody(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     email: EmailStr
@@ -69,6 +91,13 @@ class AdminUserUpdateBody(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=120)
     role: Literal["user", "admin"] | None = None
     password: str | None = Field(None, min_length=8, max_length=128)
+
+
+class PdfIngestBody(BaseModel):
+    path: str | None = Field(
+        None,
+        description="Relative path under data/medical/raw; omit to ingest all PDFs",
+    )
 
 
 def _staging_dir() -> str:
@@ -220,14 +249,18 @@ async def admin_bulk_articles(
     return {"changed": changed, "errors": errors}
 
 
-def _run_index_job(job_id: str) -> None:
+def _run_web_index_job(job_id: str, source_ids: list[str] | None = None) -> None:
     job = _index_jobs[job_id]
 
     def on_progress(**kwargs: Any) -> None:
         job["progress"] = kwargs
 
     try:
-        result = build_web_vector_index(staging_dir=_staging_dir(), on_progress=on_progress)
+        result = build_web_vector_index(
+            staging_dir=_staging_dir(),
+            on_progress=on_progress,
+            source_ids=source_ids,
+        )
         job["status"] = "done" if result.get("success") else "error"
         job["result"] = result
         job["finished_at"] = datetime.now(UTC).isoformat()
@@ -237,20 +270,67 @@ def _run_index_job(job_id: str) -> None:
         job["finished_at"] = datetime.now(UTC).isoformat()
 
 
-@router.post("/index/build")
-async def admin_build_index(
-    _admin: dict[str, Any] = Depends(require_admin),
-) -> dict[str, str]:
+def _run_pdf_ingest_job(job_id: str, relative_path: str | None) -> None:
+    job = _index_jobs[job_id]
+    try:
+        config = get_medical_config()
+        rag = MedicalRAG(config)
+        if relative_path:
+            raw = raw_documents_dir()
+            full = raw / relative_path
+            if not full.is_file():
+                raise FileNotFoundError(f"PDF not found: {relative_path}")
+            result = rag.ingest_file(str(full))
+        else:
+            result = rag.ingest_directory(config.rag.raw_documents_dir)
+        job["status"] = "done" if result.get("success") else "error"
+        job["result"] = result
+        job["finished_at"] = datetime.now(UTC).isoformat()
+    except Exception as exc:  # noqa: BLE001
+        job["status"] = "error"
+        job["error"] = str(exc)
+        job["finished_at"] = datetime.now(UTC).isoformat()
+
+
+def _start_job(job_type: Literal["web", "pdf"], title: str, runner, *args: Any) -> str:
     job_id = str(uuid.uuid4())
     _index_jobs[job_id] = {
         "job_id": job_id,
+        "job_type": job_type,
+        "title": title,
         "status": "running",
         "progress": {"current": 0, "total": 0, "title": ""},
         "started_at": datetime.now(UTC).isoformat(),
     }
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_index_job, job_id)
+    loop.run_in_executor(None, runner, job_id, *args)
+    return job_id
+
+
+@router.post("/index/build")
+async def admin_build_index(
+    body: BuildIndexBody | None = None,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, str]:
+    source_ids = body.source_ids if body else None
+    if source_ids:
+        title = f"Web corpus index: {len(source_ids)} article(s)"
+    else:
+        title = "Web corpus index"
+    job_id = _start_job("web", title, _run_web_index_job, source_ids)
     return {"job_id": job_id}
+
+
+@router.get("/index/jobs")
+async def admin_list_index_jobs(
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    jobs = sorted(
+        _index_jobs.values(),
+        key=lambda j: j.get("started_at") or "",
+        reverse=True,
+    )
+    return {"jobs": jobs[:50]}
 
 
 @router.get("/index/jobs/{job_id}")
@@ -268,13 +348,125 @@ async def admin_index_job_status(
 async def admin_index_stats(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
+    cfg = get_medical_config()
     counts = count_by_status(base_dir=_staging_dir())
-    points = await asyncio.to_thread(count_web_collection_points)
+    web_points, pdf_points = await asyncio.gather(
+        asyncio.to_thread(count_web_collection_points),
+        asyncio.to_thread(count_pdf_collection_points),
+    )
+    pdfs = await asyncio.to_thread(list_pdf_files)
     return {
         "staging": counts,
-        "web_collection_points": points,
-        "web_collection": get_medical_config().web_corpus.collection_name,
+        "web_collection_points": web_points,
+        "web_collection": cfg.web_corpus.collection_name,
+        "pdf_collection_points": pdf_points,
+        "pdf_collection": cfg.rag.collection_name,
+        "pdf_files_count": len(pdfs),
+        "raw_documents_dir": cfg.rag.raw_documents_dir,
+        "chunk_size": cfg.rag.chunk_size,
+        "chunk_overlap": cfg.rag.chunk_overlap,
+        "embedding_provider": cfg.rag.embedding_provider,
     }
+
+
+@router.get("/pdf")
+async def admin_list_pdfs(
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    files = await asyncio.to_thread(list_pdf_files)
+    return {"files": files, "count": len(files)}
+
+
+@router.post("/pdf/upload")
+async def admin_upload_pdf(
+    file: UploadFile = File(...),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    filename = Path(file.filename or "").name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files are allowed")
+    raw_dir = raw_documents_dir()
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    dest = raw_dir / filename
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "Empty file")
+    dest.write_bytes(content)
+    stat = dest.stat()
+    return {
+        "name": filename,
+        "path": filename,
+        "size_bytes": stat.st_size,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+    }
+
+
+@router.delete("/articles/{source_id}")
+async def admin_delete_web_article(
+    source_id: str,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    result = await asyncio.to_thread(
+        delete_web_article,
+        source_id,
+        staging_dir=_staging_dir(),
+    )
+    if not result.get("found"):
+        raise HTTPException(404, "Article not found")
+    return result
+
+
+@router.delete("/articles/{source_id}/vectors")
+async def admin_unindex_web_article(
+    source_id: str,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    result = await asyncio.to_thread(
+        unindex_web_article,
+        source_id,
+        staging_dir=_staging_dir(),
+    )
+    if not result.get("found"):
+        raise HTTPException(404, "Article not found")
+    return result
+
+
+@router.delete("/pdf/vectors")
+async def admin_unindex_pdf_vectors(
+    path: str = Query(..., min_length=1),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    return await asyncio.to_thread(unindex_pdf_vectors, path)
+
+
+@router.delete("/pdf")
+async def admin_delete_pdf(
+    path: str = Query(..., min_length=1),
+    remove_vectors: bool = Query(True),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    vectors_removed = 0
+    if remove_vectors:
+        vector_result = await asyncio.to_thread(unindex_pdf_vectors, path)
+        vectors_removed = int(vector_result.get("points_deleted", 0))
+
+    deleted = await asyncio.to_thread(delete_pdf_file, path)
+    if not deleted:
+        raise HTTPException(404, "PDF not found")
+    return {
+        "message": "PDF deleted",
+        "vectors_removed": vectors_removed,
+    }
+
+
+@router.post("/pdf/ingest")
+async def admin_pdf_ingest(
+    body: PdfIngestBody,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, str]:
+    title = f"PDF ingest: {body.path}" if body.path else "PDF ingest: all files"
+    job_id = _start_job("pdf", title, _run_pdf_ingest_job, body.path)
+    return {"job_id": job_id}
 
 
 def _parse_user_id(user_id: str) -> ObjectId:
