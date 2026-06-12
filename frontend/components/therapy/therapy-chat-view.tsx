@@ -50,6 +50,13 @@ function getSessionTitle(session: ChatSession): string {
   return `${trimmed.slice(0, 36)}…`;
 }
 
+function getSessionSubtitle(session: ChatSession): string | null {
+  const summary = session.summary?.trim();
+  if (!summary) return null;
+  if (summary.length <= 72) return summary;
+  return `${summary.slice(0, 72)}…`;
+}
+
 function getRetrievalSummary(metadata: ChatMessage["metadata"]) {
   const chunks = metadata?.retrieved_chunks;
   if (!Array.isArray(chunks) || chunks.length === 0) return null;
@@ -144,7 +151,9 @@ export function TherapyChatView(props: TherapyChatViewProps) {
             Recent
           </p>
           <div className="space-y-1 pb-4">
-            {sessions.map((session) => (
+            {sessions.map((session) => {
+              const subtitle = getSessionSubtitle(session);
+              return (
               <button
                 key={session.sessionId}
                 type="button"
@@ -156,9 +165,15 @@ export function TherapyChatView(props: TherapyChatViewProps) {
                     : "text-gray-600 hover:bg-white/60"
                 )}
               >
-                {getSessionTitle(session)}
+                <span className="block truncate">{getSessionTitle(session)}</span>
+                {subtitle && (
+                  <span className="mt-0.5 block truncate text-xs font-normal text-gray-400">
+                    {subtitle}
+                  </span>
+                )}
               </button>
-            ))}
+            );
+            })}
             {sessions.length === 0 && (
               <p className="py-2 text-sm text-gray-500">No sessions yet</p>
             )}

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
-  Brain,
   Calendar,
   Activity,
   Sun,
@@ -84,38 +83,18 @@ interface Activity {
   timestamp: Date;
   duration: number | null;
   completed: boolean;
-  moodScore: number | null;
-  moodNote: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 // Add this interface for stats
 interface DailyStats {
-  moodScore: number | null;
-  moodSource: "chat" | "form" | "none";
-  dominantEmotion: string | null;
   completionRate: number;
   mindfulnessCount: number;
   totalActivities: number;
   chatTurnsToday: number;
   lastUpdated: Date;
 }
-
-const EMOTION_LABELS: Record<string, string> = {
-  joy: "Joy",
-  neutral: "Neutral",
-  anxiety: "Anxious",
-  sadness: "Sad",
-  anger: "Angry",
-  hopeless: "Hopeless",
-  overwhelmed: "Overwhelmed",
-  lonely: "Lonely",
-  grief: "Grief",
-  fear: "Afraid",
-  shame: "Ashamed",
-  guilt: "Guilty",
-};
 
 const generateInsights = (activities: Activity[]) => {
   const insights: {
@@ -130,35 +109,6 @@ const generateInsights = (activities: Activity[]) => {
   const recentActivities = activities.filter(
     (a) => new Date(a.timestamp) >= lastWeek
   );
-
-  // Analyze mood patterns
-  const moodEntries = recentActivities.filter(
-    (a) => a.type === "mood" && a.moodScore !== null
-  );
-  if (moodEntries.length >= 2) {
-    const averageMood =
-      moodEntries.reduce((acc, curr) => acc + (curr.moodScore || 0), 0) /
-      moodEntries.length;
-    const latestMood = moodEntries[moodEntries.length - 1].moodScore || 0;
-
-    if (latestMood > averageMood) {
-      insights.push({
-        title: "Mood Improvement",
-        description:
-          "Your recent mood scores are above your weekly average. Keep up the good work!",
-        icon: Brain,
-        priority: "high",
-      });
-    } else if (latestMood < averageMood - 20) {
-      insights.push({
-        title: "Mood Change Detected",
-        description:
-          "I've noticed a dip in your mood. Would you like to try some mood-lifting activities?",
-        icon: Heart,
-        priority: "high",
-      });
-    }
-  }
 
   // Analyze activity patterns
   const mindfulnessActivities = recentActivities.filter((a) =>
@@ -268,9 +218,6 @@ export default function Dashboard() {
   const [showActivityLogger, setShowActivityLogger] = useState(false);
   const [isSavingActivity, setIsSavingActivity] = useState(false);
   const [dailyStats, setDailyStats] = useState<DailyStats>({
-    moodScore: null,
-    moodSource: "none",
-    dominantEmotion: null,
     completionRate: 0,
     mindfulnessCount: 0,
     totalActivities: 0,
@@ -348,9 +295,6 @@ export default function Dashboard() {
     try {
       const stats = await getDashboardStats();
       setDailyStats({
-        moodScore: stats.mood_score,
-        moodSource: stats.mood_source,
-        dominantEmotion: stats.dominant_emotion,
         completionRate: stats.completion_rate,
         mindfulnessCount: stats.therapy_sessions,
         totalActivities: stats.total_activities_today,
@@ -371,24 +315,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchDailyStats]);
 
-  const moodDescription =
-    dailyStats.moodSource === "chat" && dailyStats.dominantEmotion
-      ? `From today's chat · ${EMOTION_LABELS[dailyStats.dominantEmotion] ?? dailyStats.dominantEmotion}`
-      : dailyStats.moodSource === "form"
-        ? "From today's mood check-in"
-        : dailyStats.chatTurnsToday > 0
-          ? "Chat today — no emotion detected yet"
-          : "No data for today yet";
-
   const wellnessStats = [
-    {
-      title: "Mood Score",
-      value: dailyStats.moodScore != null ? `${dailyStats.moodScore}%` : "No data",
-      icon: Brain,
-      color: "text-purple-500",
-      bgColor: "bg-purple-500/10",
-      description: moodDescription,
-    },
     {
       title: "Completion Rate",
       value: `${dailyStats.completionRate}%`,

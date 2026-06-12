@@ -44,6 +44,8 @@ class ConversationSummary(BaseModel):
     title: str
     updated_at: str
     chat_mode: str = CHAT_MODE
+    summary: str | None = None
+    summary_updated_at: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -458,12 +460,22 @@ async def conversations(
             if isinstance(updated, datetime)
             else str(updated)
         )
+        raw_summary = doc.get("summary")
+        summary = str(raw_summary).strip() if raw_summary else None
+        summary_updated = doc.get("summary_updated_at")
+        summary_updated_iso = (
+            summary_updated.replace(tzinfo=UTC).isoformat()
+            if isinstance(summary_updated, datetime)
+            else (str(summary_updated) if summary_updated else None)
+        )
         out.append(
             ConversationSummary(
                 session_id=sid,
                 title=str(doc.get("title") or "Chat"),
                 updated_at=updated_iso,
                 chat_mode=CHAT_MODE,
+                summary=summary or None,
+                summary_updated_at=summary_updated_iso,
             )
         )
     return out

@@ -6,30 +6,17 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 CONVERSATIONS = "conversations"
 MESSAGES = "messages"
-MOOD_ENTRIES = "mood_entries"
 ACTIVITY_COMPLETIONS = "activity_completions"
-USER_PROFILES = "user_profiles"
-MESSAGE_FEEDBACK = "message_feedback"
-SCREENING_RESPONSES = "screening_responses"
-KNOWLEDGE_CHUNKS = "knowledge_chunks"
 WELLNESS_ACTIVITIES = "wellness_activities"
 ACTIVITY_RATINGS = "activity_ratings"
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[MESSAGES].create_index([("conversation_id", 1), ("created_at", 1)])
-    await db[MOOD_ENTRIES].create_index([("session_id", 1), ("created_at", -1)])
     await db[CONVERSATIONS].create_index([("session_id", 1)], unique=True)
     await db[CONVERSATIONS].create_index([("user_id", 1), ("updated_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("session_id", 1), ("created_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("linked_message_id", 1)])
-    await db[USER_PROFILES].create_index([("session_id", 1)], unique=True)
-    await db[MESSAGE_FEEDBACK].create_index(
-        [("assistant_message_id", 1), ("session_id", 1)], unique=True
-    )
-    await db[SCREENING_RESPONSES].create_index([("session_id", 1), ("created_at", -1)])
-    await db[KNOWLEDGE_CHUNKS].create_index([("id", 1)], unique=True)
-    await db[KNOWLEDGE_CHUNKS].create_index([("topic", 1)])
     await db[WELLNESS_ACTIVITIES].create_index([("id", 1)], unique=True)
     await db[WELLNESS_ACTIVITIES].create_index([("active", 1), ("scope", 1)])
     await db[ACTIVITY_RATINGS].create_index([("session_id", 1), ("created_at", -1)])
@@ -140,6 +127,7 @@ async def get_conversation_summary(
     db: AsyncIOMotorDatabase,
     session_id: str,
 ) -> str:
+    """Read rolling session summary persisted on the conversations document."""
     conv = await get_conversation_by_session(db, session_id)
     if not conv:
         return ""
@@ -181,8 +169,6 @@ async def delete_conversation_by_session(
         )
     else:
         await db[ACTIVITY_COMPLETIONS].delete_many({"session_id": session_id})
-    await db[MESSAGE_FEEDBACK].delete_many({"session_id": session_id})
-    await db[USER_PROFILES].delete_one({"session_id": session_id})
     await db[CONVERSATIONS].delete_one({"session_id": session_id})
     return True
 
@@ -313,69 +299,6 @@ async def list_activity_completions(
     return [doc async for doc in cursor]
 
 
-async def add_mood_entry(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    score: int,
-    note: str | None = None,
-) -> dict[str, Any]:
-    now = datetime.now(UTC)
-    doc = {
-        "session_id": session_id,
-        "score": score,
-        "note": note,
-        "created_at": now,
-    }
-    res = await db[MOOD_ENTRIES].insert_one(doc)
-    doc["_id"] = res.inserted_id
-    return doc
-
-
-async def list_mood_entries(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    limit: int = 60,
-) -> list[dict[str, Any]]:
-    cursor = (
-        db[MOOD_ENTRIES]
-        .find({"session_id": session_id})
-        .sort("created_at", -1)
-        .limit(limit)
-    )
-    rows = [doc async for doc in cursor]
-    rows.reverse()
-    return rows
-
-
-# ---------------------------------------------------------------------------
-# User profiles — long-term memory across sessions
-# ---------------------------------------------------------------------------
-
-async def get_user_profile(
-    db: AsyncIOMotorDatabase,
-    session_id: str,
-) -> dict[str, Any] | None:
-    return await db[USER_PROFILES].find_one({"session_id": session_id})
-
-
-async def upsert_user_profile(
-    db: AsyncIOMotorDatabase,
-    session_id: str,
-    updates: dict[str, Any],
-) -> None:
-    now = datetime.now(UTC)
-    await db[USER_PROFILES].update_one(
-        {"session_id": session_id},
-        {
-            "$set": {**updates, "updated_at": now},
-            "$setOnInsert": {"session_id": session_id, "created_at": now},
-        },
-        upsert=True,
-    )
-
-
 async def count_user_messages(
     db: AsyncIOMotorDatabase,
     conversation_id: ObjectId,
@@ -383,138 +306,6 @@ async def count_user_messages(
     return await db[MESSAGES].count_documents(
         {"conversation_id": conversation_id, "role": "user"}
     )
-
-
-async def save_message_feedback(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    assistant_message_id: str,
-    value: str,
-) -> dict[str, Any]:
-    now = datetime.now(UTC)
-    doc = {
-        "session_id": session_id,
-        "assistant_message_id": assistant_message_id,
-        "value": value,
-        "created_at": now,
-    }
-    await db[MESSAGE_FEEDBACK].update_one(
-        {"session_id": session_id, "assistant_message_id": assistant_message_id},
-        {"$set": doc},
-        upsert=True,
-    )
-    return doc
-
-
-async def get_message_feedback(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    assistant_message_id: str,
-) -> dict[str, Any] | None:
-    return await db[MESSAGE_FEEDBACK].find_one(
-        {"session_id": session_id, "assistant_message_id": assistant_message_id}
-    )
-
-
-async def save_screening_response(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    instrument: str,
-    answers: list[int],
-    score: int,
-) -> dict[str, Any]:
-    now = datetime.now(UTC)
-    doc = {
-        "session_id": session_id,
-        "instrument": instrument,
-        "answers": answers,
-        "score": score,
-        "created_at": now,
-    }
-    res = await db[SCREENING_RESPONSES].insert_one(doc)
-    doc["_id"] = res.inserted_id
-    return doc
-
-
-async def latest_screening(
-    db: AsyncIOMotorDatabase,
-    *,
-    session_id: str,
-    instrument: str | None = None,
-) -> dict[str, Any] | None:
-    query: dict[str, Any] = {"session_id": session_id}
-    if instrument:
-        query["instrument"] = instrument
-    return await db[SCREENING_RESPONSES].find_one(query, sort=[("created_at", -1)])
-
-
-async def get_mood_trend(
-    db: AsyncIOMotorDatabase,
-    session_id: str,
-    limit: int = 5,
-) -> str:
-    """Derive mood trend from recent entries: 'improving', 'declining', or 'stable'."""
-    cursor = (
-        db[MOOD_ENTRIES]
-        .find({"session_id": session_id})
-        .sort("created_at", -1)
-        .limit(limit)
-    )
-    rows = [doc async for doc in cursor]
-    if len(rows) < 2:
-        return "stable"
-    scores = [int(r["score"]) for r in reversed(rows)]
-    delta = scores[-1] - scores[0]
-    if delta >= 1:
-        return "improving"
-    if delta <= -1:
-        return "declining"
-    return "stable"
-
-
-# ---------------------------------------------------------------------------
-# Knowledge chunks — optional Mongo-backed vector RAG
-# ---------------------------------------------------------------------------
-
-async def upsert_knowledge_chunk(
-    db: AsyncIOMotorDatabase,
-    *,
-    chunk_id: str,
-    text: str,
-    topic: str = "",
-    embedding: list[float] | None = None,
-    source: str = "chunks.json",
-) -> None:
-    now = datetime.now(UTC)
-    doc: dict[str, Any] = {
-        "id": chunk_id,
-        "text": text,
-        "topic": topic,
-        "source": source,
-        "updated_at": now,
-    }
-    if embedding is not None:
-        doc["embedding"] = embedding
-    await db[KNOWLEDGE_CHUNKS].update_one(
-        {"id": chunk_id},
-        {
-            "$set": doc,
-            "$setOnInsert": {"created_at": now},
-        },
-        upsert=True,
-    )
-
-
-async def list_knowledge_chunks(
-    db: AsyncIOMotorDatabase,
-    *,
-    limit: int = 1000,
-) -> list[dict[str, Any]]:
-    cursor = db[KNOWLEDGE_CHUNKS].find({}).limit(limit)
-    return [doc async for doc in cursor]
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +338,6 @@ def activity_to_api(doc: dict[str, Any], *, lang: str = "vi") -> dict[str, Any]:
         video_source = {
             "name": str(video_source_raw.get("name") or "").strip(),
             "url": video_source_raw.get("url"),
-            "license": video_source_raw.get("license"),
             "attribution": attribution or None,
         }
         if not (video_source.get("name") or video_source.get("attribution")):

@@ -90,8 +90,6 @@ class Settings(BaseSettings):
     external_mcp_allowed_tools: str = ""
     external_mcp_timeout_seconds: float = 6.0
     external_mcp_max_response_chars: int = 2000
-    personalization_recent_mood_limit: int = 5
-    personalization_recent_note_limit: int = 3
     conversation_summary_max_tokens: int = Field(
         default=512,
         validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),

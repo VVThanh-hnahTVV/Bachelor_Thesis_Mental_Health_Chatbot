@@ -21,7 +21,6 @@ export interface ChatMessage {
       rated?: boolean;
       rating?: number;
     };
-    prompt_screening?: string | null;
     retrieval_mode?: "vector" | "lexical" | "hybrid" | "none";
     retrieved_chunks?: Array<{
       id: string;
@@ -40,6 +39,7 @@ export interface ChatMessage {
 export interface ChatSession {
   sessionId: string;
   title?: string;
+  summary?: string;
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
@@ -220,7 +220,6 @@ export const sendChatMessage = async (
     message_type: data.message_type ?? "normal",
     metadata: {
       ...(data.metadata || {}),
-      prompt_screening: data.metadata?.prompt_screening,
     },
   };
 };
@@ -289,6 +288,7 @@ export const getAllChatSessions = async (): Promise<ChatSession[]> => {
   return data.map((session: any) => ({
     sessionId: String(session.session_id),
     title: session.title ? String(session.title) : undefined,
+    summary: session.summary ? String(session.summary) : undefined,
     messages: [],
     createdAt: new Date(session.updated_at),
     updatedAt: new Date(session.updated_at),

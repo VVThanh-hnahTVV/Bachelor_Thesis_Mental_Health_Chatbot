@@ -61,8 +61,6 @@ const staticActivities = [
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
     duration: 10,
     completed: true,
-    moodScore: 8,
-    moodNote: "Feeling refreshed",
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
     updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
   },
@@ -75,8 +73,6 @@ const staticActivities = [
     timestamp: new Date(Date.now() - 1000 * 60 * 60 * 1),
     duration: 30,
     completed: false,
-    moodScore: null,
-    moodNote: null,
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 1),
     updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 1),
   },
@@ -171,29 +167,6 @@ export const getUserActivities = async (userId: string) => {
   return staticActivities.filter((activity) => activity.userId === userId);
 };
 
-export const saveMoodData = async (data: {
-  userId: string;
-  mood: number;
-  note?: string;
-}) => {
-  const newActivity = {
-    id: Math.random().toString(36).substr(2, 9),
-    userId: data.userId,
-    type: "mood",
-    name: "Mood Check-in",
-    description: data.note || "",
-    timestamp: new Date(),
-    duration: 0,
-    completed: true,
-    moodScore: data.mood,
-    moodNote: data.note || "",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-  staticActivities.push(newActivity);
-  return newActivity;
-};
-
 export const logActivity = async (data: {
   userId: string;
   type: string;
@@ -210,8 +183,6 @@ export const logActivity = async (data: {
     timestamp: new Date(),
     duration: data.duration || 0,
     completed: false,
-    moodScore: 0,
-    moodNote: "",
     createdAt: new Date(),
     updatedAt: new Date(),
   };

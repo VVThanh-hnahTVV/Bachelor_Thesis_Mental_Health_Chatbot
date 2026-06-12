@@ -9,7 +9,6 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db.repository import (
     ACTIVITY_COMPLETIONS,
     CONVERSATIONS,
-    MOOD_ENTRIES,
     create_conversation,
     get_conversation_by_session,
 )
@@ -186,8 +185,7 @@ async def link_session_to_user(
         )
 
     user_ref = user_id
-    for coll in (MOOD_ENTRIES, ACTIVITY_COMPLETIONS):
-        await db[coll].update_many(
-            {"session_id": session_id},
-            {"$set": {"user_id": user_ref}},
-        )
+    await db[ACTIVITY_COMPLETIONS].update_many(
+        {"session_id": session_id},
+        {"$set": {"user_id": user_ref}},
+    )

@@ -34,7 +34,7 @@ function renderInteractive(uiComponent: string, onComplete?: () => void) {
     default:
       return (
         <p className="text-sm text-muted-foreground">
-          Activity UI not available for &quot;{uiComponent}&quot;.
+          Giao diện bài tập chưa khả dụng cho &quot;{uiComponent}&quot;.
         </p>
       );
   }
@@ -70,7 +70,7 @@ export function ActivityPopupHost({
           <WellnessVideoPopup
             videoUrl={activity.video_url}
             youtubeId={activity.youtube_id}
-            title={activity.description}
+            videoTitle={activity.title}
             videoSource={activity.video_source}
           />
         ) : (

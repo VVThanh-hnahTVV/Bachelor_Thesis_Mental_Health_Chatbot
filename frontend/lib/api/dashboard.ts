@@ -4,10 +4,6 @@ import { getOrCreateSessionId } from "@/lib/session";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export interface DashboardStats {
-  mood_score: number | null;
-  mood_source: "chat" | "form" | "none";
-  dominant_emotion: string | null;
-  emotion_samples_today: number;
   completion_rate: number;
   therapy_sessions: number;
   total_activities_today: number;
@@ -60,10 +56,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const engaged = activitiesToday > 0 || sessions > 0;
 
   return {
-    mood_score: null,
-    mood_source: "none",
-    dominant_emotion: null,
-    emotion_samples_today: 0,
     completion_rate: engaged ? 100 : 0,
     therapy_sessions: sessions,
     total_activities_today: activitiesToday,

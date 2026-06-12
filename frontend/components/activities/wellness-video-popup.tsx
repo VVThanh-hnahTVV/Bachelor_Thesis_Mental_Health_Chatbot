@@ -35,33 +35,31 @@ function isDirectVideoUrl(url: string): boolean {
 interface WellnessVideoPopupProps {
   videoUrl?: string | null;
   youtubeId?: string | null;
-  title?: string;
+  /** Accessible label for the player — not shown as duplicate body text. */
+  videoTitle?: string;
   videoSource?: VideoSourceCredit | null;
 }
 
 export function WellnessVideoPopup({
   videoUrl,
   youtubeId,
-  title,
+  videoTitle,
   videoSource,
 }: WellnessVideoPopupProps) {
   const ytId = extractYoutubeId(youtubeId, videoUrl);
   const directSrc = !ytId && videoUrl?.trim() && isDirectVideoUrl(videoUrl.trim())
     ? videoUrl.trim()
     : null;
+  const playerLabel = videoTitle?.trim() || videoSource?.name || "Video thư giãn";
 
   return (
     <div className="space-y-3">
-      {title ? (
-        <p className="text-sm text-muted-foreground">{title}</p>
-      ) : null}
-
       {ytId ? (
         <div className="relative w-full overflow-hidden rounded-lg bg-black pt-[56.25%]">
           <iframe
             className="absolute inset-0 h-full w-full"
             src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
-            title={title || videoSource?.name || "Wellness video"}
+            title={playerLabel}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
@@ -75,16 +73,17 @@ export function WellnessVideoPopup({
           preload="metadata"
           src={directSrc}
         >
-          Your browser does not support video playback.
+          Trình duyệt không hỗ trợ phát video.
         </video>
       ) : (
         <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          Video is not available. Please try again later.
+          Video hiện không khả dụng. Vui lòng thử lại sau.
         </p>
       )}
 
       <p className="text-xs text-muted-foreground">
-        Follow the guided video at your own pace. Pause or stop anytime.
+        Theo video hướng dẫn ở tốc độ phù hợp với bạn. Có thể tạm dừng hoặc dừng bất cứ
+        lúc nào.
       </p>
 
       {videoSource ? (
@@ -93,7 +92,7 @@ export function WellnessVideoPopup({
             <p>{videoSource.attribution}</p>
           ) : videoSource.name ? (
             <p>
-              Source:{" "}
+              Nguồn:{" "}
               {videoSource.url ? (
                 <a
                   href={videoSource.url}
@@ -107,9 +106,6 @@ export function WellnessVideoPopup({
                 videoSource.name
               )}
             </p>
-          ) : null}
-          {videoSource.license ? (
-            <p className="mt-1 opacity-80">License: {videoSource.license}</p>
           ) : null}
         </div>
       ) : null}
