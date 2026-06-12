@@ -18,6 +18,14 @@ from app.medical.agents.guardrails.local_guardrails import LocalGuardrails
 from app.medical.config import get_medical_config
 from app.medical.rag_catalog import build_decision_system_prompt
 from app.medical.validation_input import extract_input_text
+from app.medical.agents.structured_output import (
+    ACTIVITIES_INTRO_RULES,
+    SUGGEST_ACTIVITIES_RULES,
+    RouteAgentDecision,
+    conversation_format_instructions,
+    merge_activities_intro,
+    parse_conversation_output,
+)
 
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -49,7 +57,7 @@ class AgentState(MessagesState):
     bypass_routing: bool  # Flag to bypass agent routing for guardrails
     insufficient_info: bool  # Deprecated alias; use web_search
     web_search: bool  # RAG requests follow-up web search when context is incomplete
-    suggest_activities: bool  # Agent decision: show wellness activity buttons
+    suggest_activities: bool  # Set by executing agent (conversation / RAG / web)
     suggested_activities: Optional[List[Dict[str, str]]]  # Wellness activity suggestions for UI
     wellness_retrieval_score: Optional[float]
     wellness_retrieval_source: Optional[str]
@@ -93,7 +101,7 @@ def create_agent_graph():
     decision_model = config.agent_decision.llm
     
     # Initialize the output parser
-    json_parser = JsonOutputParser(pydantic_object=AgentDecision)
+    json_parser = JsonOutputParser(pydantic_object=RouteAgentDecision)
     
     decision_runner = decision_model | json_parser
 
@@ -145,6 +153,26 @@ def create_agent_graph():
                     "messages": [blocked],
                     "output": blocked,
                     "agent_name": "INPUT_GUARDRAILS",
+                    "bypass_routing": True,
+                    "user_language": user_language,
+                }
+
+            from app.handoff.messages import handoff_ack
+
+            threshold = settings.handoff_confidence_threshold
+            if guard_result.needs_human and guard_result.handoff_confidence >= threshold:
+                emit_progress("HUMAN_HANDOFF")
+                ack_text = handoff_ack(user_language)
+                ack = AIMessage(content=ack_text)
+                print(
+                    f"Selected agent: HUMAN_HANDOFF "
+                    f"(confidence={guard_result.handoff_confidence:.2f})"
+                )
+                return {
+                    **state,
+                    "messages": [ack],
+                    "output": ack,
+                    "agent_name": "HUMAN_HANDOFF",
                     "bypass_routing": True,
                     "user_language": user_language,
                 }
@@ -210,9 +238,9 @@ def create_agent_graph():
         
         # Route based on agent name and confidence
         if decision["confidence"] < AgentConfig.CONFIDENCE_THRESHOLD:
-            return {"agent_state": updated_state, "next": "needs_validation"}
-        
-        return {"agent_state": updated_state, "next": decision["agent"]}
+            return {**updated_state, "next": "needs_validation"}
+
+        return {**updated_state, "next": decision["agent"]}
 
     # Define agent execution functions (these will be implemented in their respective modules)
     def run_conversation_agent(state: AgentState) -> AgentState:
@@ -234,72 +262,76 @@ def create_agent_graph():
 
         Detected user language code: {user_language} (for downstream localization only).
 
-        You are Helios, an AI-powered medical conversation assistant. Your goal is to facilitate smooth and informative conversations with users, handling both casual and medical-related queries. You must respond naturally while ensuring medical accuracy and clarity.
+        You are Helios, an AI assistant for **mental health information and supportive guidance** (tra cứu & tư vấn sức khỏe tâm thần). Your goal is warm, clear, empathetic conversation — not cold or generic chatbot replies.
 
         ### Identity & tone
         - Say "I am Helios" (or introduce yourself by name) ONLY on the first turn of a chat, when the user greets you, or when they explicitly ask who you are.
         - If there is prior conversation in the memory context above, do NOT re-introduce yourself — answer the user's question directly.
         - Never open follow-up replies with a repeated self-introduction.
+        - Prefer **warm, human** tone (empathetic, concise). Avoid stiff phrases like "AI medical assistant" alone — describe your role as mental health lookup and supportive guidance.
 
         ### Role & Capabilities
-        - Engage in **general conversation** while maintaining professionalism.
-        - Answer **medical questions** using verified knowledge.
-        - Route **complex queries** to RAG (retrieval-augmented generation) or web search if needed.
+        - Listen and respond empathetically to feelings (anxiety, stress, low mood, burnout).
+        - Explain mental health topics in **plain language**.
+        - Answer factual health questions using verified knowledge when relevant.
         - Handle **follow-up questions** while keeping track of conversation context.
 
         ### Guidelines for Responding:
-        1. **General Conversations:**
-        - If the user engages in casual talk (e.g., greetings, small talk), respond in a friendly, engaging manner.
-        - On greetings or first contact only: briefly introduce yourself as Helios, then invite their question.
+        1. **General Conversations & greetings:**
+        - If the user greets you or asks what you can help with (e.g. "Hello", "What can you do?", "Bạn có thể giúp gì cho tôi?"):
+          - Briefly introduce yourself as Helios.
+          - Give a **short bullet list** (2–3 items) of what you can help with: emotions/stress, mental health topics in plain language, gentle wellness suggestions when fitting.
+          - Add **one sentence** disclaimer: informational support only, not a substitute for licensed professional diagnosis or treatment.
+          - End with an open invitation (what would they like to talk about today).
+          - Do NOT reply with only one generic line like "How can I help you today?" without explaining your scope.
         - On follow-up messages: skip greetings and self-introduction; respond to what they asked.
         - Keep responses **concise and engaging**, unless a detailed answer is needed.
 
-        2. **Medical Questions:**
+        2. **When suggest_activities is true:**
+        - Keep "answer" short and warm (2–4 sentences).
+        - Do NOT list long generic DIY tip lists — the app shows guided exercise buttons below.
+        - Use "activities_intro" to invite the user to tap **Open** on exercise buttons below.
+
+        3. **Medical Questions:**
         - If you have **high confidence** in answering, provide a medically accurate response.
         - Ensure responses are **clear, concise, and factual**.
 
-        3. **Follow-Up & Clarifications:**
+        4. **Follow-Up & Clarifications:**
         - Maintain conversation history for better responses.
         - If a query is unclear, ask **follow-up questions** before answering.
 
         {PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS}
 
-        4. **Uncertainty & Ethical Considerations:**
+        5. **Uncertainty & Ethical Considerations:**
         - If unsure, **never assume** medical facts.
         - Recommend consulting a **licensed healthcare professional** for serious medical concerns.
         - Avoid providing **medical diagnoses** or **prescriptions**—stick to general knowledge.
 
-        ### Response Format:
-        - Maintain a **conversational yet professional tone**.
-        - If pulling from external sources (RAG/Web Search), mention **where the information is from** (e.g., "According to Mayo Clinic...").
-        - If a user asks for a diagnosis, remind them to **seek medical consultation**.
+        {SUGGEST_ACTIVITIES_RULES}
+
+        {ACTIVITIES_INTRO_RULES}
 
         {MARKDOWN_RESPONSE_INSTRUCTIONS}
 
-        ### Example User Queries & Responses (English internal draft):
-
-        **User:** "Hey, how's your day going?" (first message)
-        **You:** "Hello! I'm Helios, an AI medical assistant. How can I help you today?"
-
-        **User:** "My throat feels a bit sore" (follow-up — assistant already replied before)
-        **You:** "A sore throat is common with upper respiratory infections. Try warm fluids, rest your voice, and avoid smoke. See a doctor if it lasts more than a few days or you have a high fever."
-
-        **User:** "I have a headache and fever. What should I do?" (follow-up)
-        **You:** "Headaches and fever can have various causes, from infections to dehydration. If your symptoms persist, you should see a medical professional."
-
-        Conversational LLM Response:"""
-
-        # print("Conversation Prompt:", conversation_prompt)
+        Respond with JSON only (no markdown fences):
+        {conversation_format_instructions()}"""
 
         response = config.conversation.llm.invoke(conversation_prompt)
-        response_text = response.content if hasattr(response, "content") else str(response)
-        if "Conversational LLM Response:" in response_text:
-            response_text = response_text.split("Conversational LLM Response:", 1)[-1].strip()
+        structured = parse_conversation_output(response)
+        response_text = merge_activities_intro(
+            structured.answer,
+            suggest_activities=structured.suggest_activities,
+            activities_intro=structured.activities_intro,
+        )
+        suggest_activities = structured.suggest_activities
+
+        print(f"CONVERSATION_AGENT suggest_activities: {suggest_activities}")
 
         return {
             **state,
             "output": AIMessage(content=response_text),
-            "agent_name": "CONVERSATION_AGENT"
+            "agent_name": "CONVERSATION_AGENT",
+            "suggest_activities": suggest_activities,
         }
     
     def run_rag_agent(state: AgentState) -> AgentState:

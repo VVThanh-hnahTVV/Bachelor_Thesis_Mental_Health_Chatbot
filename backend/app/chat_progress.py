@@ -23,6 +23,7 @@ STEP_LABELS_VI: dict[str, str] = {
     "WEB_SEARCH_PROCESSOR_AGENT": "Đang tìm kiếm thông tin",
     "WELLNESS_AGENT": "Đang gợi ý bài tập thư giãn",
     "apply_guardrails": "Đang kiểm tra an toàn nội dung",
+    "HUMAN_HANDOFF": "Đang chuyển tới chuyên viên",
 }
 
 STEP_LABELS_EN: dict[str, str] = {
@@ -34,6 +35,7 @@ STEP_LABELS_EN: dict[str, str] = {
     "WEB_SEARCH_PROCESSOR_AGENT": "Searching for information",
     "WELLNESS_AGENT": "Suggesting wellness activities",
     "apply_guardrails": "Checking content safety",
+    "HUMAN_HANDOFF": "Connecting you with a counselor",
 }
 
 

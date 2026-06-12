@@ -152,7 +152,7 @@ def attach_wellness_after_retrieval(
     *,
     lang: str = "vi",
 ) -> dict[str, Any]:
-    """After RAG / web search, attach activity buttons when the agent opted in."""
+    """After agent response, attach activity buttons when the agent opted in."""
     if state.get("suggested_activities"):
         return state
 
@@ -160,7 +160,12 @@ def attach_wellness_after_retrieval(
         return state
 
     agent_name = str(state.get("agent_name") or "")
-    if "RAG_AGENT" not in agent_name and "WEB_SEARCH_PROCESSOR_AGENT" not in agent_name:
+    allowed = (
+        "RAG_AGENT" in agent_name
+        or "WEB_SEARCH_PROCESSOR_AGENT" in agent_name
+        or "CONVERSATION_AGENT" in agent_name
+    )
+    if not allowed:
         return state
 
     from app.medical.validation_input import extract_input_text

@@ -53,6 +53,17 @@ Check for:
 9. Content unrelated to medicine or healthcare (unless clearly continuing the summarized medical chat)
 10. Non-medical task requests without medical follow-up context
 
+Additionally, detect if the user wants to speak with a human counselor or specialist:
+- Explicit requests: talk to a person, counselor, specialist, real human support
+- Implicit distress where AI alone is insufficient AND user signals wanting human help
+- Follow-ups confirming they want human support after a prior suggestion
+
+Set needs_human=true ONLY when the user clearly wants human involvement.
+Do NOT set needs_human for general medical questions Helios can answer.
+Self-harm help-seeking without explicit human request → needs_human=false (still SAFE).
+When status=UNSAFE, needs_human must be false and handoff_confidence must be 0.
+Provide handoff_confidence 0.0–1.0 and brief handoff_reason when needs_human=true.
+
 Respond with JSON only (no markdown fences). All string values must be in English.
 {format_instructions}"""
         )
@@ -140,7 +151,7 @@ Final message:"""
             GuardrailInputResult with is_allowed, message, and user_language.
         """
         if not user_input.strip():
-            return GuardrailInputResult(True, user_input, "en")
+            return GuardrailInputResult(True, user_input, "en", needs_human=False)
 
         result = self.input_guardrail_chain.invoke(
             {
@@ -164,9 +175,20 @@ Final message:"""
                 False,
                 AIMessage(content=blocked),
                 user_language,
+                needs_human=False,
+                handoff_confidence=0.0,
             )
 
-        return GuardrailInputResult(True, user_input, user_language)
+        needs_human = bool(parsed.needs_human) and parsed.status == "SAFE"
+        confidence = float(parsed.handoff_confidence or 0.0) if needs_human else 0.0
+
+        return GuardrailInputResult(
+            True,
+            user_input,
+            user_language,
+            needs_human=needs_human,
+            handoff_confidence=confidence,
+        )
 
     _PROMPT_LEAK_MARKERS = (
         "ORIGINAL USER QUERY:",

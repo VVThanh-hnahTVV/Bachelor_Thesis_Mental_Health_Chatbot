@@ -107,6 +107,10 @@ class Settings(BaseSettings):
         default=512,
         validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),
     )
+    handoff_confidence_threshold: float = Field(
+        default=0.85,
+        validation_alias=AliasChoices("HANDOFF_CONFIDENCE_THRESHOLD"),
+    )
     graph_external_mcp_server: str | None = None
     graph_external_mcp_tool: str | None = None
 

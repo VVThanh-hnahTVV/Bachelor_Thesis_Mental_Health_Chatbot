@@ -224,10 +224,11 @@ Make your decision based on these guidelines:
 - If the user asks about recent medical developments or current health situations, use the web search processor agent.
 - If the user asks specific medical knowledge questions that match an ingested source topic above, use the RAG agent.
 - If the user shares symptoms or asks about conditions (e.g. anxiety, insomnia, stress, pain), use RAG_AGENT when the topic matches ingested sources, otherwise CONVERSATION_AGENT for empathetic guidance.
-- Do NOT route to a separate wellness agent. In-app wellness activity buttons are attached automatically after RAG or web search when relevant.
+- Do NOT route to a separate wellness agent. Each agent decides whether to suggest in-app wellness activities in its own output.
 
 Examples:
 - "Dạo này tôi hay lo âu mất ngủ" -> RAG_AGENT or CONVERSATION_AGENT
+- "Bạn có hoạt động nào giảm căng thẳng không" -> CONVERSATION_AGENT
 - "Tiểu đường type 2 là gì?" -> RAG_AGENT
 - "Chào Helios" -> CONVERSATION_AGENT
 
@@ -235,7 +236,7 @@ You must provide your answer in JSON format with the following structure:
 {{
 "agent": "AGENT_NAME",
 "reasoning": "Your step-by-step reasoning for selecting this agent",
-"confidence": 0.95  // Value between 0.0 and 1.0 indicating your confidence in this decision
+"confidence": 0.95
 }}
 """
 

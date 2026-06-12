@@ -11,6 +11,7 @@ from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router as api_router
+from app.api.ws_routes import router as ws_router
 from app.auth.repository import ensure_auth_indexes
 from app.cache.redis_client import close_redis_client, get_redis_client
 from app.config import get_settings
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(mcp_router)
+    app.include_router(ws_router)
 
     if s.enable_internal_mcp_server:
         mcp_asgi_app = create_mcp_asgi_app(

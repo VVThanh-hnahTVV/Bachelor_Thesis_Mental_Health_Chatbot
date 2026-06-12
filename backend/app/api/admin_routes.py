@@ -28,10 +28,14 @@ from app.crawl.pipeline import run_crawl
 from app.db.repository import (
     count_conversations_admin,
     count_wellness_activities,
+    conversation_admin_dict,
     get_admin_overview_stats,
     get_conversation_admin_stats,
+    get_conversation_by_session,
     get_wellness_activity_by_id,
     list_conversations_admin,
+    list_conversations_support_queue,
+    list_messages_chronological,
     list_wellness_activities,
     upsert_wellness_activity,
     wellness_activity_admin_dict,
@@ -568,6 +572,99 @@ async def admin_list_conversations(
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
     }
+
+
+@router.get("/conversations/queue")
+async def admin_conversations_queue(
+    request: Request,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    admin_id = admin.get("_id")
+    assigned_id = admin_id if isinstance(admin_id, ObjectId) else None
+    rows = await list_conversations_support_queue(db, assigned_support_id=assigned_id)
+    return {
+        "conversations": [conversation_admin_dict({**row, "message_count": 0}) for row in rows],
+    }
+
+
+@router.get("/conversations/{session_id}")
+async def admin_get_conversation(
+    session_id: str,
+    request: Request,
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _get_db(request)
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    return conversation_admin_dict({**conv, "message_count": 0, "_user_doc": []})
+
+
+@router.get("/conversations/{session_id}/messages")
+async def admin_conversation_messages(
+    session_id: str,
+    request: Request,
+    limit: int = Query(500, ge=1, le=1000),
+    _admin: dict[str, Any] = Depends(require_admin),
+) -> list[dict[str, Any]]:
+    db = _get_db(request)
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    cid = conv.get("_id")
+    if not isinstance(cid, ObjectId):
+        raise HTTPException(404, "Conversation not found")
+    rows = await list_messages_chronological(
+        db, conversation_id=cid, limit=limit, include_support_only=True
+    )
+    out: list[dict[str, Any]] = []
+    for doc in rows:
+        meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+        created = doc.get("created_at")
+        out.append(
+            {
+                "id": str(doc.get("_id") or ""),
+                "role": str(doc.get("role") or ""),
+                "content": str(doc.get("content") or ""),
+                "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created),
+                "metadata": meta,
+                "sender_name": meta.get("sender_name") or doc.get("role"),
+            }
+        )
+    return out
+
+
+@router.post("/conversations/{session_id}/join")
+async def admin_join_conversation(
+    session_id: str,
+    request: Request,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.handoff.service import join_support_session
+
+    db = _get_db(request)
+    redis = getattr(request.app.state, "redis", None)
+    try:
+        return await join_support_session(db, redis, session_id=session_id, admin_user=admin)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+
+@router.post("/conversations/{session_id}/leave")
+async def admin_leave_conversation(
+    session_id: str,
+    request: Request,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.handoff.service import leave_support_session
+
+    db = _get_db(request)
+    redis = getattr(request.app.state, "redis", None)
+    try:
+        return await leave_support_session(db, redis, session_id=session_id, admin_user=admin)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
 
 
 @router.get("/users")

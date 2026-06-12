@@ -5,11 +5,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export interface ChatMessage {
   id?: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "support" | "system";
   content: string;
   timestamp: Date;
   metadata?: {
-    message_type?: "normal" | "off_topic" | "medical";
+    message_type?: "normal" | "off_topic" | "medical" | string;
+    sender_name?: string;
+    visibility?: string;
     suggested_activities?: Array<{
       id: string;
       title: string;
@@ -52,6 +54,8 @@ export interface ApiResponse {
   assistant_message_id?: string;
   message_type?: "normal" | "off_topic" | "medical";
   metadata?: ChatMessage["metadata"];
+  support_mode?: string;
+  assigned_support_name?: string | null;
 }
 
 export const createChatSession = async (): Promise<string> => {
@@ -67,6 +71,8 @@ function mapStreamDoneToApiResponse(data: Record<string, unknown>): ApiResponse 
     response: String(data.reply ?? ""),
     assistant_message_id: (data.assistant_message_id as string) ?? undefined,
     message_type: (data.message_type as ApiResponse["message_type"]) ?? "normal",
+    support_mode: data.support_mode as string | undefined,
+    assigned_support_name: data.assigned_support_name as string | null | undefined,
     metadata: {
       ...((data.metadata as ChatMessage["metadata"]) || {}),
       suggested_activities:
@@ -218,6 +224,8 @@ export const sendChatMessage = async (
     response: data.reply,
     assistant_message_id: data.assistant_message_id ?? undefined,
     message_type: data.message_type ?? "normal",
+    support_mode: data.support_mode,
+    assigned_support_name: data.assigned_support_name,
     metadata: {
       ...(data.metadata || {}),
     },

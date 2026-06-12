@@ -24,6 +24,9 @@ import {
 } from "@/lib/api/admin-settings";
 import {
   getConversationStats,
+  getAdminConversation,
+  getAdminConversationMessages,
+  getSupportQueue,
   listAdminConversations,
   type ConversationOwnerFilter,
 } from "@/lib/api/admin-conversations";
@@ -77,6 +80,11 @@ export const adminKeys = {
       search?: string;
       owner?: ConversationOwnerFilter | "";
     }) => [...conversationsRoot, "list", params] as const,
+    queue: () => [...conversationsRoot, "queue"] as const,
+    detail: (sessionId: string) =>
+      [...conversationsRoot, "detail", sessionId] as const,
+    messages: (sessionId: string) =>
+      [...conversationsRoot, "messages", sessionId] as const,
   },
   settings: {
     all: settingsRoot,
@@ -186,6 +194,35 @@ export function useAdminConversations(params: {
         owner: params.owner || undefined,
       }),
     placeholderData: keepPreviousData,
+    ...adminQueryDefaults,
+  });
+}
+
+export function useSupportQueue() {
+  return useQuery({
+    queryKey: adminKeys.conversations.queue(),
+    queryFn: getSupportQueue,
+    refetchInterval: 10_000,
+    ...adminQueryDefaults,
+  });
+}
+
+export function useAdminConversationDetail(sessionId: string) {
+  return useQuery({
+    queryKey: adminKeys.conversations.detail(sessionId),
+    queryFn: () => getAdminConversation(sessionId),
+    enabled: Boolean(sessionId),
+    refetchOnMount: "always",
+    ...adminQueryDefaults,
+  });
+}
+
+export function useAdminConversationMessages(sessionId: string) {
+  return useQuery({
+    queryKey: adminKeys.conversations.messages(sessionId),
+    queryFn: () => getAdminConversationMessages(sessionId),
+    enabled: Boolean(sessionId),
+    refetchInterval: 5_000,
     ...adminQueryDefaults,
   });
 }

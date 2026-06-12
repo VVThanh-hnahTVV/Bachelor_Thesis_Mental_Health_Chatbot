@@ -7,11 +7,11 @@ import logging
 from typing import Any
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.config import ProviderName, get_settings
+from app.config import ProviderName
 from app.db.repository import get_conversation_summary, update_conversation_summary
-from app.llm.factory import default_provider, get_chat_model, invoke_with_fallback
+from app.conversation.summary_markdown import generate_ai_rolling_summary
+from app.llm.factory import default_provider
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +22,18 @@ Given:
 - Previous summary (may be empty on the first turn)
 - The latest user message and assistant reply
 
-Produce an UPDATED summary that:
-- Merges new facts, topics, symptoms, and user goals from this turn
-- Keeps important context from the previous summary
-- Drops redundant or superseded details
-- Uses the same language as the user when possible
-- Stays under 12 sentences
+Produce an UPDATED summary in Markdown with these sections:
 
-Output ONLY the updated summary text. No headings, labels, or markdown fences.
+## Chủ đề chính
+## Triệu chứng / mối quan tâm
+## Bối cảnh quan trọng
+## Hành động / gợi ý đã đưa
+
+Rules:
+- Merge new facts; drop redundant details
+- Same language as the user when possible
+- Output Markdown only (no outer code fences)
+- Stay under ~12 sentences total
 """
 
 
@@ -40,24 +44,12 @@ async def _generate_incremental_summary(
     assistant_reply: str,
     provider: ProviderName,
 ) -> str:
-    prev = (previous_summary or "").strip() or "(none yet)"
-    human = (
-        f"Previous summary:\n{prev}\n\n"
-        f"Latest user message:\n{user_message.strip()}\n\n"
-        f"Latest assistant reply:\n{assistant_reply.strip()}\n\n"
-        "Updated summary:"
+    return await generate_ai_rolling_summary(
+        previous_summary=previous_summary,
+        user_message=user_message,
+        assistant_reply=assistant_reply,
+        provider=provider,
     )
-    max_tokens = get_settings().conversation_summary_max_tokens
-    llm = get_chat_model(provider)
-    msg = await invoke_with_fallback(
-        llm,
-        [SystemMessage(content=_SYSTEM), HumanMessage(content=human)],
-        primary=provider,
-        label="conversation_summary.update",
-        max_tokens=max_tokens,
-    )
-    text = msg.content if isinstance(msg.content, str) else str(msg.content)
-    return text.strip()
 
 
 async def run_conversation_summary_update(

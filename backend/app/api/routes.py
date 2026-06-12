@@ -18,8 +18,9 @@ from app.db.repository import (
     append_message,
     create_conversation,
     get_conversation_by_session,
+    get_support_mode,
     list_activity_completions,
-    list_messages_chronological,
+    list_messages_for_user,
 )
 from app.llm.factory import default_provider
 
@@ -68,6 +69,19 @@ class ChatResponse(BaseModel):
     message_type: str = "medical"
     suggested_activities: list[ActivitySuggestionOut] = Field(default_factory=list)
     metadata: dict[str, Any] | None = None
+    support_mode: str = "ai"
+    assigned_support_name: str | None = None
+
+
+class HandoffRequestBody(BaseModel):
+    session_id: str = Field(..., min_length=8, max_length=128)
+
+
+class ConversationStatusOut(BaseModel):
+    session_id: str
+    support_mode: str
+    assigned_support_name: str | None = None
+    assigned_support_id: str | None = None
 
 
 class WellnessStartRequest(BaseModel):
@@ -96,6 +110,8 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     from app.conversation.summary import schedule_conversation_summary_update
     from app.conversation.title import generate_conversation_title
     from app.db.repository import count_user_messages, update_conversation_title
+    from app.handoff.escalate import escalate_to_awaiting_support
+    from app.handoff.messages import CLOSED_SESSION_NOTICE, handoff_ack
 
     db = get_db(request)
     redis = get_redis(request)
@@ -120,13 +136,53 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
 
+    support_mode = get_support_mode(conv)
+    assigned_support_name = conv.get("assigned_support_name")
+
+    if support_mode == "human":
+        raise HTTPException(
+            409,
+            detail="Session is in human support mode. Send messages via WebSocket.",
+        )
+    if support_mode == "closed":
+        raise HTTPException(403, detail=CLOSED_SESSION_NOTICE["vi"])
+
     await append_message(
         db,
         conversation_id=cid,
         role="user",
         content=req.message,
-        metadata={"chat_mode": CHAT_MODE},
+        metadata={"chat_mode": CHAT_MODE, "visibility": "all"},
     )
+
+    if support_mode == "awaiting_support":
+        ack = handoff_ack("vi")
+        meta = {
+            "chat_mode": CHAT_MODE,
+            "agent_name": "HUMAN_HANDOFF",
+            "message_type": "medical",
+            "sender_name": "Helios",
+            "visibility": "all",
+        }
+        assistant_doc = await append_message(
+            db,
+            conversation_id=cid,
+            role="assistant",
+            content=ack,
+            metadata=meta,
+        )
+        aid = assistant_doc.get("_id")
+        return ChatResponse(
+            reply=ack,
+            session_id=req.session_id,
+            conversation_id=str(cid),
+            assistant_message_id=str(aid) if aid else None,
+            provider=default_provider(),
+            message_type="medical",
+            metadata=meta,
+            support_mode="awaiting_support",
+            assigned_support_name=assigned_support_name,
+        )
 
     user_turn_count = await count_user_messages(db, cid)
     default_titles = {"New chat", "Chat", ""}
@@ -152,15 +208,25 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
     suggested = meta.get("suggested_activities") or []
 
-    schedule_conversation_summary_update(
-        db,
-        redis,
-        session_id=req.session_id,
-        conversation_id=cid,
-        user_message=req.message,
-        assistant_reply=reply,
-        provider=medical_provider,
-    )
+    if meta.get("agent_name") == "HUMAN_HANDOFF":
+        await escalate_to_awaiting_support(
+            db,
+            redis,
+            conversation_id=cid,
+            session_id=req.session_id,
+            source="guard",
+        )
+        support_mode = "awaiting_support"
+    else:
+        schedule_conversation_summary_update(
+            db,
+            redis,
+            session_id=req.session_id,
+            conversation_id=cid,
+            user_message=req.message,
+            assistant_reply=reply,
+            provider=medical_provider,
+        )
 
     return ChatResponse(
         reply=reply,
@@ -171,6 +237,82 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         message_type="medical",
         suggested_activities=[ActivitySuggestionOut(**s) for s in suggested],
         metadata=meta,
+        support_mode=support_mode,
+        assigned_support_name=assigned_support_name,
+    )
+
+
+@router.post("/handoff/request", response_model=ChatResponse)
+async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatResponse:
+    from app.api.medical_handlers import resolve_conversation
+    from app.handoff.escalate import escalate_to_awaiting_support
+    from app.handoff.messages import handoff_ack
+
+    db = get_db(request)
+    redis = get_redis(request)
+    conv = await get_conversation_by_session(db, body.session_id)
+    conv = await resolve_conversation(db, session_id=body.session_id, conv=conv)
+    cid = conv["_id"]
+    assert isinstance(cid, ObjectId)
+
+    support_mode = get_support_mode(conv)
+    if support_mode in ("awaiting_support", "human"):
+        ack = handoff_ack("vi")
+        return ChatResponse(
+            reply=ack,
+            session_id=body.session_id,
+            conversation_id=str(cid),
+            provider=default_provider(),
+            support_mode=support_mode,
+            assigned_support_name=conv.get("assigned_support_name"),
+        )
+
+    await escalate_to_awaiting_support(
+        db,
+        redis,
+        conversation_id=cid,
+        session_id=body.session_id,
+        source="button",
+    )
+    ack = handoff_ack("vi")
+    meta = {
+        "chat_mode": CHAT_MODE,
+        "agent_name": "HUMAN_HANDOFF",
+        "message_type": "medical",
+        "sender_name": "Helios",
+        "visibility": "all",
+    }
+    assistant_doc = await append_message(
+        db,
+        conversation_id=cid,
+        role="assistant",
+        content=ack,
+        metadata=meta,
+    )
+    aid = assistant_doc.get("_id")
+    return ChatResponse(
+        reply=ack,
+        session_id=body.session_id,
+        conversation_id=str(cid),
+        assistant_message_id=str(aid) if aid else None,
+        provider=default_provider(),
+        metadata=meta,
+        support_mode="awaiting_support",
+    )
+
+
+@router.get("/conversations/{session_id}/status", response_model=ConversationStatusOut)
+async def conversation_status(session_id: str, request: Request) -> ConversationStatusOut:
+    db = get_db(request)
+    conv = await get_conversation_by_session(db, session_id)
+    if not conv:
+        return ConversationStatusOut(session_id=session_id, support_mode="ai")
+    assigned = conv.get("assigned_support_id")
+    return ConversationStatusOut(
+        session_id=session_id,
+        support_mode=get_support_mode(conv),
+        assigned_support_name=conv.get("assigned_support_name"),
+        assigned_support_id=str(assigned) if isinstance(assigned, ObjectId) else None,
     )
 
 
@@ -251,6 +393,8 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
                 "message_type": result.message_type,
                 "suggested_activities": [s.model_dump() for s in result.suggested_activities],
                 "metadata": result.metadata,
+                "support_mode": result.support_mode,
+                "assigned_support_name": result.assigned_support_name,
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False, default=_json_default)}\n\n"
         except Exception as exc:
@@ -560,7 +704,7 @@ async def list_messages(session_id: str, request: Request, limit: int = 100) -> 
         return []
     cid = conv["_id"]
     assert isinstance(cid, ObjectId)
-    rows = await list_messages_chronological(db, conversation_id=cid, limit=limit)
+    rows = await list_messages_for_user(db, conversation_id=cid, limit=limit)
     out: list[MessageOut] = []
     for doc in rows:
         created = doc["created_at"]
@@ -572,8 +716,12 @@ async def list_messages(session_id: str, request: Request, limit: int = 100) -> 
         meta = doc.get("metadata")
         if isinstance(meta, dict):
             meta = {**meta, "chat_mode": CHAT_MODE}
+            if doc.get("role") == "assistant" and "sender_name" not in meta:
+                meta["sender_name"] = "Helios"
         else:
             meta = {"chat_mode": CHAT_MODE}
+            if str(doc.get("role")) == "assistant":
+                meta["sender_name"] = "Helios"
         out.append(
             MessageOut(
                 id=str(doc["_id"]),

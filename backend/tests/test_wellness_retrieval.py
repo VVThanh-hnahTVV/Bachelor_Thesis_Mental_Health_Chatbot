@@ -33,15 +33,27 @@ def test_retrieve_allows_anxiety_keyword(monkeypatch):
     assert any(s["id"] for s in result.suggestions)
 
 
-def test_attach_only_after_rag_or_web():
+def test_attach_skips_when_route_declines_activities():
     state = {
         "agent_name": "CONVERSATION_AGENT",
         "current_input": "tôi lo âu",
-        "suggest_activities": True,
+        "suggest_activities": False,
         "suggested_activities": [],
     }
     out = attach_wellness_after_retrieval(state)
     assert not out.get("suggested_activities")
+
+
+def test_attach_after_conversation_when_route_suggests(monkeypatch):
+    monkeypatch.setenv("WELLNESS_SUGGESTION_MIN_SCORE", "0.35")
+    state = {
+        "agent_name": "CONVERSATION_AGENT",
+        "current_input": "bạn có hoạt động nào giảm căng thẳng không",
+        "suggest_activities": True,
+        "suggested_activities": [],
+    }
+    out = attach_wellness_after_retrieval(state)
+    assert out.get("suggested_activities")
 
 
 def test_attach_blocked_when_agent_declines_activities(monkeypatch):

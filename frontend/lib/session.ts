@@ -54,3 +54,10 @@ export function unregisterChatSessionId(sessionId: string): void {
   const next = getKnownChatSessionIds().filter((id) => id !== sessionId);
   window.localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(next));
 }
+
+/** Clears browser-stored chat session list and anonymous session id (e.g. on logout). */
+export function clearLocalChatState(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(CHAT_SESSIONS_STORAGE_KEY);
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+}

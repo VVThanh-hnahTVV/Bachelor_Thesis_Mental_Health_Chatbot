@@ -20,3 +20,4 @@ backend/data/medical/raw/
 *.pth.tar
 *.pt
 *.ckpt
+tests/

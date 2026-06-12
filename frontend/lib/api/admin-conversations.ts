@@ -15,12 +15,27 @@ export interface AdminConversation {
   conversation_id: string;
   title: string;
   chat_mode: string;
+  support_mode?: string;
   summary: string | null;
   summary_updated_at: string | null;
+  human_session_summary?: string | null;
+  human_session_summary_updated_at?: string | null;
+  handoff_requested_at?: string | null;
+  assigned_support_id?: string | null;
+  assigned_support_name?: string | null;
   created_at: string | null;
   updated_at: string | null;
   message_count: number;
   user: AdminConversationUser | null;
+}
+
+export interface AdminConversationMessage {
+  id: string;
+  role: string;
+  content: string;
+  created_at: string;
+  sender_name?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AdminConversationsListResponse {
@@ -71,7 +86,11 @@ async function adminFetch(path: string, init?: RequestInit) {
     let message = "Request failed";
     try {
       const data = await res.json();
-      message = data.detail || message;
+      const detail = data.detail;
+      if (typeof detail === "string") message = detail;
+      else if (Array.isArray(detail) && detail[0]?.msg) {
+        message = String(detail[0].msg);
+      }
     } catch {
       /* ignore */
     }
@@ -100,4 +119,45 @@ export async function listAdminConversations(params?: {
   if (params?.owner) q.set("owner", params.owner);
   const qs = q.toString();
   return adminFetch(`/api/v1/admin/conversations${qs ? `?${qs}` : ""}`);
+}
+
+export async function getSupportQueue(): Promise<{ conversations: AdminConversation[] }> {
+  return adminFetch("/api/v1/admin/conversations/queue");
+}
+
+export async function getAdminConversation(
+  sessionId: string
+): Promise<AdminConversation> {
+  return adminFetch(`/api/v1/admin/conversations/${encodeURIComponent(sessionId)}`);
+}
+
+export async function getAdminConversationMessages(
+  sessionId: string
+): Promise<AdminConversationMessage[]> {
+  return adminFetch(
+    `/api/v1/admin/conversations/${encodeURIComponent(sessionId)}/messages`
+  );
+}
+
+export async function joinSupportSession(sessionId: string): Promise<{
+  session_id: string;
+  support_mode: string;
+  assigned_support_name: string;
+  handoff_brief: string;
+}> {
+  return adminFetch(
+    `/api/v1/admin/conversations/${encodeURIComponent(sessionId)}/join`,
+    { method: "POST" }
+  );
+}
+
+export async function leaveSupportSession(sessionId: string): Promise<{
+  session_id: string;
+  support_mode: string;
+  summary: string | null;
+}> {
+  return adminFetch(
+    `/api/v1/admin/conversations/${encodeURIComponent(sessionId)}/leave`,
+    { method: "POST" }
+  );
 }

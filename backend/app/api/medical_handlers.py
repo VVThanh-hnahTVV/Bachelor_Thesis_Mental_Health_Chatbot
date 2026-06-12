@@ -55,6 +55,8 @@ async def handle_medical_chat_turn(
         "chat_mode": CHAT_MODE,
         "agent_name": turn.agent_name,
         "message_type": "medical",
+        "sender_name": "Helios",
+        "visibility": "all",
     }
     if turn.suggested_activities:
         meta["suggested_activities"] = turn.suggested_activities

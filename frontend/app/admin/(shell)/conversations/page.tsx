@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import {
   ChevronLeft,
@@ -37,10 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useAdminConversations,
   useConversationStats,
+  useSupportQueue,
 } from "@/lib/hooks/admin-queries";
+import { filterAwaitingSupportQueue } from "@/components/admin/support-queue-sidebar";
+import { ChatMessageMarkdown } from "@/components/therapy/chat-message-markdown";
 import type {
   AdminConversation,
   ConversationOwnerFilter,
@@ -101,7 +106,13 @@ export default function AdminConversationsPage() {
     owner: ownerFilter || undefined,
   });
 
-  const conversations = data?.conversations ?? [];
+  const {
+    data: queueData,
+    isFetching: queueFetching,
+    refetch: refetchQueue,
+  } = useSupportQueue();
+
+  const needsSupport = filterAwaitingSupportQueue(queueData?.conversations ?? []);
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 1;
   const loading = isPending && !data;
@@ -129,7 +140,10 @@ export default function AdminConversationsPage() {
   const handleRefresh = () => {
     void refetchStats();
     void refetchList();
+    void refetchQueue();
   };
+
+  const conversations = data?.conversations ?? [];
 
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, total);
@@ -158,8 +172,7 @@ export default function AdminConversationsPage() {
             Hội thoại
           </h3>
           <p className="max-w-xl text-muted-foreground leading-relaxed">
-            Danh sách phiên chat và thống kê hoạt động. Nội dung tin nhắn không
-            được hiển thị trên trang quản trị.
+            Danh sách phiên chat, hàng chờ hỗ trợ và thống kê hoạt động.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -287,6 +300,28 @@ export default function AdminConversationsPage() {
         </>
       )}
 
+      <Tabs defaultValue="all" className="mb-6">
+        <TabsList className="mb-6 h-auto rounded-none border-b border-border/40 bg-transparent p-0">
+          <TabsTrigger
+            value="all"
+            className="rounded-none border-b-2 border-transparent px-4 py-2 data-[state=active]:border-serene-accent data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Tất cả phiên
+          </TabsTrigger>
+          <TabsTrigger
+            value="support"
+            className="rounded-none border-b-2 border-transparent px-4 py-2 data-[state=active]:border-amber-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            Cần hỗ trợ
+            {needsSupport.length > 0 && (
+              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                {needsSupport.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="mt-0">
       <form onSubmit={handleSearch} className="mb-6 flex flex-wrap items-center gap-4">
         <div className="relative w-full max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -431,6 +466,89 @@ export default function AdminConversationsPage() {
         </div>
       )}
 
+        </TabsContent>
+
+        <TabsContent value="support" className="mt-0">
+          <div className="mb-4 flex items-center justify-between">
+            <h4 className="font-serif text-xl italic text-amber-950">
+              Phiên chờ hỗ trợ ({formatNum(needsSupport.length)})
+            </h4>
+            {queueFetching && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
+
+          <div className="border border-amber-200/60 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border/40 bg-amber-50/50 text-xs uppercase tracking-widest text-muted-foreground">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Tiêu đề</th>
+                  <th className="px-4 py-4 font-medium">Người dùng</th>
+                  <th className="px-4 py-4 font-medium">Yêu cầu lúc</th>
+                  <th className="px-4 py-4 font-medium">Session ID</th>
+                  <th className="px-4 py-4 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {needsSupport.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-16 text-center text-muted-foreground"
+                    >
+                      Không có phiên nào đang chờ hỗ trợ.
+                    </td>
+                  </tr>
+                ) : (
+                  needsSupport.map((conv) => (
+                    <tr
+                      key={conv.session_id}
+                      className="border-b border-border/20 transition-colors hover:bg-amber-50/30"
+                    >
+                      <td className="px-6 py-4">
+                        <p className="max-w-xs truncate font-medium text-foreground">
+                          {conv.title}
+                        </p>
+                        {conv.summary && (
+                          <p className="mt-0.5 max-w-xs truncate text-xs text-muted-foreground">
+                            {conv.summary.replace(/[#*_`]/g, "").slice(0, 80)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="inline-flex items-center gap-1.5 text-sm">
+                          {conv.user ? (
+                            <User className="h-3.5 w-3.5" />
+                          ) : (
+                            <UserX className="h-3.5 w-3.5" />
+                          )}
+                          {userLabel(conv)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-muted-foreground">
+                        {formatTime(conv.handoff_requested_at ?? conv.updated_at)}
+                      </td>
+                      <td className="px-4 py-4 font-mono text-xs text-muted-foreground">
+                        {truncateSessionId(conv.session_id)}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <Button size="sm" asChild>
+                          <Link
+                            href={`/admin/conversations/${conv.session_id}?join=1`}
+                          >
+                            Tham gia
+                          </Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="flex max-h-[min(85vh,100dvh-2rem)] max-w-lg flex-col overflow-hidden p-0">
           <DialogHeader className="shrink-0 space-y-1.5 px-6 pt-6 pr-12">
@@ -482,9 +600,23 @@ export default function AdminConversationsPage() {
                   <div>
                     <dt className="mb-1 text-muted-foreground">Tóm tắt</dt>
                     <dd className="rounded bg-[#f4f4ef] p-3 text-foreground leading-relaxed">
-                      {detail.summary}
+                      <ChatMessageMarkdown content={detail.summary} />
                     </dd>
                   </div>
+                )}
+                {detail.support_mode === "awaiting_support" && (
+                  <Button size="sm" asChild className="mt-2">
+                    <Link href={`/admin/conversations/${detail.session_id}?join=1`}>
+                      Tham gia hỗ trợ
+                    </Link>
+                  </Button>
+                )}
+                {detail.support_mode === "human" && (
+                  <Button size="sm" variant="outline" asChild className="mt-2">
+                    <Link href={`/admin/conversations/${detail.session_id}`}>
+                      Xem phiên hỗ trợ
+                    </Link>
+                  </Button>
                 )}
               </dl>
             </div>

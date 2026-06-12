@@ -11,10 +11,16 @@ WELLNESS_ACTIVITIES = "wellness_activities"
 ACTIVITY_RATINGS = "activity_ratings"
 
 
+SUPPORT_MODES = ("ai", "awaiting_support", "human", "closed")
+MESSAGE_VISIBILITY_ALL = "all"
+MESSAGE_VISIBILITY_SUPPORT_ONLY = "support_only"
+
+
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[MESSAGES].create_index([("conversation_id", 1), ("created_at", 1)])
     await db[CONVERSATIONS].create_index([("session_id", 1)], unique=True)
     await db[CONVERSATIONS].create_index([("user_id", 1), ("updated_at", -1)])
+    await db[CONVERSATIONS].create_index([("support_mode", 1), ("handoff_requested_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("session_id", 1), ("created_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("linked_message_id", 1)])
     await db[WELLNESS_ACTIVITIES].create_index([("id", 1)], unique=True)
@@ -38,6 +44,7 @@ async def create_conversation(
         "session_id": session_id,
         "title": title or "New chat",
         "chat_mode": chat_mode,
+        "support_mode": "ai",
         "created_at": now,
         "updated_at": now,
     }
@@ -148,9 +155,24 @@ async def update_conversation_summary(
                 "summary": summary,
                 "summary_updated_at": now,
                 "updated_at": now,
-            }
+            },
+            "$unset": {
+                "human_session_summary": "",
+                "human_session_summary_updated_at": "",
+            },
         },
     )
+
+
+def _admin_summary(doc: dict[str, Any]) -> str | None:
+    summary = doc.get("summary")
+    legacy_human = doc.get("human_session_summary")
+    s = str(summary).strip() if summary else ""
+    h = str(legacy_human).strip() if legacy_human else ""
+    if s and h and h not in s:
+        return f"{s}\n\n---\n\n{h}"
+    merged = s or h
+    return merged or None
 
 
 async def delete_conversation_by_session(
@@ -224,11 +246,170 @@ async def list_messages_chronological(
     *,
     conversation_id: ObjectId,
     limit: int = 100,
+    include_support_only: bool = True,
 ) -> list[dict[str, Any]]:
+    query: dict[str, Any] = {"conversation_id": conversation_id}
+    if not include_support_only:
+        query["$or"] = [
+            {"metadata.visibility": {"$exists": False}},
+            {"metadata.visibility": MESSAGE_VISIBILITY_ALL},
+            {"metadata": {"$exists": False}},
+        ]
     cursor = (
         db[MESSAGES]
-        .find({"conversation_id": conversation_id})
+        .find(query)
         .sort("created_at", 1)
+        .limit(limit)
+    )
+    return [doc async for doc in cursor]
+
+
+async def list_messages_for_user(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: ObjectId,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    return await list_messages_chronological(
+        db,
+        conversation_id=conversation_id,
+        limit=limit,
+        include_support_only=False,
+    )
+
+
+async def get_latest_handoff_brief(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: ObjectId,
+) -> str | None:
+    cursor = (
+        db[MESSAGES]
+        .find(
+            {
+                "conversation_id": conversation_id,
+                "metadata.message_type": "handoff_brief",
+            }
+        )
+        .sort("created_at", -1)
+        .limit(1)
+    )
+    rows = [doc async for doc in cursor]
+    if not rows:
+        return None
+    content = rows[0].get("content")
+    return str(content) if content else None
+
+
+async def try_claim_human_support(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: ObjectId,
+    admin_id: ObjectId,
+    support_name: str,
+    now: datetime,
+    handoff_requested_at: datetime | None = None,
+) -> bool:
+    """Atomically assign human support if session is still ai/awaiting_support."""
+    extra: dict[str, Any] = {
+        "support_mode": "human",
+        "assigned_support_id": admin_id,
+        "assigned_support_name": support_name,
+        "updated_at": now,
+    }
+    result = await db[CONVERSATIONS].update_one(
+        {
+            "_id": conversation_id,
+            "support_mode": {"$in": ["ai", "awaiting_support"]},
+        },
+        {"$set": extra},
+    )
+    if result.modified_count == 0:
+        return False
+
+    await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id, "human_session_started_at": {"$exists": False}},
+        {"$set": {"human_session_started_at": now}},
+    )
+    if handoff_requested_at is not None:
+        await db[CONVERSATIONS].update_one(
+            {"_id": conversation_id, "handoff_requested_at": {"$exists": False}},
+            {"$set": {"handoff_requested_at": handoff_requested_at}},
+        )
+    return True
+
+
+async def list_messages_since(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: ObjectId,
+    since: datetime,
+    roles: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    query: dict[str, Any] = {
+        "conversation_id": conversation_id,
+        "created_at": {"$gte": since},
+    }
+    if roles:
+        query["role"] = {"$in": roles}
+    cursor = db[MESSAGES].find(query).sort("created_at", 1)
+    return [doc async for doc in cursor]
+
+
+def get_support_mode(conv: dict[str, Any] | None) -> str:
+    if not conv:
+        return "ai"
+    mode = str(conv.get("support_mode") or "ai")
+    return mode if mode in SUPPORT_MODES else "ai"
+
+
+async def update_conversation_support_mode(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+    support_mode: str,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    if support_mode not in SUPPORT_MODES:
+        raise ValueError(f"Invalid support_mode: {support_mode}")
+    now = datetime.now(UTC)
+    payload: dict[str, Any] = {"support_mode": support_mode, "updated_at": now}
+    if extra:
+        payload.update(extra)
+    await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id},
+        {"$set": payload},
+    )
+
+
+async def update_human_session_summary(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+    summary: str,
+) -> None:
+    """Deprecated: use update_conversation_summary for unified summaries."""
+    await update_conversation_summary(db, conversation_id, summary)
+
+
+async def list_conversations_support_queue(
+    db: AsyncIOMotorDatabase,
+    *,
+    assigned_support_id: ObjectId | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    clauses: list[dict[str, Any]] = [{"support_mode": "awaiting_support"}]
+    if assigned_support_id is not None:
+        clauses.append(
+            {
+                "support_mode": "human",
+                "assigned_support_id": assigned_support_id,
+            }
+        )
+    query = {"$or": clauses} if len(clauses) > 1 else clauses[0]
+    cursor = (
+        db[CONVERSATIONS]
+        .find(query)
+        .sort("handoff_requested_at", -1)
         .limit(limit)
     )
     return [doc async for doc in cursor]
@@ -657,8 +838,20 @@ def conversation_admin_dict(doc: dict[str, Any]) -> dict[str, Any]:
         "conversation_id": str(doc.get("_id") or ""),
         "title": str(doc.get("title") or "Cuộc trò chuyện mới"),
         "chat_mode": str(doc.get("chat_mode") or "medical"),
-        "summary": doc.get("summary") or None,
+        "support_mode": str(doc.get("support_mode") or "ai"),
+        "summary": _admin_summary(doc),
         "summary_updated_at": _iso_datetime(doc.get("summary_updated_at")),
+        "human_session_summary": None,
+        "human_session_summary_updated_at": None,
+        "handoff_requested_at": _iso_datetime(doc.get("handoff_requested_at")),
+        "assigned_support_id": (
+            str(doc["assigned_support_id"])
+            if isinstance(doc.get("assigned_support_id"), ObjectId)
+            else None
+        ),
+        "assigned_support_name": doc.get("assigned_support_name") or None,
+        "human_session_started_at": _iso_datetime(doc.get("human_session_started_at")),
+        "human_session_ended_at": _iso_datetime(doc.get("human_session_ended_at")),
         "created_at": _iso_datetime(doc.get("created_at")),
         "updated_at": _iso_datetime(doc.get("updated_at")),
         "message_count": int(doc.get("message_count") or 0),

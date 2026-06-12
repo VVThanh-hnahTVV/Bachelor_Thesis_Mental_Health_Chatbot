@@ -43,7 +43,19 @@ import { VoiceRecordingVisualizer } from "@/components/therapy/voice-recording-v
 import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HeliosAvatar } from "@/components/therapy/helios-avatar";
+import {
+  ChatSystemNotice,
+  isChatSystemNotice,
+  isSupportOnlyMessage,
+} from "@/components/chat/system-notice";
 import { HeliosTypingIndicator } from "@/components/therapy/helios-typing-indicator";
+import { HandoffButton } from "@/components/therapy/handoff-button";
+import {
+  getConversationStatus,
+  requestHandoff,
+  type SupportMode,
+} from "@/lib/api/handoff";
+import { useChatWs } from "@/lib/hooks/use-chat-ws";
 import {
   startWellnessSession,
   completeWellnessSession,
@@ -118,6 +130,71 @@ export default function TherapyPage() {
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [supportMode, setSupportMode] = useState<SupportMode>("ai");
+  const [assignedSupportName, setAssignedSupportName] = useState<string | null>(
+    null
+  );
+  const [handoffLoading, setHandoffLoading] = useState(false);
+
+  const appendWsMessage = (msg: {
+    id?: string;
+    role: string;
+    content: string;
+    sender_name?: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    if (isSupportOnlyMessage(msg)) return;
+    setMessages((prev) => {
+      if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: msg.id,
+          role: msg.role as ChatMessage["role"],
+          content: msg.content,
+          timestamp: new Date(),
+          metadata: {
+            ...(msg.metadata || {}),
+            sender_name: msg.sender_name,
+          },
+        },
+      ];
+    });
+  };
+
+  const { sendMessage: sendWsMessage } = useChatWs({
+    sessionId,
+    role: "user",
+    enabled: Boolean(sessionId),
+    onMessage: appendWsMessage,
+    onSupportJoined: (name) => {
+      setAssignedSupportName(name);
+      setSupportMode("human");
+    },
+    onSupportLeft: () => {
+      setSupportMode("ai");
+      setAssignedSupportName(null);
+    },
+    onHandoffPending: () => setSupportMode("awaiting_support"),
+    onSupportModeChange: setSupportMode,
+  });
+
+  const messageSenderLabel = (msg: ChatMessage) => {
+    if (msg.role === "user") return "You";
+    if (msg.role === "support") {
+      return (
+        (msg.metadata?.sender_name as string | undefined) ||
+        assignedSupportName ||
+        "Support"
+      );
+    }
+    if (msg.role === "system") {
+      return (msg.metadata?.sender_name as string | undefined) || "System";
+    }
+    return (msg.metadata?.sender_name as string | undefined) || "Helios";
+  };
+
+  const isHumanChat = supportMode === "human";
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
@@ -170,12 +247,19 @@ export default function TherapyPage() {
       /* optional */
     }
     try {
-      const history = await getChatHistory(activeSessionId);
+      const [history, status] = await Promise.all([
+        getChatHistory(activeSessionId),
+        getConversationStatus(activeSessionId),
+      ]);
+      setSupportMode(status.support_mode);
+      setAssignedSupportName(status.assigned_support_name);
       if (Array.isArray(history) && history.length > 0) {
-        const mapped = history.map((msg) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-        }));
+        const mapped = history
+          .filter((msg) => !isSupportOnlyMessage(msg))
+          .map((msg) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
         applyHistoryToChat(mapped);
         return;
       }
@@ -281,6 +365,22 @@ export default function TherapyPage() {
     const currentMessage = text.trim();
     if (!currentMessage || isTyping || !sessionId) return;
 
+    if (isHumanChat) {
+      scrollToBottom();
+      const sent = sendWsMessage(currentMessage);
+      if (!sent) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "system",
+            content: "Không thể gửi tin nhắn. Đang thử kết nối lại...",
+            timestamp: new Date(),
+          },
+        ]);
+      }
+      return;
+    }
+
     setIsTyping(true);
     setTypingStatus("Đang phân tích yêu cầu");
     setMessages((prev) => [
@@ -308,10 +408,17 @@ export default function TherapyPage() {
           timestamp: new Date(),
           metadata: {
             message_type: response.message_type,
+            sender_name: "Helios",
             ...(response.metadata || {}),
           },
         },
       ]);
+      if (response.support_mode) {
+        setSupportMode(response.support_mode as SupportMode);
+      }
+      if (response.assigned_support_name !== undefined) {
+        setAssignedSupportName(response.assigned_support_name);
+      }
     } catch (err) {
       console.error("Chat stream failed:", err);
       setMessages((prev) => [
@@ -326,6 +433,32 @@ export default function TherapyPage() {
       setIsTyping(false);
       setTypingStatus(null);
       scrollToBottom();
+    }
+  };
+
+  const handleHandoffRequest = async () => {
+    if (!sessionId || handoffLoading || supportMode !== "ai") return;
+    setHandoffLoading(true);
+    try {
+      const res = await requestHandoff(sessionId);
+      setSupportMode(res.support_mode);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: res.assistant_message_id ?? undefined,
+          role: "assistant",
+          content: res.reply,
+          timestamp: new Date(),
+          metadata: {
+            sender_name: "Helios",
+            ...(res.metadata || {}),
+          },
+        },
+      ]);
+    } catch (err) {
+      console.error("Handoff failed:", err);
+    } finally {
+      setHandoffLoading(false);
     }
   };
 
@@ -608,14 +741,34 @@ export default function TherapyPage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 border-b border-brand-border/50 px-6 py-4">
-                  <HeliosAvatar size="md" />
+                  {isHumanChat ? (
+                    <motion.div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
+                      <User className="h-5 w-5" />
+                    </motion.div>
+                  ) : (
+                    <HeliosAvatar size="md" />
+                  )}
                   <div>
-                    <h2 className="font-bold text-gray-800">Helios</h2>
+                    <h2 className="font-bold text-gray-800">
+                      {isHumanChat
+                        ? assignedSupportName || "Chuyên viên"
+                        : "Helios"}
+                    </h2>
                     <p className="text-xs text-gray-500">
-                      {messages.length} messages
+                      {supportMode === "awaiting_support"
+                        ? "Đang chờ chuyên viên tham gia..."
+                        : `${messages.length} messages`}
                     </p>
                   </div>
                 </div>
+
+                {(supportMode === "awaiting_support" || isHumanChat) && (
+                  <div className="border-b border-amber-200/80 bg-amber-50 px-6 py-2 text-sm text-amber-900">
+                    {isHumanChat
+                      ? `Đang trò chuyện với ${assignedSupportName || "chuyên viên"}.`
+                      : "Yêu cầu hỗ trợ đã được gửi. Một chuyên viên sẽ tham gia sớm."}
+                  </div>
+                )}
 
                 <motion.div
                   ref={messagesScrollRef}
@@ -623,7 +776,24 @@ export default function TherapyPage() {
                 >
                   <motion.div className="w-full">
                     <AnimatePresence initial={false}>
-                      {messages.map((msg, i) => (
+                      {messages.map((msg, i) => {
+                        if (isSupportOnlyMessage(msg)) return null;
+
+                        if (isChatSystemNotice(msg)) {
+                          return (
+                            <motion.div
+                              key={`${msg.timestamp.toISOString()}-${i}`}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="px-6 py-1"
+                            >
+                              <ChatSystemNotice content={msg.content} />
+                            </motion.div>
+                          );
+                        }
+
+                        return (
                         <motion.div
                           key={`${msg.timestamp.toISOString()}-${i}`}
                           initial={{ opacity: 0, y: 12 }}
@@ -645,10 +815,16 @@ export default function TherapyPage() {
                             <div className="mt-1 h-10 w-10 shrink-0">
                               {msg.role === "assistant" ? (
                                 <HeliosAvatar />
-                              ) : (
+                              ) : msg.role === "support" ? (
+                                <motion.div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600 text-white">
+                                  <User className="h-5 w-5" />
+                                </motion.div>
+                              ) : msg.role === "user" ? (
                                 <motion.div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white">
                                   <User className="h-5 w-5" />
                                 </motion.div>
+                              ) : (
+                                <HeliosAvatar />
                               )}
                             </div>
                             <motion.div
@@ -666,9 +842,10 @@ export default function TherapyPage() {
                                 )}
                               >
                                 <p className="text-sm font-medium text-gray-800">
-                                  {msg.role === "assistant" ? "Helios" : "You"}
+                                  {messageSenderLabel(msg)}
                                 </p>
                                 {msg.role === "assistant" &&
+                                  !isHumanChat &&
                                   msg.metadata?.agent_name && (
                                     <Badge
                                       variant="outline"
@@ -704,6 +881,10 @@ export default function TherapyPage() {
                                     className="text-white [&_a]:text-white [&_p]:text-white [&_strong]:text-white"
                                   />
                                 </motion.div>
+                              ) : msg.role === "system" ? (
+                                <motion.div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                  <ChatMessageMarkdown content={msg.content} />
+                                </motion.div>
                               ) : (
                                 <AssistantMessageBubble variant="medical">
                                   <ChatMessageMarkdown content={msg.content} />
@@ -711,6 +892,7 @@ export default function TherapyPage() {
                               )}
 
                               {msg.role === "assistant" &&
+                                !isHumanChat &&
                                 (() => {
                                   type ActivityEntry = { id: string; title: string };
                                   const activityIds = getSuggestedActivities(msg.metadata);
@@ -829,10 +1011,11 @@ export default function TherapyPage() {
                             </motion.div>
                           </motion.div>
                         </motion.div>
-                      ))}
+                        );
+                      })}
                     </AnimatePresence>
 
-                    {isTyping && (
+                    {isTyping && !isHumanChat && (
                       <HeliosTypingIndicator statusMessage={typingStatus} />
                     )}
                     <div ref={messagesEndRef} />
@@ -888,6 +1071,11 @@ export default function TherapyPage() {
                     />
                     <div className="flex items-center justify-between gap-2 px-2 pb-2">
                       <div className="flex items-center gap-1">
+                        <HandoffButton
+                          onClick={() => void handleHandoffRequest()}
+                          disabled={isTyping || supportMode !== "ai"}
+                          loading={handoffLoading}
+                        />
                         <VoiceMicButton
                           toggle={voiceInput.toggle}
                           isRecording={voiceInput.isRecording}

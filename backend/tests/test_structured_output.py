@@ -1,12 +1,37 @@
 """Structured RAG / web-search agent metadata."""
 
 from app.medical.agents.structured_output import (
+    ConversationAgentOutput,
     RAGAgentOutput,
+    RouteAgentDecision,
     WebSearchAgentOutput,
     merge_activities_intro,
+    parse_conversation_output,
     parse_rag_output,
     parse_web_search_output,
 )
+
+
+def test_route_agent_decision_fields():
+    out = RouteAgentDecision(
+        agent="CONVERSATION_AGENT",
+        reasoning="User asks for stress-relief activities.",
+        confidence=0.92,
+    )
+    assert out.agent == "CONVERSATION_AGENT"
+    assert out.confidence == 0.92
+
+
+def test_parse_conversation_output_json():
+    raw = """{
+        "answer": "Có — mình gợi ý vài bài thư giãn ngắn cho bạn.",
+        "suggest_activities": true,
+        "activities_intro": "Tap **Open** below to start a guided exercise."
+    }"""
+    parsed = parse_conversation_output(raw)
+    assert parsed.suggest_activities is True
+    assert "gợi ý" in parsed.answer
+    assert "Open" in parsed.activities_intro
 
 
 def test_parse_rag_output_json():

@@ -1,4 +1,4 @@
-"""Structured JSON fields returned by RAG and web-search agents."""
+"""Structured JSON fields returned by routing, conversation, RAG, and web-search agents."""
 
 from __future__ import annotations
 
@@ -34,6 +34,33 @@ Example (insomnia): "Besides the habits above, you can try a short relaxation ex
 """
 
 
+class RouteAgentDecision(BaseModel):
+    agent: str = Field(
+        description=(
+            "One of CONVERSATION_AGENT, RAG_AGENT, or WEB_SEARCH_PROCESSOR_AGENT."
+        )
+    )
+    reasoning: str = Field(description="Step-by-step reasoning for the routing choice.")
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence in the routing decision.",
+    )
+
+
+class ConversationAgentOutput(BaseModel):
+    answer: str = Field(
+        description="User-facing conversational reply in markdown."
+    )
+    suggest_activities: bool = Field(
+        description="True when in-app wellness/relaxation exercise buttons should be shown."
+    )
+    activities_intro: str = Field(
+        default="",
+        description="Bridge text inviting user to open in-app exercises below; empty when suggest_activities is false.",
+    )
+
+
 class RAGAgentOutput(BaseModel):
     answer: str = Field(
         description="User-facing answer in markdown, based only on the provided context."
@@ -66,6 +93,7 @@ class WebSearchAgentOutput(BaseModel):
 
 _rag_parser = JsonOutputParser(pydantic_object=RAGAgentOutput)
 _web_parser = JsonOutputParser(pydantic_object=WebSearchAgentOutput)
+_conversation_parser = JsonOutputParser(pydantic_object=ConversationAgentOutput)
 
 
 def rag_format_instructions() -> str:
@@ -74,6 +102,10 @@ def rag_format_instructions() -> str:
 
 def web_search_format_instructions() -> str:
     return _web_parser.get_format_instructions()
+
+
+def conversation_format_instructions() -> str:
+    return _conversation_parser.get_format_instructions()
 
 
 def merge_activities_intro(
@@ -111,6 +143,23 @@ def parse_rag_output(raw: Any) -> RAGAgentOutput:
         return RAGAgentOutput(
             answer=body or "I could not generate a response.",
             web_search=_fallback_web_search_flag(body),
+            suggest_activities=False,
+            activities_intro="",
+        )
+
+
+def parse_conversation_output(raw: Any) -> ConversationAgentOutput:
+    text = raw.content if hasattr(raw, "content") else str(raw)
+    try:
+        data = _conversation_parser.parse(_strip_json_fence(str(text)))
+        return ConversationAgentOutput.model_validate(data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Conversation JSON parse failed, using fallback: %s", exc)
+        body = str(text).strip()
+        if "Conversational LLM Response:" in body:
+            body = body.split("Conversational LLM Response:", 1)[-1].strip()
+        return ConversationAgentOutput(
+            answer=body or "I could not generate a response.",
             suggest_activities=False,
             activities_intro="",
         )

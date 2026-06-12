@@ -1,4 +1,4 @@
-import { getOrCreateSessionId } from "@/lib/session";
+import { clearLocalChatState, getOrCreateSessionId } from "@/lib/session";
 import { clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth-token";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -109,6 +109,7 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
 
 export function logoutUser(): void {
   clearAuthToken();
+  clearLocalChatState();
 }
 
 export async function requestPasswordReset(email: string): Promise<string> {
