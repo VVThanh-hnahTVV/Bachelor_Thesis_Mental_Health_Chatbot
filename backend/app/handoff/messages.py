@@ -75,15 +75,15 @@ def support_left_notice(language: str = "vi") -> str:
 OFF_TOPIC_SCOPE_NOTICE: dict[str, str] = {
     "vi": (
         "Mình là **Helios**, trợ lý hỗ trợ **thông tin và tư vấn về sức khỏe tâm thần** — "
-        "cảm xúc, căng thẳng, tri thức y khoa liên quan, và gợi ý wellness nhẹ nhàng.\n\n"
+        "cảm xúc, căng thẳng, lo âu, trầm cảm, trị liệu tâm lý, và gợi ý wellness nhẹ nhàng.\n\n"
         "Câu hỏi của bạn nằm **ngoài phạm vi** mình hỗ trợ. "
-        "Bạn có muốn chia sẻ điều gì đang bận tâm, hoặc hỏi về chủ đề sức khỏe tâm thần / y tế không?"
+        "Bạn có muốn chia sẻ điều gì đang bận tâm, hoặc hỏi về chủ đề sức khỏe tâm thần không?"
     ),
     "en": (
         "I'm **Helios**, focused on **mental health information and supportive guidance** — "
-        "emotions, stress, related medical topics, and gentle wellness suggestions.\n\n"
+        "emotions, stress, anxiety, depression, therapy, and gentle wellness suggestions.\n\n"
         "Your question is **outside what I can help with here**. "
-        "Would you like to share what's on your mind, or ask about mental health / medical topics?"
+        "Would you like to share what's on your mind, or ask about a mental health topic?"
     ),
 }
 

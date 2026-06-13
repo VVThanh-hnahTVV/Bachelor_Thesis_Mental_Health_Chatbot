@@ -67,6 +67,7 @@ class AgentState(MessagesState):
     wellness_retrieval_source: Optional[str]
     user_language: Optional[str]  # ISO 639-1 code from input guardrail (e.g. vi, en)
     rag_sources: Optional[List[Dict[str, str]]]  # RAG citations appended after guardrails
+    rag_sub_queries: Optional[List[str]]  # Retrieval sub-queries from route agent
 
 
 class AgentDecision(TypedDict):
@@ -100,7 +101,7 @@ def create_agent_graph():
     config = get_medical_config()
 
     # Initialize guardrails with the same LLM used elsewhere
-    guardrails = LocalGuardrails(config.rag.llm)
+    guardrails = LocalGuardrails(config.guardrails.llm)
 
     # LLM
     decision_model = config.agent_decision.llm
@@ -261,13 +262,24 @@ def create_agent_graph():
         # Decided agent
         print(f"Decision: {decision['agent']}")
         from app.chat_progress import emit_progress
+        from app.medical.agents.rag_agent.query_expander import normalize_sub_queries
 
         emit_progress(str(decision["agent"]))
+
+        rag_sub_queries: List[str] = []
+        if decision["agent"] == "RAG_AGENT":
+            rag_sub_queries = normalize_sub_queries(
+                decision.get("sub_queries"),
+                input_text,
+                max_count=config.rag.max_sub_queries,
+            )
+            print(f"RAG sub-queries: {rag_sub_queries}")
         
         # Update state with decision
         updated_state = {
             **state,
             "agent_name": decision["agent"],
+            "rag_sub_queries": rag_sub_queries,
         }
         
         # Route based on agent name and confidence
@@ -381,7 +393,11 @@ def create_agent_graph():
         query = state["current_input"]
         memory_context = _agent_memory_context(state)
 
-        response = rag_agent.process_query(query, chat_history=memory_context)
+        response = rag_agent.process_query(
+            query,
+            chat_history=memory_context,
+            sub_queries=state.get("rag_sub_queries") or [],
+        )
         retrieval_confidence = response.get("confidence", 0.0)  # Default to 0.0 if not provided
         web_search = bool(response.get("web_search", False))
         suggest_activities = bool(response.get("suggest_activities", False))
@@ -612,6 +628,7 @@ def init_agent_state() -> AgentState:
         "wellness_retrieval_source": None,
         "user_language": "vi",
         "rag_sources": [],
+        "rag_sub_queries": [],
     }
 
 

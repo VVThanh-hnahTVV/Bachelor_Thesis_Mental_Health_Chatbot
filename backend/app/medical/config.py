@@ -37,7 +37,12 @@ def _parse_domain_list(raw: str | None) -> list[str]:
 
 class AgentDecisoinConfig:
     def __init__(self) -> None:
-        self.llm = build_chat_llm(temperature=0.1)
+        self.llm = build_chat_llm(temperature=0.0)
+
+
+class GuardrailsConfig:
+    def __init__(self) -> None:
+        self.llm = build_chat_llm(temperature=0.0)
 
 
 class ConversationConfig:
@@ -105,15 +110,16 @@ class RAGConfig:
         self.summarizer_model = build_ingest_llm(temperature=0.5, for_vision=True)
         self.chunker_model = build_ingest_llm(temperature=0.0)
         self.response_generator_model = build_chat_llm(temperature=0.3)
-        self.top_k = 10
+        self.top_k = 5
         self.vector_search_type = "similarity"
         self.huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
         self.reranker_model = "cross-encoder/ms-marco-TinyBERT-L-6"
-        self.reranker_top_k = 20
+        self.reranker_top_k = 5
         self.max_context_length = 8192
         self.include_sources = True
         self.min_retrieval_confidence = 0.20
         self.context_limit = 20
+        self.max_sub_queries = int(os.getenv("RAG_MAX_SUB_QUERIES", "4"))
 
 
 class SpeechConfig:
@@ -180,6 +186,7 @@ class WellnessConfig:
 class MedicalConfig:
     def __init__(self) -> None:
         self.agent_decision = AgentDecisoinConfig()
+        self.guardrails = GuardrailsConfig()
         self.conversation = ConversationConfig()
         self.rag = RAGConfig()
         self.web_corpus = WebCorpusConfig()

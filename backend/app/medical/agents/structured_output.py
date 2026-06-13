@@ -46,6 +46,13 @@ class RouteAgentDecision(BaseModel):
         le=1.0,
         description="Confidence in the routing decision.",
     )
+    sub_queries: list[str] = Field(
+        default_factory=list,
+        description=(
+            "When agent is RAG_AGENT: 1-4 English retrieval sub-queries, "
+            "each covering one distinct information need. Empty for other agents."
+        ),
+    )
 
 
 class ConversationAgentOutput(BaseModel):

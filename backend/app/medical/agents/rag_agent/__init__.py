@@ -1,13 +1,20 @@
 import os
 import time
 import logging
-from typing import List, Optional, Dict, Any
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional, Dict, Any, Tuple
 
 from .doc_parser import create_doc_parser
 from .content_processor import ContentProcessor
 from .vectorstore_qdrant import CorpusVectorStore, VectorStore
 from .reranker import Reranker
-from .query_expander import QueryExpander
+from .query_expander import (
+    cap_chunks,
+    dedupe_chunks,
+    dedupe_picture_paths,
+    normalize_sub_queries,
+)
 from .response_generator import ResponseGenerator
 
 _rag_singleton: "MedicalRAG | None" = None
@@ -41,9 +48,9 @@ class MedicalRAG:
         self.vector_store = VectorStore(config)
         self.web_vector_store = CorpusVectorStore.for_web_corpus(config)
         self.reranker = Reranker(config)
-        self.query_expander = QueryExpander(config)
         self.response_generator = ResponseGenerator(config)
         self.parsed_content_dir = self.config.rag.parsed_content_dir
+        self._rerank_lock = threading.Lock()
     
     def ingest_directory(self, directory_path: str) -> Dict[str, Any]:
         """
@@ -171,87 +178,142 @@ class MedicalRAG:
                 "processing_time": time.time() - start_time
             }
         
-    def process_query(self, query: str, chat_history: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Process a query with the RAG system.
-        
-        Args:
-            query: The query string
-            chat_history: Optional chat history for context
-            
-        Returns:
-            Response dictionary
-        """
-        start_time = time.time()
-        self.logger.info(f"RAG Agent processing query: {query}")
-        
-        # Process query and return result, passing chat_history
+    def _retrieve_for_subquery(self, sub_query: str) -> List[Dict[str, Any]]:
+        """Retrieve relevant chunks from PDF and web corpora for one sub-query."""
+        retrieved_documents: List[Dict[str, Any]] = []
+
         try:
-            # Step 1: Expand query
-            self.logger.info(f"1. Expanding query: '{query}'")
-            expansion_result = self.query_expander.expand_query(query)
-            expanded_query = expansion_result["expanded_query"]
-            self.logger.info(f"   Original: '{query}'")
-            self.logger.info(f"   Expanded: '{expanded_query}'")
-            query = expanded_query
-
-            # Step 2: Retrieval (PDF + optional web mental-health corpus)
-            self.logger.info(f"2. Retrieving relevant documents for the query: '{query}'")
-            retrieved_documents: List[Dict[str, Any]] = []
-
-            try:
-                pdf_loaded = self.vector_store.try_load_vectorstore()
-                if pdf_loaded is not None:
-                    pdf_vs, pdf_ds = pdf_loaded
-                    retrieved_documents.extend(
-                        self.vector_store.retrieve_relevant_chunks(
-                            query=query,
-                            vectorstore=pdf_vs,
-                            docstore=pdf_ds,
-                        )
+            pdf_loaded = self.vector_store.try_load_vectorstore()
+            if pdf_loaded is not None:
+                pdf_vs, pdf_ds = pdf_loaded
+                retrieved_documents.extend(
+                    self.vector_store.retrieve_relevant_chunks(
+                        query=sub_query,
+                        vectorstore=pdf_vs,
+                        docstore=pdf_ds,
                     )
-            except Exception as pdf_exc:  # noqa: BLE001
-                self.logger.warning("PDF corpus retrieval skipped: %s", pdf_exc)
+                )
+        except Exception as pdf_exc:  # noqa: BLE001
+            self.logger.warning("PDF corpus retrieval skipped: %s", pdf_exc)
 
+        try:
             web_loaded = self.web_vector_store.try_load_vectorstore()
             if web_loaded is not None:
                 web_vs, web_ds = web_loaded
                 retrieved_documents.extend(
                     self.web_vector_store.retrieve_relevant_chunks(
-                        query=query,
+                        query=sub_query,
                         vectorstore=web_vs,
                         docstore=web_ds,
                     )
                 )
+        except Exception as web_exc:  # noqa: BLE001
+            self.logger.warning("Web corpus retrieval skipped: %s", web_exc)
 
-            # Qdrant cosine distance: lower score = more similar
-            retrieved_documents.sort(key=lambda doc: doc.get("score", 0.0))
-            top_k = self.config.rag.top_k
-            retrieved_documents = retrieved_documents[: top_k * 2]
+        retrieved_documents.sort(key=lambda doc: doc.get("score", 0.0))
+        top_k = self.config.rag.top_k
+        return retrieved_documents[: top_k * 2]
 
-            self.logger.info(f"   Retrieved {len(retrieved_documents)} relevant document chunks")
+    def _retrieve_and_rerank_subquery(
+        self,
+        sub_query: str,
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Retrieve and rerank chunks for a single sub-query."""
+        retrieved_documents = self._retrieve_for_subquery(sub_query)
+        self.logger.info(
+            "   Sub-query '%s': retrieved %d chunks",
+            sub_query,
+            len(retrieved_documents),
+        )
 
-            # Step 3: Rerank the retrieved documents if we have a reranker and enough documents
-            self.logger.info(f"3. Reranking the retrieved documents")
-            if self.reranker and len(retrieved_documents) > 1:
-                reranked_documents, reranked_top_k_picture_paths = self.reranker.rerank(query, retrieved_documents, self.parsed_content_dir)
-                self.logger.info(f"   Reranked retrieved documents and chose top {len(reranked_documents)}")
-                self.logger.info(f"   Found {len(reranked_top_k_picture_paths)} referenced images")
-            else:
-                self.logger.info(f"   Could not rerank the retrieved documents, falling back to original scores")
-                reranked_documents = retrieved_documents
-                reranked_top_k_picture_paths = []
-
-            # Step 4: Generate response
-            self.logger.info("4. Generating response...")
-            response = self.response_generator.generate_response(
-                query=query,
-                retrieved_docs=reranked_documents,
-                picture_paths=reranked_top_k_picture_paths,
-                chat_history=chat_history
+        if self.reranker and len(retrieved_documents) > 1:
+            with self._rerank_lock:
+                reranked_documents, picture_paths = self.reranker.rerank(
+                    sub_query,
+                    retrieved_documents,
+                    self.parsed_content_dir,
                 )
+            self.logger.info(
+                "   Sub-query '%s': reranked to %d chunks",
+                sub_query,
+                len(reranked_documents),
+            )
+            return reranked_documents, picture_paths
+
+        return retrieved_documents, []
+
+    def process_query(
+        self,
+        query: str,
+        chat_history: Optional[str] = None,
+        sub_queries: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Process a query with the RAG system.
+        
+        Args:
+            query: The original user query string
+            chat_history: Optional chat history for context
+            sub_queries: Optional retrieval sub-queries from the route agent
             
-            # Add timing information
+        Returns:
+            Response dictionary
+        """
+        start_time = time.time()
+        original_query = query
+        normalized_sub_queries = normalize_sub_queries(
+            sub_queries,
+            original_query,
+            max_count=self.config.rag.max_sub_queries,
+        )
+        self.logger.info("RAG Agent processing query: %s", original_query)
+        self.logger.info("RAG sub-queries: %s", normalized_sub_queries)
+        
+        try:
+            all_documents: List[Dict[str, Any]] = []
+            all_picture_paths: List[str] = []
+
+            max_workers = min(len(normalized_sub_queries), self.config.rag.max_sub_queries)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(self._retrieve_and_rerank_subquery, sub_query): sub_query
+                    for sub_query in normalized_sub_queries
+                }
+                for future in as_completed(futures):
+                    sub_query = futures[future]
+                    try:
+                        reranked_docs, picture_paths = future.result()
+                        all_documents.extend(reranked_docs)
+                        all_picture_paths.extend(picture_paths)
+                    except Exception as sub_exc:  # noqa: BLE001
+                        self.logger.warning(
+                            "Sub-query '%s' failed: %s",
+                            sub_query,
+                            sub_exc,
+                        )
+
+            self.logger.info(
+                "   Merged %d chunks before dedupe",
+                len(all_documents),
+            )
+            merged_documents = cap_chunks(
+                dedupe_chunks(all_documents),
+                self.config.rag.context_limit,
+            )
+            merged_picture_paths = dedupe_picture_paths(all_picture_paths)
+            self.logger.info(
+                "   %d chunks after dedupe and cap",
+                len(merged_documents),
+            )
+
+            self.logger.info("Generating response...")
+            response = self.response_generator.generate_response(
+                query=original_query,
+                retrieved_docs=merged_documents,
+                picture_paths=merged_picture_paths,
+                chat_history=chat_history,
+            )
+            
             processing_time = time.time() - start_time
             response["processing_time"] = processing_time
             
@@ -261,7 +323,6 @@ class MedicalRAG:
             self.logger.error(f"Error processing query: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
-            # Return error response
             return {
                 "response": f"I encountered an error while processing your query: {str(e)}",
                 "sources": [],

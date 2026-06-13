@@ -1,50 +1,63 @@
-import logging
-from typing import List, Dict, Any
+from __future__ import annotations
 
-class QueryExpander:
-    """
-    Expands user queries with medical terminology to improve retrieval.
-    """
-    def __init__(self, config):
-        self.logger = logging.getLogger(f"{self.__module__}")
-        self.config = config
-        self.model = config.rag.llm
-        
-    def expand_query(self, original_query: str) -> Dict[str, Any]:
-        """
-        Expand the original query with relevant medical terms.
-        
-        Args:
-            original_query: The user's original query
-            
-        Returns:
-            Dictionary with original and expanded queries
-        """
-        self.logger.info(f"Expanding query: {original_query}")
-        
-        # Generate expansions - implement one of the strategies below
-        expanded_query = self._generate_expansions(original_query)
-        
-        return {
-            "original_query": original_query,
-            "expanded_query": expanded_query.content
-        }
-    
-    def _generate_expansions(self, query: str) -> str:
-        """Use LLM to expand query with medical terminology."""
-        prompt = f"""
-        As a medical expert, expand the following query with relevant medical terminology,
-        synonyms, and related concepts that would help retrieve relevant medical information.
+from typing import Any, Dict, List, Optional
 
-        User Query: {query}
 
-        Rules:
-        - Expand only if needed; otherwise return the user query unchanged.
-        - Stay specific to the medical domain in the query; do not add unrelated domains.
-        - Keep the expanded query in English for retrieval (even if the user wrote in another language).
-        - If the user asks for a tabular answer format, mention that in the expanded query; do not produce a table yourself.
-        - Output only the expanded query text with no explanations.
-        """
-        expansion = self.model.invoke(prompt)
-        
-        return expansion
+def _chunk_score(doc: Dict[str, Any]) -> float:
+    if "combined_score" in doc:
+        return float(doc["combined_score"])
+    if "rerank_score" in doc:
+        return float(doc["rerank_score"])
+    # Qdrant cosine distance: lower is better
+    return -float(doc.get("score", 0.0))
+
+
+def normalize_sub_queries(
+    sub_queries: Optional[List[str]],
+    original_query: str,
+    *,
+    max_count: int = 4,
+) -> List[str]:
+    """Normalize route-agent sub-queries; fall back to the original query."""
+    cleaned: List[str] = []
+    for item in sub_queries or []:
+        text = str(item).strip()
+        if text and text not in cleaned:
+            cleaned.append(text)
+
+    if not cleaned:
+        fallback = str(original_query).strip()
+        return [fallback] if fallback else []
+
+    return cleaned[:max_count]
+
+
+def dedupe_chunks(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep the highest-scoring chunk per document id."""
+    best_by_id: Dict[str, Dict[str, Any]] = {}
+    for doc in docs:
+        doc_id = str(doc.get("id", ""))
+        if not doc_id:
+            continue
+        existing = best_by_id.get(doc_id)
+        if existing is None or _chunk_score(doc) > _chunk_score(existing):
+            best_by_id[doc_id] = doc
+    return list(best_by_id.values())
+
+
+def cap_chunks(docs: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    """Sort by relevance score descending and keep the top N chunks."""
+    if limit <= 0:
+        return []
+    return sorted(docs, key=_chunk_score, reverse=True)[:limit]
+
+
+def dedupe_picture_paths(paths: List[str]) -> List[str]:
+    """Remove duplicate picture URLs while preserving order."""
+    seen: set[str] = set()
+    unique: List[str] = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            unique.append(path)
+    return unique

@@ -35,8 +35,8 @@ class InputGuardrailOutput(BaseModel):
     off_topic: bool = Field(
         default=False,
         description=(
-            "True when the query is outside Helios scope (mental health / medical support) "
-            "but not harmful — e.g. general trivia, homework, sports, unrelated coding."
+            "True when the query is outside Helios scope (mental health support only) "
+            "but not harmful — e.g. general medicine, veterinary topics, trivia, homework."
         ),
     )
 
@@ -113,14 +113,21 @@ def normalize_language_code(code: str, *, default: str = DEFAULT_USER_LANGUAGE) 
     return cleaned.split("-", 1)[0]
 
 
-_MEDICAL_SCOPE = re.compile(
-    r"(tâm\s*lý|tâm\s*thần|mental\s*health|sức\s*khỏe|wellness|well-being|"
+_MENTAL_HEALTH_SCOPE = re.compile(
+    r"(tâm\s*lý|tâm\s*thần|mental\s*health|sức\s*khỏe\s*tâm|wellness|well-being|"
     r"stress|lo\s*âu|anxiety|depression|trầm\s*cảm|therapy|trị\s*liệu|"
-    r"symptom|triệu\s*chứng|chẩn\s*đoán|diagnos|burnout|căng\s*thẳng|"
-    r"PTSD|CBT|OCD|bipolar|psychiatr|psycholog|mood|emotion|cảm\s*xúc|"
+    r"PTSD|CBT|OCD|ADHD|bipolar|psychiatr|psycholog|mood|emotion|cảm\s*xúc|"
     r"insomnia|mất\s*ngủ|suicide|tự\s*tử|self-harm|counsel|tư\s*vấn|"
-    r"medical|y\s*tế|bệnh|disease|treatment|điều\s*trị|thuốc|medicine|"
-    r"Helios|handoff|chuyên\s*viên|counselor)",
+    r"burnout|căng\s*thẳng|mindfulness|thư\s*giãn|panic|hoảng\s*loạn|"
+    r"Helios|handoff|chuyên\s*viên|counselor|trauma|chấn\s*thương\s*tâm)",
+    re.IGNORECASE,
+)
+_NON_MH_HEALTH = re.compile(
+    r"(dịch\s*tả|lợn|heo|gia\s*súc|chăn\s*nuôi|veterinar|swine|ASF|"
+    r"tiểu\s*đường|diabetes|cancer|ung\s*thư|covid|vaccine|tiêm\s*chủng|"
+    r"tim\s*mạch|cardio|huyết\s*áp|blood\s+pressure|"
+    r"phẫu\s*thuật|surgery|antibiotic|kháng\s*sinh|"
+    r"infectious\s+disease|bệnh\s+truyền\s+nhiễm|sốt\s*xuất\s*huyết|dengue)",
     re.IGNORECASE,
 )
 _META_FOLLOWUP = re.compile(
@@ -145,13 +152,25 @@ _OFF_TOPIC_TRIVIA = re.compile(
 )
 
 
-def has_medical_conversation_context(
+def has_mental_health_conversation_context(
     *,
     conversation_summary: str = "",
     recent_user_questions: str = "",
 ) -> bool:
     blob = f"{conversation_summary}\n{recent_user_questions}"
-    return bool(_MEDICAL_SCOPE.search(blob))
+    return bool(_MENTAL_HEALTH_SCOPE.search(blob))
+
+
+def has_medical_conversation_context(
+    *,
+    conversation_summary: str = "",
+    recent_user_questions: str = "",
+) -> bool:
+    """Backward-compatible alias."""
+    return has_mental_health_conversation_context(
+        conversation_summary=conversation_summary,
+        recent_user_questions=recent_user_questions,
+    )
 
 
 def looks_like_off_topic_heuristic(
@@ -160,15 +179,17 @@ def looks_like_off_topic_heuristic(
     conversation_summary: str = "",
     recent_user_questions: str = "",
 ) -> bool:
-    """Fast path: block obvious general-knowledge trivia outside Helios scope."""
+    """Fast path: block obvious off-topic queries outside mental-health scope."""
     sample = (text or "").strip()
     if not sample:
         return False
     if _GREETING_OR_SCOPE.search(sample):
         return False
-    if _MEDICAL_SCOPE.search(sample):
+    if _NON_MH_HEALTH.search(sample):
+        return True
+    if _MENTAL_HEALTH_SCOPE.search(sample):
         return False
-    if has_medical_conversation_context(
+    if has_mental_health_conversation_context(
         conversation_summary=conversation_summary,
         recent_user_questions=recent_user_questions,
     ) and _META_FOLLOWUP.search(sample):

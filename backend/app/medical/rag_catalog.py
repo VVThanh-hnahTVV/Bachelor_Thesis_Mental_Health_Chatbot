@@ -226,17 +226,26 @@ Make your decision based on these guidelines:
 - If the user shares symptoms or asks about conditions (e.g. anxiety, insomnia, stress, pain), use RAG_AGENT when the topic matches ingested sources, otherwise CONVERSATION_AGENT for empathetic guidance.
 - Do NOT route to a separate wellness agent. Each agent decides whether to suggest in-app wellness activities in its own output.
 
+When you select RAG_AGENT, also provide sub_queries for retrieval:
+- Return 1-4 English sub-queries, each covering ONE distinct information need (definition, symptoms, treatment, mechanisms, etc.).
+- For simple single-intent questions, sub_queries may contain one item.
+- Use conversation memory to resolve pronouns in follow-up questions (e.g. "what about treatment?" after PTSD discussion -> include PTSD in sub-queries).
+- Write sub_queries in English for retrieval even if the user wrote in another language.
+- For non-RAG agents, set sub_queries to an empty list [].
+
 Examples:
 - "Dạo này tôi hay lo âu mất ngủ" -> RAG_AGENT or CONVERSATION_AGENT
 - "Bạn có hoạt động nào giảm căng thẳng không" -> CONVERSATION_AGENT
-- "Tiểu đường type 2 là gì?" -> RAG_AGENT
-- "Chào Helios" -> CONVERSATION_AGENT
+- "Tiểu đường type 2 là gì?" -> RAG_AGENT with sub_queries: ["type 2 diabetes definition symptoms"]
+- "CBT là gì, cách điều trị?" -> RAG_AGENT with sub_queries: ["definition of cognitive behavioral therapy", "cognitive behavioral therapy treatment methods"]
+- "Chào Helios" -> CONVERSATION_AGENT with sub_queries: []
 
 You must provide your answer in JSON format with the following structure:
 {{
 "agent": "AGENT_NAME",
 "reasoning": "Your step-by-step reasoning for selecting this agent",
-"confidence": 0.95
+"confidence": 0.95,
+"sub_queries": ["english retrieval sub-query 1", "english retrieval sub-query 2"]
 }}
 """
 
