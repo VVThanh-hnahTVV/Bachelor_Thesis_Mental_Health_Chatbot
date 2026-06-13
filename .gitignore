@@ -21,5 +21,7 @@ backend/tests/
 *.pth.tar
 *.pt
 *.ckpt
+*.mkv
+*.mp4
 tests/
 
