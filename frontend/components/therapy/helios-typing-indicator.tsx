@@ -21,6 +21,23 @@ function AnimatedEllipsis() {
   );
 }
 
+function ElapsedSeconds() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <span className="shrink-0 tabular-nums text-xs text-gray-400" aria-hidden>
+      {seconds}s
+    </span>
+  );
+}
+
 export function HeliosTypingIndicator({
   statusMessage,
 }: {
@@ -42,20 +59,23 @@ export function HeliosTypingIndicator({
         <div className="flex min-w-0 flex-col gap-1">
           <p className="text-sm font-medium text-gray-800">Helios</p>
           <div
-            className="chat-status-pulse text-sm text-gray-600"
+            className="chat-status-pulse flex items-center gap-2 text-sm text-gray-600"
             aria-live="polite"
             aria-busy="true"
           >
-            <motion.span
-              key={displayStatus}
-              initial={{ opacity: 0.4 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className="inline"
-            >
-              {displayStatus}
-            </motion.span>
-            <AnimatedEllipsis />
+            <span className="min-w-0">
+              <motion.span
+                key={displayStatus}
+                initial={{ opacity: 0.4 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="inline"
+              >
+                {displayStatus}
+              </motion.span>
+              <AnimatedEllipsis />
+            </span>
+            <ElapsedSeconds />
           </div>
         </div>
       </div>

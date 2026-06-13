@@ -66,6 +66,8 @@ async def handle_medical_chat_turn(
         meta["wellness_retrieval_score"] = turn.wellness_retrieval_score
     if getattr(turn, "wellness_retrieval_source", None):
         meta["wellness_retrieval_source"] = turn.wellness_retrieval_source
+    if getattr(turn, "rag_sources", None):
+        meta["rag_sources"] = turn.rag_sources
 
     assistant_doc = await append_message(
         db,

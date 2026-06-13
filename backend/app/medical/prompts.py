@@ -16,7 +16,7 @@ PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS = """
 
 MARKDOWN_RESPONSE_INSTRUCTIONS = """
 ### Output format (required — Markdown for chat UI)
-- Write the **entire** draft reply in **English** (internal draft). Final localization to the user's language happens in a later safety step.
+- Write the **entire** reply in the **same language as the user** (Vietnamese when user_language is "vi", English when "en"). If the user's language is unclear, default to **Vietnamese**.
 - Use markdown bullet lists for causes, tips, or steps, e.g.:
   - Item one
   - Item two

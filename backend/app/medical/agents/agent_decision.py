@@ -12,6 +12,10 @@ from langchain_core.output_parsers import JsonOutputParser
 from langgraph.graph import MessagesState, StateGraph, END
 import os, getpass
 from app.medical.agents.rag_agent import get_medical_rag
+from app.medical.agents.rag_agent.response_generator import (
+    format_rag_sources_section,
+    strip_embedded_sources_section,
+)
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS, PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS
 from app.medical.agents.web_search_processor_agent import WebSearchProcessorAgent
 from app.medical.agents.guardrails.local_guardrails import LocalGuardrails
@@ -62,6 +66,7 @@ class AgentState(MessagesState):
     wellness_retrieval_score: Optional[float]
     wellness_retrieval_source: Optional[str]
     user_language: Optional[str]  # ISO 639-1 code from input guardrail (e.g. vi, en)
+    rag_sources: Optional[List[Dict[str, str]]]  # RAG citations appended after guardrails
 
 
 class AgentDecision(TypedDict):
@@ -119,14 +124,36 @@ def create_agent_graph():
         if input_text:
             from app.config import get_settings
             from app.conversation.context import format_recent_user_questions
-            from app.medical.agents.guardrails.schemas import detect_user_language_fallback
+            from app.medical.agents.guardrails.schemas import (
+                DEFAULT_USER_LANGUAGE,
+                detect_user_language_fallback,
+                has_clear_language_signal,
+                normalize_language_code,
+                resolve_user_language,
+            )
+
+            def _prior_user_texts() -> list[str]:
+                texts: list[str] = []
+                for msg in state.get("messages") or []:
+                    if isinstance(msg, HumanMessage):
+                        texts.append(str(msg.content or ""))
+                return texts
+
+            def _resolved_language(detected: str | None = None) -> str:
+                if has_clear_language_signal(input_text):
+                    return detect_user_language_fallback(input_text)
+                return resolve_user_language(
+                    input_text,
+                    prior_user_messages=_prior_user_texts(),
+                    default=detected or DEFAULT_USER_LANGUAGE,
+                )
 
             settings = get_settings()
             if not settings.enable_input_guardrails:
                 return {
                     **state,
                     "bypass_routing": False,
-                    "user_language": detect_user_language_fallback(input_text),
+                    "user_language": _resolved_language(),
                 }
 
             summary = str(state.get("conversation_summary") or "").strip()
@@ -140,9 +167,16 @@ def create_agent_graph():
                 conversation_summary=summary,
                 recent_user_questions=recent_questions,
             )
-            user_language = guard_result.user_language
+            user_language = _resolved_language(
+                normalize_language_code(guard_result.user_language),
+            )
             if not guard_result.is_allowed:
-                print(f"Selected agent: INPUT GUARDRAILS, Message: ", guard_result.message)
+                agent_label = (
+                    "OFF_TOPIC_GUARDRAILS"
+                    if guard_result.is_off_topic
+                    else "INPUT_GUARDRAILS"
+                )
+                print(f"Selected agent: {agent_label}, Message: ", guard_result.message)
                 blocked = (
                     guard_result.message
                     if isinstance(guard_result.message, AIMessage)
@@ -152,7 +186,7 @@ def create_agent_graph():
                     **state,
                     "messages": [blocked],
                     "output": blocked,
-                    "agent_name": "INPUT_GUARDRAILS",
+                    "agent_name": agent_label,
                     "bypass_routing": True,
                     "user_language": user_language,
                 }
@@ -186,7 +220,7 @@ def create_agent_graph():
         return {
             **state,
             "bypass_routing": False,
-            "user_language": "en",
+            "user_language": "vi",
         }
     
     def route_after_analyze(state: AgentState) -> str:
@@ -253,14 +287,16 @@ def create_agent_graph():
         input_text = _input_text_from_state(state)
         memory_context = _agent_memory_context(state)
 
-        user_language = str(state.get("user_language") or "en")
+        user_language = str(state.get("user_language") or "vi")
 
         conversation_prompt = f"""User query: {input_text}
 
         Conversation memory:
         {memory_context}
 
-        Detected user language code: {user_language} (for downstream localization only).
+        Detected user language code: {user_language}
+
+        **Language (required):** Write the JSON "answer" (and "activities_intro" if used) entirely in Vietnamese when user_language is "vi", and in English when user_language is "en". For unclear or mistyped input, respond warmly in Vietnamese and invite the user to rephrase.
 
         You are Helios, an AI assistant for **mental health information and supportive guidance** (tra cứu & tư vấn sức khỏe tâm thần). Your goal is warm, clear, empathetic conversation — not cold or generic chatbot replies.
 
@@ -362,11 +398,18 @@ def create_agent_graph():
 
         print(f"Response text preview: {str(response_text)[:100]}...")
 
+        use_rag_answer = not (
+            web_search or retrieval_confidence < config.rag.min_retrieval_confidence
+        )
+        rag_sources = list(response.get("sources") or []) if use_rag_answer else []
+
         # Keep partial RAG answer unless we are delegating to web search
-        if web_search or retrieval_confidence < config.rag.min_retrieval_confidence:
-            response_output = AIMessage(content="")
+        if use_rag_answer:
+            response_output = AIMessage(
+                content=strip_embedded_sources_section(str(response_text))
+            )
         else:
-            response_output = AIMessage(content=str(response_text))
+            response_output = AIMessage(content="")
 
         return {
             **state,
@@ -376,6 +419,7 @@ def create_agent_graph():
             "web_search": web_search,
             "insufficient_info": web_search,
             "suggest_activities": suggest_activities,
+            "rag_sources": rag_sources,
         }
 
     # Web Search Processor Node
@@ -426,6 +470,18 @@ def create_agent_graph():
             return "WEB_SEARCH_PROCESSOR_AGENT"
         return "apply_guardrails"
     
+    def _append_rag_sources(
+        output_text: str,
+        *,
+        rag_sources: List[Dict[str, str]] | None,
+        user_language: str,
+    ) -> str:
+        body = strip_embedded_sources_section(str(output_text or "")).rstrip()
+        sources_section = format_rag_sources_section(rag_sources or [], user_language)
+        if not sources_section:
+            return body
+        return f"{body}{sources_section}"
+
     # Check output through guardrails
     def apply_output_guardrails(state: AgentState) -> AgentState:
         """Apply output guardrails to the generated response."""
@@ -440,6 +496,8 @@ def create_agent_graph():
             return state
 
         output_text = output if isinstance(output, str) else output.content
+        user_language = str(state.get("user_language") or "vi")
+        rag_sources = state.get("rag_sources") or []
         
         # Get the original input text
         input_text = ""
@@ -452,9 +510,12 @@ def create_agent_graph():
 
         settings = get_settings()
         if not settings.enable_output_guardrails:
-            sanitized_message = (
-                output if isinstance(output, AIMessage) else AIMessage(content=output_text)
+            final_text = _append_rag_sources(
+                str(output_text or ""),
+                rag_sources=rag_sources,
+                user_language=user_language,
             )
+            sanitized_message = AIMessage(content=final_text)
             updated: AgentState = {
                 **state,
                 "messages": sanitized_message,
@@ -465,14 +526,18 @@ def create_agent_graph():
             return attach_wellness_after_retrieval(updated)
         
         # Apply output sanitization
-        user_language = str(state.get("user_language") or "en")
         sanitized_output = guardrails.check_output(
-            output_text,
+            strip_embedded_sources_section(str(output_text or "")),
             input_text,
             user_language=user_language,
         )
+        final_text = _append_rag_sources(
+            sanitized_output,
+            rag_sources=rag_sources,
+            user_language=user_language,
+        )
 
-        sanitized_message = AIMessage(content=sanitized_output)
+        sanitized_message = AIMessage(content=final_text)
 
         updated: AgentState = {
             **state,
@@ -545,7 +610,8 @@ def init_agent_state() -> AgentState:
         "suggested_activities": [],
         "wellness_retrieval_score": None,
         "wellness_retrieval_source": None,
-        "user_language": "en",
+        "user_language": "vi",
+        "rag_sources": [],
     }
 
 

@@ -1,6 +1,36 @@
 {
-  "updated_at": "2026-06-12T15:19:10.350653+00:00",
+  "updated_at": "2026-06-13T02:27:17.527184+00:00",
   "articles": [
+    {
+      "source_id": "6e6ed1cfccef2b65",
+      "url": "https://www.sciencedaily.com/releases/2025/05/250505170641.htm",
+      "canonical_url": "https://www.sciencedaily.com/releases/2025/05/250505170641.htm",
+      "title": "PTSD patients show long-term benefits with vagus nerve stimulation",
+      "full_text": "The results of the nine-patient Phase 1 trial, conducted by scientists from UT Dallas' Texas Biomedical Device Center (TxBDC) in collaboration with researchers from the Baylor Scott & White Research Institute (BSWRI), were published online March 15 in Brain Stimulation.\n\nDr. Michael Kilgard, the Margaret Fonde Jonsson Professor of neuroscience in the School of Behavioral and Brain Sciences, said the outcome highlighted the potential of this approach.\n\n\"In a trial like this, some subjects usually do get better, but rarely do they lose their PTSD diagnosis. Typically, the majority will have this diagnosis for the rest of their lives,\" Kilgard said. \"In this case, we had 100% loss of diagnosis. It's very promising.\"\n\nProlonged exposure therapy -- a component of traditional PTSD treatment -- is a form of cognitive behavioral therapy, conducted in a safe and supportive environment, that involves individuals gradually confronting thoughts, memories and situations they have avoided since experiencing a trauma.\n\nIn the study, scientists paired this therapy with concurrent delivery of short bursts of stimulation of the vagus nerve via a small device implanted in a participant's neck. After a standard 12-session therapy course, assessments were performed four times during the six months after its conclusion. Benefits persisted during that time for all nine participants.\n\nThe study is the largest clinical trial to date using an implanted device for the treatment of PTSD, Kilgard said.\n\nPioneering work by TxBDC researchers has demonstrated previously that VNS paired with physical rehabilitation can accelerate neuroplasticity -- the rewiring of areas of the brain. Their 13-year effort to treat a wide variety of conditions using VNS has resulted in approval by the Food and Drug Administration (FDA) for treating impaired upper-limb movement in stroke patients.\n\n\"The common theme in our VNS work is that we're taking therapies that show potential, like prolonged exposure therapy for PTSD, and making them work better,\" he said.\n\nThe National Center for PTSD, part of the Department of Veterans Affairs, estimates that 5% of adults in the U.S. have post-traumatic stress disorder in any given year, and that women are twice as likely to develop PTSD at some point in their life. Many PTSD patients fail to respond to therapy or pharmacological intervention, or experience intolerable side effects or relapse, leaving them with no viable prospect for remission.\n\nKilgard said that PTSD patients are not only found among military veterans, but also among average citizens who have faced traumatic events.\n\n\"When you hear PTSD, you may picture a combat zone, but it's much more prevalent than that,\" he said. \"It can stem from any event that inspires fear of death or bodily injury, or death of a loved one.\"\n\nCo-corresponding author Dr. Seth Hays, associate professor of bioengineering in the Erik Jonsson School of Engineering and Computer Science and director of preclinical research at the TxBDC, has been a part of the VNS project since its earliest studies.\n\n\"It's been an incredibly rewarding experience to see this technology evolve from early discovery experiments in the lab to clinical benefits in patients,\" Hays said. \"This whole process truly highlights the value of team-based science.\"\n\nMore than a decade ago, Dr. Robert Rennaker, professor of neuroscience and the Texas Instruments Distinguished Chair in Bioengineering, began to design an innovative implantable VNS device that was much smaller and less expensive than devices already on the market. The most recent wireless version of the device is about the size of a dime.\n\n\"The technology we have is above and beyond anything else that's out there. The device is about 50 times smaller than our version from just three years ago,\" he said. \"The 49 people in the Dallas area with our devices have a combined 100 years of experience with it implanted. There have been no issues; the devices are all still functioning. And they don't interfere with typical medical care; you can have an MRI, a CT scan or an ultrasound.\"\n\nThe next step in the PTSD research -- a double-blind, placebo-controlled Phase 2 pilot study -- is ongoing in Dallas and Austin.\n\n\"We hope that it will represent another step toward FDA approval of a treatment that doesn't exist now, and it would be invented, tested and delivered by UT Dallas, as was the case for upper-limb recovery after stroke,\" Kilgard said.\n\nLicensed clinical psychologist Dr. Mark Powers, a research center director of the Trauma Research Center at BSWRI, is the lead and co-corresponding author of the study. Driven by his desire to improve quality of life among people who experience psychological trauma, Powers said that VNS has \"changed the game\" by improving both treatment efficacy and its tolerability.\n\n\"VNS has changed my work dramatically,\" he said. \"Our gold-standard treatments for PTSD have about an 85% response rate, with 40% no longer having their diagnosis, and a 20% dropout rate. Soon we could have the option of VNS for people who don't get better with cognitive behavioral therapy alone.\"\n\nPowers added that his collaboration with UTD has a multidisciplinary synergy that he regards as rare.\n\n\"With this alliance, we have people doing the preclinical and the clinical work at the same time, giving each other feedback and ideas,\" he said. \"Neither one of our groups could do this alone.\"\n\nOther UTD-affiliated study authors included Dr. Jane Wigginton, medical director and co-director of the UT Dallas Clinical and Translational Research Center; Amy Porter MBA'20, TxBDC director of operations; and Holle Carey Gallaway MBA'23, TxBDC research biomedical engineer. Researchers from Southern Methodist University, UT Austin and Baylor Scott & White Health also contributed to the study.\n\nThe research was funded by a grant (N66001-15-2-4057) from the Biological Technologies Office at the Defense Advanced Research Projects Agency, part of the Department of Defense.",
+      "publisher": "ScienceDaily",
+      "language": "en",
+      "trust_tier": "curated",
+      "content_type": "news_article",
+      "topics": [
+        "mental_health"
+      ],
+      "published_at": "2025-05-05T17:06:41-04:00",
+      "fetched_at": "2026-06-12T14:36:30.374796+00:00",
+      "content_hash": "9bce13f04ff308125b6460560dce867ff05005f14d93d5930e509df99b195dec",
+      "feed_id": "sciencedaily_mental_health",
+      "summary": "The results of the nine-patient Phase 1 trial, conducted by scientists from UT Dallas' Texas Biomedical Device Center (TxBDC) in collaboration with researchers from the Baylor Scott & White Research Institute (BSWRI), were published online March 15 in Brain Stimulation. Dr. Mich…",
+      "status": "indexed",
+      "word_count": 953,
+      "relevance_score": 0.8,
+      "matched_keywords": [
+        "ptsd",
+        "stress",
+        "therapy"
+      ],
+      "reviewed_at": "2026-06-13T01:15:01.288548+00:00",
+      "reviewed_by": "6a0a5b5c84793bdbcf12a3f2",
+      "indexed_at": "2026-06-13T01:15:07.372438+00:00"
+    },
     {
       "source_id": "f9ae6712e60fa98f",
       "url": "https://www.vinmec.com/vie/bai-viet/di-ung-va-suc-khoe-tam-than-co-moi-lien-he-ra-sao",
@@ -29,39 +59,9 @@
         "sức khỏe tâm thần",
         "trầm cảm"
       ],
-      "reviewed_at": "2026-06-09T09:52:38.867998+00:00",
+      "reviewed_at": "2026-06-13T02:27:12.299869+00:00",
       "reviewed_by": "6a0a5b5c84793bdbcf12a3f2",
-      "indexed_at": "2026-06-09T09:52:47.548353+00:00"
-    },
-    {
-      "source_id": "6e6ed1cfccef2b65",
-      "url": "https://www.sciencedaily.com/releases/2025/05/250505170641.htm",
-      "canonical_url": "https://www.sciencedaily.com/releases/2025/05/250505170641.htm",
-      "title": "PTSD patients show long-term benefits with vagus nerve stimulation",
-      "full_text": "The results of the nine-patient Phase 1 trial, conducted by scientists from UT Dallas' Texas Biomedical Device Center (TxBDC) in collaboration with researchers from the Baylor Scott & White Research Institute (BSWRI), were published online March 15 in Brain Stimulation.\n\nDr. Michael Kilgard, the Margaret Fonde Jonsson Professor of neuroscience in the School of Behavioral and Brain Sciences, said the outcome highlighted the potential of this approach.\n\n\"In a trial like this, some subjects usually do get better, but rarely do they lose their PTSD diagnosis. Typically, the majority will have this diagnosis for the rest of their lives,\" Kilgard said. \"In this case, we had 100% loss of diagnosis. It's very promising.\"\n\nProlonged exposure therapy -- a component of traditional PTSD treatment -- is a form of cognitive behavioral therapy, conducted in a safe and supportive environment, that involves individuals gradually confronting thoughts, memories and situations they have avoided since experiencing a trauma.\n\nIn the study, scientists paired this therapy with concurrent delivery of short bursts of stimulation of the vagus nerve via a small device implanted in a participant's neck. After a standard 12-session therapy course, assessments were performed four times during the six months after its conclusion. Benefits persisted during that time for all nine participants.\n\nThe study is the largest clinical trial to date using an implanted device for the treatment of PTSD, Kilgard said.\n\nPioneering work by TxBDC researchers has demonstrated previously that VNS paired with physical rehabilitation can accelerate neuroplasticity -- the rewiring of areas of the brain. Their 13-year effort to treat a wide variety of conditions using VNS has resulted in approval by the Food and Drug Administration (FDA) for treating impaired upper-limb movement in stroke patients.\n\n\"The common theme in our VNS work is that we're taking therapies that show potential, like prolonged exposure therapy for PTSD, and making them work better,\" he said.\n\nThe National Center for PTSD, part of the Department of Veterans Affairs, estimates that 5% of adults in the U.S. have post-traumatic stress disorder in any given year, and that women are twice as likely to develop PTSD at some point in their life. Many PTSD patients fail to respond to therapy or pharmacological intervention, or experience intolerable side effects or relapse, leaving them with no viable prospect for remission.\n\nKilgard said that PTSD patients are not only found among military veterans, but also among average citizens who have faced traumatic events.\n\n\"When you hear PTSD, you may picture a combat zone, but it's much more prevalent than that,\" he said. \"It can stem from any event that inspires fear of death or bodily injury, or death of a loved one.\"\n\nCo-corresponding author Dr. Seth Hays, associate professor of bioengineering in the Erik Jonsson School of Engineering and Computer Science and director of preclinical research at the TxBDC, has been a part of the VNS project since its earliest studies.\n\n\"It's been an incredibly rewarding experience to see this technology evolve from early discovery experiments in the lab to clinical benefits in patients,\" Hays said. \"This whole process truly highlights the value of team-based science.\"\n\nMore than a decade ago, Dr. Robert Rennaker, professor of neuroscience and the Texas Instruments Distinguished Chair in Bioengineering, began to design an innovative implantable VNS device that was much smaller and less expensive than devices already on the market. The most recent wireless version of the device is about the size of a dime.\n\n\"The technology we have is above and beyond anything else that's out there. The device is about 50 times smaller than our version from just three years ago,\" he said. \"The 49 people in the Dallas area with our devices have a combined 100 years of experience with it implanted. There have been no issues; the devices are all still functioning. And they don't interfere with typical medical care; you can have an MRI, a CT scan or an ultrasound.\"\n\nThe next step in the PTSD research -- a double-blind, placebo-controlled Phase 2 pilot study -- is ongoing in Dallas and Austin.\n\n\"We hope that it will represent another step toward FDA approval of a treatment that doesn't exist now, and it would be invented, tested and delivered by UT Dallas, as was the case for upper-limb recovery after stroke,\" Kilgard said.\n\nLicensed clinical psychologist Dr. Mark Powers, a research center director of the Trauma Research Center at BSWRI, is the lead and co-corresponding author of the study. Driven by his desire to improve quality of life among people who experience psychological trauma, Powers said that VNS has \"changed the game\" by improving both treatment efficacy and its tolerability.\n\n\"VNS has changed my work dramatically,\" he said. \"Our gold-standard treatments for PTSD have about an 85% response rate, with 40% no longer having their diagnosis, and a 20% dropout rate. Soon we could have the option of VNS for people who don't get better with cognitive behavioral therapy alone.\"\n\nPowers added that his collaboration with UTD has a multidisciplinary synergy that he regards as rare.\n\n\"With this alliance, we have people doing the preclinical and the clinical work at the same time, giving each other feedback and ideas,\" he said. \"Neither one of our groups could do this alone.\"\n\nOther UTD-affiliated study authors included Dr. Jane Wigginton, medical director and co-director of the UT Dallas Clinical and Translational Research Center; Amy Porter MBA'20, TxBDC director of operations; and Holle Carey Gallaway MBA'23, TxBDC research biomedical engineer. Researchers from Southern Methodist University, UT Austin and Baylor Scott & White Health also contributed to the study.\n\nThe research was funded by a grant (N66001-15-2-4057) from the Biological Technologies Office at the Defense Advanced Research Projects Agency, part of the Department of Defense.",
-      "publisher": "ScienceDaily",
-      "language": "en",
-      "trust_tier": "curated",
-      "content_type": "news_article",
-      "topics": [
-        "mental_health"
-      ],
-      "published_at": "2025-05-05T17:06:41-04:00",
-      "fetched_at": "2026-06-12T14:36:30.374796+00:00",
-      "content_hash": "9bce13f04ff308125b6460560dce867ff05005f14d93d5930e509df99b195dec",
-      "feed_id": "sciencedaily_mental_health",
-      "summary": "The results of the nine-patient Phase 1 trial, conducted by scientists from UT Dallas' Texas Biomedical Device Center (TxBDC) in collaboration with researchers from the Baylor Scott & White Research Institute (BSWRI), were published online March 15 in Brain Stimulation. Dr. Mich…",
-      "status": "indexed",
-      "word_count": 953,
-      "relevance_score": 0.8,
-      "matched_keywords": [
-        "ptsd",
-        "stress",
-        "therapy"
-      ],
-      "reviewed_at": "2026-06-12T15:10:05.016151+00:00",
-      "reviewed_by": "6a0a5b5c84793bdbcf12a3f2",
-      "indexed_at": "2026-06-12T15:19:10.350366+00:00"
+      "indexed_at": "2026-06-13T02:27:17.526912+00:00"
     }
   ]
 }

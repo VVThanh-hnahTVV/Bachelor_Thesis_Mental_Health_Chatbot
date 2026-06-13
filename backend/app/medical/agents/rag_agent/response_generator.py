@@ -10,6 +10,48 @@ from app.medical.agents.structured_output import (
 )
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS
 
+_SOURCE_SECTION_MARKERS = (
+    "##### Source documents:",
+    "##### Nguồn tham khảo:",
+    "##### Reference images:",
+)
+
+_SOURCE_HEADINGS: dict[str, str] = {
+    "en": "Source documents",
+    "vi": "Nguồn tham khảo",
+}
+
+
+def strip_embedded_sources_section(text: str) -> str:
+    """Remove trailing source/reference blocks before guardrail translation."""
+    for marker in _SOURCE_SECTION_MARKERS:
+        idx = text.find(marker)
+        if idx != -1:
+            return text[:idx].rstrip()
+    return text.rstrip()
+
+
+def format_rag_sources_section(
+    sources: List[Dict[str, Any]],
+    user_language: str = "en",
+) -> str:
+    """Build a markdown citations block in the user's language."""
+    if not sources:
+        return ""
+
+    lang = (user_language or "en").split("-", 1)[0].lower()
+    heading = _SOURCE_HEADINGS.get(lang, _SOURCE_HEADINGS["en"])
+    lines = [f"\n\n##### {heading}:"]
+    for source in sources:
+        title = str(source.get("title") or "Source").strip()
+        path = str(source.get("path") or "").strip()
+        if path:
+            lines.append(f"\n- [{title}]({path})")
+        elif title:
+            lines.append(f"\n- {title}")
+    return "".join(lines)
+
+
 class ResponseGenerator:
     """
     Generates responses based on retrieved context and user query.
@@ -148,14 +190,8 @@ class ResponseGenerator:
             # Calculate confidence
             confidence = self._calculate_confidence(retrieved_docs)
 
-            # Add sources to response
-            if hasattr(self, 'include_sources') and self.include_sources and sources:
-                answer_text += "\n\n##### Source documents:"
-                for current_source in sources:
-                    source_path = current_source['path']
-                    source_title = current_source['title']
-                    answer_text += f"\n- [{source_title}]({source_path})"
-            
+            # Sources are appended after output guardrails (see agent_decision.apply_output_guardrails).
+
             # Add picture paths to response
             if picture_paths:
                 answer_text += "\n\n##### Reference images:"

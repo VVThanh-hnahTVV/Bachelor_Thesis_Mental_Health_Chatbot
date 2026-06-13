@@ -70,3 +70,24 @@ def support_joined_notice(name: str, language: str = "vi") -> str:
 def support_left_notice(language: str = "vi") -> str:
     lang = (language or "vi").split("-", 1)[0].lower()
     return SUPPORT_LEFT_NOTICE.get(lang, SUPPORT_LEFT_NOTICE["en"])
+
+
+OFF_TOPIC_SCOPE_NOTICE: dict[str, str] = {
+    "vi": (
+        "Mình là **Helios**, trợ lý hỗ trợ **thông tin và tư vấn về sức khỏe tâm thần** — "
+        "cảm xúc, căng thẳng, tri thức y khoa liên quan, và gợi ý wellness nhẹ nhàng.\n\n"
+        "Câu hỏi của bạn nằm **ngoài phạm vi** mình hỗ trợ. "
+        "Bạn có muốn chia sẻ điều gì đang bận tâm, hoặc hỏi về chủ đề sức khỏe tâm thần / y tế không?"
+    ),
+    "en": (
+        "I'm **Helios**, focused on **mental health information and supportive guidance** — "
+        "emotions, stress, related medical topics, and gentle wellness suggestions.\n\n"
+        "Your question is **outside what I can help with here**. "
+        "Would you like to share what's on your mind, or ask about mental health / medical topics?"
+    ),
+}
+
+
+def off_topic_scope_notice(language: str) -> str:
+    lang = (language or "vi").split("-", 1)[0].lower()
+    return OFF_TOPIC_SCOPE_NOTICE.get(lang, OFF_TOPIC_SCOPE_NOTICE["vi"])

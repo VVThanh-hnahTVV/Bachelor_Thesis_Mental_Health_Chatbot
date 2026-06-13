@@ -20,6 +20,7 @@ class MedicalTurnResult:
         "suggested_activities",
         "wellness_retrieval_score",
         "wellness_retrieval_source",
+        "rag_sources",
     )
 
     def __init__(
@@ -29,12 +30,14 @@ class MedicalTurnResult:
         suggested_activities: list[dict[str, str]] | None = None,
         wellness_retrieval_score: float | None = None,
         wellness_retrieval_source: str | None = None,
+        rag_sources: list[dict[str, str]] | None = None,
     ) -> None:
         self.reply = reply
         self.agent_name = agent_name
         self.suggested_activities = suggested_activities or []
         self.wellness_retrieval_score = wellness_retrieval_score
         self.wellness_retrieval_source = wellness_retrieval_source
+        self.rag_sources = rag_sources or []
 
 
 def _extract_reply(result: dict[str, Any]) -> str:
@@ -74,6 +77,7 @@ def _run_sync(
         suggested_activities=result.get("suggested_activities") or [],
         wellness_retrieval_score=result.get("wellness_retrieval_score"),
         wellness_retrieval_source=result.get("wellness_retrieval_source"),
+        rag_sources=result.get("rag_sources") or [],
     )
 
 
