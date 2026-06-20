@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-13T02:27:17.527886+00:00",
+  "updated_at": "2026-06-20T13:51:06.001121+00:00",
   "articles": [
     {
       "source_id": "6e6ed1cfccef2b65",
@@ -8,6 +8,14 @@
       "language": "en",
       "url": "https://www.sciencedaily.com/releases/2025/05/250505170641.htm",
       "indexed_at": "2026-06-13T01:15:07.372438+00:00"
+    },
+    {
+      "source_id": "64292a5eb544b2e8",
+      "title": "Rối loạn lo âu: Nhận biết triệu chứng, phân loại và điều trị hiệu quả",
+      "publisher": "Vinmec",
+      "language": "vi",
+      "url": "https://www.vinmec.com/vie/bai-viet/roi-loan-lo-au-nhan-biet-trieu-chung-phan-loai-va-dieu-tri-hieu-qua",
+      "indexed_at": "2026-06-20T13:51:05.999885+00:00"
     },
     {
       "source_id": "f9ae6712e60fa98f",

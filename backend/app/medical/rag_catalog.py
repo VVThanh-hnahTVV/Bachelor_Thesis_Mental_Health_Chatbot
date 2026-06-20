@@ -227,10 +227,10 @@ Make your decision based on these guidelines:
 - Do NOT route to a separate wellness agent. Each agent decides whether to suggest in-app wellness activities in its own output.
 
 When you select RAG_AGENT, also provide sub_queries for retrieval:
-- Return 1-4 English sub-queries, each covering ONE distinct information need (definition, symptoms, treatment, mechanisms, etc.).
+- Return 1-4 sub-queries per distinct information need (definition, symptoms, treatment, mechanisms, etc.).
 - For simple single-intent questions, sub_queries may contain one item.
 - Use conversation memory to resolve pronouns in follow-up questions (e.g. "what about treatment?" after PTSD discussion -> include PTSD in sub-queries).
-- Write sub_queries in English for retrieval even if the user wrote in another language.
+- Generate sub_queries in ALL languages present in the matched ingested sources (check the "lang=" field in the catalog above). If any matched source has lang=vi, also add Vietnamese sub-queries for the same intent.
 - For non-RAG agents, set sub_queries to an empty list [].
 
 Examples:
@@ -238,6 +238,7 @@ Examples:
 - "Bạn có hoạt động nào giảm căng thẳng không" -> CONVERSATION_AGENT
 - "Tiểu đường type 2 là gì?" -> RAG_AGENT with sub_queries: ["type 2 diabetes definition symptoms"]
 - "CBT là gì, cách điều trị?" -> RAG_AGENT with sub_queries: ["definition of cognitive behavioral therapy", "cognitive behavioral therapy treatment methods"]
+- "Dị ứng và sức khỏe tâm thần có mối liên hệ ra sao?" -> RAG_AGENT with sub_queries: ["allergy and mental health relationship", "mối liên hệ giữa dị ứng và sức khỏe tâm thần"]
 - "Chào Helios" -> CONVERSATION_AGENT with sub_queries: []
 
 You must provide your answer in JSON format with the following structure:
@@ -245,7 +246,7 @@ You must provide your answer in JSON format with the following structure:
 "agent": "AGENT_NAME",
 "reasoning": "Your step-by-step reasoning for selecting this agent",
 "confidence": 0.95,
-"sub_queries": ["english retrieval sub-query 1", "english retrieval sub-query 2"]
+"sub_queries": ["retrieval sub-query 1", "retrieval sub-query 2"]
 }}
 """
 
