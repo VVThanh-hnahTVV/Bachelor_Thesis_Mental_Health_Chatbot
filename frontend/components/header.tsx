@@ -54,7 +54,7 @@ export function Header() {
             asChild
             className="hidden md:flex items-center gap-2 px-5 py-2 h-auto rounded-full bg-[#E8F0E7] text-serene-accent border border-serene-green/20 hover:bg-[#DCE7DA] shadow-none"
           >
-            <Link href="/dashboard">
+            <Link href="/therapy/new">
               <MessageCircle className="w-4 h-4" />
               Start Chat
             </Link>
@@ -108,7 +108,7 @@ export function Header() {
               asChild
               className="mt-3 rounded-full bg-[#E8F0E7] text-serene-accent border border-serene-green/20 hover:bg-[#DCE7DA]"
             >
-              <Link href="/dashboard" onClick={() => setIsMenuOpen(false)}>
+              <Link href="/therapy/new" onClick={() => setIsMenuOpen(false)}>
                 <MessageCircle className="w-4 h-4 mr-2" />
                 Start Chat
               </Link>

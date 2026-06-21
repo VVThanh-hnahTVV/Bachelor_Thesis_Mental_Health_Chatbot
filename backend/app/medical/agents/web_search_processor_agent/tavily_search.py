@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -96,6 +96,22 @@ def _format_tavily_hit(res: Dict[str, Any]) -> str:
     )
 
 
+def _extract_tavily_sources(search_docs: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Pull citable {title, path} pairs from Tavily hits (skip placeholders/dupes)."""
+    sources: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for res in search_docs:
+        url = str(res.get("url") or "").strip()
+        if not url or url == "N/A" or not url.lower().startswith("http"):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        title = str(res.get("title") or "").strip() or url
+        sources.append({"title": title, "path": url})
+    return sources
+
+
 def sanitize_tavily_query(query: str, *, max_len: int = 400) -> str:
     """Strip LLM fluff; Tavily returns 400 on empty query."""
     text = (query or "").strip().strip("\"'`")
@@ -156,14 +172,19 @@ class TavilySearchAgent:
             )
         self.api_key = api_key or os.getenv("TAVILY_API_KEY")
 
-    def search_tavily(self, query: str) -> str:
-        """Perform a web search using Tavily API."""
+    def search_tavily(self, query: str) -> Tuple[str, List[Dict[str, str]]]:
+        """Perform a web search using Tavily API.
+
+        Returns a tuple of (formatted_text_for_llm, citable_sources).
+        ``citable_sources`` is a list of ``{"title", "path"}`` dicts so the
+        graph can append reference links the same way RAG does.
+        """
         query = sanitize_tavily_query(query)
         if not query:
-            return "No web search query provided."
+            return "No web search query provided.", []
 
         if not self.api_key:
-            return "Tavily search skipped: set TAVILY_API_KEY in backend/.env"
+            return "Tavily search skipped: set TAVILY_API_KEY in backend/.env", []
 
         payload: Dict[str, Any] = {
             "api_key": self.api_key,
@@ -184,13 +205,14 @@ class TavilySearchAgent:
                     query[:80],
                     detail,
                 )
-                return f"Error retrieving web search results: {detail}"
+                return f"Error retrieving web search results: {detail}", []
 
             raw_results = response.json()
             search_docs = _normalize_tavily_results(raw_results.get("results", []))
             if search_docs:
-                return "\n\n---\n\n".join(_format_tavily_hit(res) for res in search_docs)
-            return "No relevant Tavily results found."
+                text = "\n\n---\n\n".join(_format_tavily_hit(res) for res in search_docs)
+                return text, _extract_tavily_sources(search_docs)
+            return "No relevant Tavily results found.", []
         except Exception as e:
             logger.warning("Tavily search failed for query=%r: %s", query[:80], e)
-            return f"Error retrieving web search results: {e}"
+            return f"Error retrieving web search results: {e}", []

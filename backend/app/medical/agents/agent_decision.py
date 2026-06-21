@@ -467,6 +467,20 @@ def create_agent_graph():
         )
         response_content = str(processed.get("response", ""))
         suggest_activities = bool(processed.get("suggest_activities", False))
+        web_sources = list(processed.get("sources") or [])
+
+        # Merge any RAG citations gathered earlier (e.g. RAG -> web fallback)
+        # with the fresh web-search sources, deduplicating by path.
+        merged_sources: List[Dict[str, str]] = []
+        seen_paths: set[str] = set()
+        for src in (state.get("rag_sources") or []) + web_sources:
+            path = str(src.get("path") or "").strip()
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
+            merged_sources.append(src)
+
+        print(f"[WEB_SEARCH_PROCESSOR_AGENT] Sources: {len(merged_sources)}")
 
         if state['agent_name'] != None:
             involved_agents = f"{state['agent_name']}, WEB_SEARCH_PROCESSOR_AGENT"
@@ -479,6 +493,7 @@ def create_agent_graph():
             "agent_name": involved_agents,
             "suggest_activities": suggest_activities,
             "web_search": False,
+            "rag_sources": merged_sources,
         }
 
     # Define Routing Logic

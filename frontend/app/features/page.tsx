@@ -51,7 +51,7 @@ const features = [
     icon: Wind,
     title: "Bài tập thư giãn",
     description:
-      "Hít thở, mini-game thư giãn và âm thanh calming — dùng ngay trong chat hoặc từ dashboard khi cần ổn định cảm xúc.",
+      "Hít thở, mini-game thư giãn và âm thanh calming — dùng ngay trong chat khi cần ổn định cảm xúc.",
   },
   {
     icon: ShieldAlert,
@@ -123,15 +123,15 @@ export default function FeaturesPage() {
             Sẵn sàng bắt đầu?
           </h2>
           <p className="text-gray-500 mb-6 max-w-lg mx-auto">
-            Mở dashboard để bắt đầu trò chuyện với Helios hoặc thử một bài tập thư giãn.
+            Bắt đầu trò chuyện với Helios ngay để được tra cứu & tư vấn sức khỏe tâm thần.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button
               asChild
               className="rounded-full bg-serene-green hover:bg-serene-accent text-white px-8"
             >
-              <Link href="/dashboard">
-                Vào Dashboard
+              <Link href="/therapy/new">
+                Bắt đầu trò chuyện
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Link>
             </Button>

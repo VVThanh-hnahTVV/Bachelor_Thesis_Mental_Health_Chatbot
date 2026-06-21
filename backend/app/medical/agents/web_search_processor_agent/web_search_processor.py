@@ -116,9 +116,10 @@ class WebSearchProcessor:
                     "Please rephrase your question."
                 ),
                 "suggest_activities": False,
+                "sources": [],
             }
 
-        web_results = self.web_search_agent.search(search_query)
+        web_results, sources = self.web_search_agent.search(search_query)
 
         print(f"[WebSearchProcessor] Fetched results: {web_results}")
         
@@ -127,7 +128,9 @@ class WebSearchProcessor:
             "You are an AI assistant specialized in medical information. Below are search results "
             "from Tavily (general web) and/or PubMed (peer-reviewed medical literature). "
             "Summarize and generate a helpful, concise response in the JSON \"answer\" field. "
-            "Prefer PubMed evidence when available. Cite source URLs or PMIDs when relevant. "
+            "Prefer PubMed evidence when available. "
+            "Do NOT include source links, URLs, PMIDs, or a references/\"Nguồn tham khảo\" "
+            "section inside the JSON \"answer\" field — sources are appended separately by the system. "
             "Do not diagnose or prescribe; recommend professional care for serious concerns.\n\n"
             f"{_web_search_time_instructions(for_query_rewrite=False)}\n"
             f"{SUGGEST_ACTIVITIES_RULES}\n"
@@ -147,4 +150,5 @@ class WebSearchProcessor:
                 activities_intro=structured.activities_intro,
             ),
             "suggest_activities": structured.suggest_activities,
+            "sources": sources,
         }

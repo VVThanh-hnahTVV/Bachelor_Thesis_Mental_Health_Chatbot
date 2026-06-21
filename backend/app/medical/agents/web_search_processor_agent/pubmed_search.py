@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -67,11 +67,15 @@ class PubmedSearchAgent:
             params["api_key"] = self.api_key
         return params
 
-    def search_pubmed(self, query: str) -> str:
-        """Return formatted PubMed hits with title, metadata, abstract, and URL."""
+    def search_pubmed(self, query: str) -> Tuple[str, List[Dict[str, str]]]:
+        """Return PubMed hits as (formatted_text, citable_sources).
+
+        ``citable_sources`` is a list of ``{"title", "path"}`` dicts (one per
+        article URL) so the graph can append reference links like RAG does.
+        """
         query = query.strip().strip("\"'")
         if not query:
-            return "No PubMed query provided."
+            return "No PubMed query provided.", []
 
         global _ncbi_ip_blocked
         ncbi_error: Optional[str] = None
@@ -84,9 +88,9 @@ class PubmedSearchAgent:
             try:
                 article_ids = self._search_ids_ncbi(query)
                 if article_ids:
-                    summaries = self._fetch_summaries_ncbi(article_ids)
-                    return "\n\n---\n\n".join(summaries)
-                return "No relevant PubMed articles found."
+                    summaries, sources = self._fetch_summaries_ncbi(article_ids)
+                    return "\n\n---\n\n".join(summaries), sources
+                return "No relevant PubMed articles found.", []
             except Exception as e:
                 ncbi_error = str(e)
                 if "blocked" in str(e).lower() or "rate-limit" in str(e).lower():
@@ -106,7 +110,7 @@ class PubmedSearchAgent:
 
         if self.enable_europepmc_fallback:
             try:
-                epmc = self._search_europepmc(query)
+                epmc, sources = self._search_europepmc(query)
                 if epmc:
                     note = ""
                     if ncbi_error:
@@ -114,13 +118,14 @@ class PubmedSearchAgent:
                             f"(NCBI unavailable: {ncbi_error}. "
                             "Showing Europe PMC results instead.)\n\n"
                         )
-                    return note + epmc
+                    return note + epmc, sources
             except Exception as e:
                 logger.warning("Europe PMC fallback failed: %s", e)
                 if ncbi_error:
                     return (
                         f"PubMed search unavailable. NCBI: {ncbi_error}. "
-                        f"Europe PMC: {e}"
+                        f"Europe PMC: {e}",
+                        [],
                     )
 
         if ncbi_error:
@@ -128,9 +133,10 @@ class PubmedSearchAgent:
                 f"PubMed search unavailable: {ncbi_error}. "
                 "Set PUBMED_EMAIL and optional PUBMED_API_KEY (from "
                 "https://www.ncbi.nlm.nih.gov/account/settings/ ), or enable "
-                "Europe PMC fallback."
+                "Europe PMC fallback.",
+                [],
             )
-        return "PubMed search skipped: configure PUBMED_EMAIL or PUBMED_API_KEY."
+        return "PubMed search skipped: configure PUBMED_EMAIL or PUBMED_API_KEY.", []
 
     def _search_ids_ncbi(self, query: str) -> List[str]:
         params = {
@@ -161,7 +167,9 @@ class PubmedSearchAgent:
             raise ValueError(data.get("error", "NCBI API error"))
         return data.get("esearchresult", {}).get("idlist", [])
 
-    def _fetch_summaries_ncbi(self, article_ids: List[str]) -> List[str]:
+    def _fetch_summaries_ncbi(
+        self, article_ids: List[str]
+    ) -> Tuple[List[str], List[Dict[str, str]]]:
         params = {
             **self._base_params(),
             "db": "pubmed",
@@ -183,6 +191,7 @@ class PubmedSearchAgent:
 
         blocks = [b.strip() for b in raw_text.split("\n\n") if b.strip()]
         formatted: List[str] = []
+        sources: List[Dict[str, str]] = []
 
         for idx, article_id in enumerate(article_ids):
             abstract_block = blocks[idx] if idx < len(blocks) else "Abstract not available."
@@ -192,10 +201,11 @@ class PubmedSearchAgent:
                 f"URL: {url}\n"
                 f"Abstract:\n{abstract_block}"
             )
+            sources.append({"title": f"PubMed PMID {article_id}", "path": url})
 
-        return formatted
+        return formatted, sources
 
-    def _search_europepmc(self, query: str) -> str:
+    def _search_europepmc(self, query: str) -> Tuple[str, List[Dict[str, str]]]:
         """Europe PMC REST API — no NCBI API key; good fallback when E-utilities block IP."""
         params = {
             "query": query,
@@ -213,9 +223,10 @@ class PubmedSearchAgent:
         data = response.json()
         hits = data.get("resultList", {}).get("result", [])
         if not hits:
-            return ""
+            return "", []
 
         formatted: List[str] = []
+        sources: List[Dict[str, str]] = []
         for hit in hits:
             pmid = hit.get("pmid") or hit.get("id", "N/A")
             title = hit.get("title", "N/A")
@@ -231,5 +242,8 @@ class PubmedSearchAgent:
                 block += f"URL: {url}\n"
             block += f"Abstract:\n{abstract}"
             formatted.append(block)
+            if url:
+                citation_title = str(title).strip() if title and title != "N/A" else f"PubMed PMID {pmid}"
+                sources.append({"title": citation_title, "path": url})
 
-        return "\n\n---\n\n".join(formatted)
+        return "\n\n---\n\n".join(formatted), sources

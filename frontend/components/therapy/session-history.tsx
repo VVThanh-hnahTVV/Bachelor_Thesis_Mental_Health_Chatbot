@@ -178,7 +178,7 @@ export function SessionHistory({ onNewSession }: SessionHistoryProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/")}
             className="gap-2"
           >
             <ArrowLeft className="w-4 h-4" />

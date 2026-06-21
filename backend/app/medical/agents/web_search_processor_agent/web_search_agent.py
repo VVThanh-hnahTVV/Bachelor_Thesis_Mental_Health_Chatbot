@@ -1,3 +1,5 @@
+from typing import Dict, List, Tuple
+
 from .pubmed_search import PubmedSearchAgent
 from .tavily_search import TavilySearchAgent
 
@@ -29,20 +31,40 @@ class WebSearchAgent:
             use_ncbi=ws.pubmed_use_ncbi,
         )
 
-    def search(self, query: str) -> str:
-        """Run enabled search backends and combine results."""
+    def search(self, query: str) -> Tuple[str, List[Dict[str, str]]]:
+        """Run enabled search backends and combine results.
+
+        Returns ``(formatted_text_for_llm, citable_sources)`` where
+        ``citable_sources`` is a deduplicated list of ``{"title", "path"}``
+        dicts gathered from every enabled backend.
+        """
         query = query.strip().strip("\"'")
         sections = []
+        sources: List[Dict[str, str]] = []
 
         if self.enable_tavily:
-            tavily_results = self.tavily_search_agent.search_tavily(query=query)
+            tavily_results, tavily_sources = self.tavily_search_agent.search_tavily(query=query)
             sections.append(f"=== Tavily (web) ===\n{tavily_results}")
+            sources.extend(tavily_sources)
 
         if self.enable_pubmed:
-            pubmed_results = self.pubmed_search_agent.search_pubmed(query=query)
+            pubmed_results, pubmed_sources = self.pubmed_search_agent.search_pubmed(query=query)
             sections.append(f"=== PubMed (medical literature) ===\n{pubmed_results}")
+            sources.extend(pubmed_sources)
 
         if not sections:
-            return "Web search is disabled (enable TAVILY or PubMed in configuration)."
+            return (
+                "Web search is disabled (enable TAVILY or PubMed in configuration).",
+                [],
+            )
 
-        return "\n\n".join(sections)
+        deduped: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for src in sources:
+            path = str(src.get("path") or "").strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            deduped.append(src)
+
+        return "\n\n".join(sections), deduped
