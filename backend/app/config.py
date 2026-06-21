@@ -67,6 +67,10 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     session_ttl_seconds: int = 7200  # 2 hours
+    user_long_term_memory_cache_ttl_seconds: int = Field(
+        default=86400,
+        validation_alias=AliasChoices("USER_LONG_TERM_MEMORY_CACHE_TTL_SECONDS"),
+    )
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

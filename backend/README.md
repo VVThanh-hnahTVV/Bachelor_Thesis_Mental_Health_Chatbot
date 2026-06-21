@@ -13,12 +13,21 @@ FastAPI service with multi-agent LangGraph orchestration (Helios), MongoDB persi
 
 ## Quick start
 
+### Docker (toàn bộ hệ thống)
+
+```bash
+cp .env.example .env   # fill MONGO_URI (Atlas) + API keys
+docker compose up -d --build   # chạy từ thư mục gốc repo
+```
+
+### Local dev
+
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,medical]"
 cp .env.example .env   # fill keys
-docker compose up -d mongo redis
+docker compose up -d redis
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 

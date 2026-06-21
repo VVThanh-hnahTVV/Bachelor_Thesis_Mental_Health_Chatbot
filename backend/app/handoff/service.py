@@ -11,6 +11,11 @@ from app.conversation.summary_markdown import (
     generate_handoff_brief,
     generate_merged_conversation_summary,
 )
+from app.conversation.user_memory import (
+    load_user_long_term_memory,
+    schedule_user_long_term_memory_update,
+)
+from app.auth.repository import resolve_user_id_for_session
 from app.db.repository import (
     MESSAGE_VISIBILITY_ALL,
     MESSAGE_VISIBILITY_SUPPORT_ONLY,
@@ -137,11 +142,17 @@ async def join_support_session(
         db, conversation_id=cid, limit=500, include_support_only=False
     )
 
+    user_long_term_memory = ""
+    user_id = await resolve_user_id_for_session(db, session_id)
+    if user_id is not None:
+        user_long_term_memory = await load_user_long_term_memory(db, redis, user_id)
+
     brief = ""
     try:
         brief = await generate_handoff_brief(
             ai_summary=ai_summary,
             transcript_messages=transcript,
+            user_long_term_memory=user_long_term_memory,
             provider=default_provider(),
         )
     except Exception:  # noqa: BLE001
@@ -259,6 +270,17 @@ async def leave_support_session(
             from app.cache.session_memory import set_conversation_summary_cache
 
             await set_conversation_summary_cache(redis, session_id, summary)
+
+        user_id = await resolve_user_id_for_session(db, session_id)
+        if user_id is not None and summary.strip():
+            schedule_user_long_term_memory_update(
+                db,
+                redis,
+                user_id=user_id,
+                session_summary=summary,
+                source="handoff_leave",
+                provider=default_provider(),
+            )
 
     now = datetime.now(UTC)
     notice = support_left_notice("vi")

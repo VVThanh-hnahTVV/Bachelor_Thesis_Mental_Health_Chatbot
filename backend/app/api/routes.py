@@ -107,8 +107,14 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
 async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     from app.api.medical_handlers import handle_medical_chat_turn, resolve_conversation
     from app.chat_progress import emit_progress
-    from app.conversation.context import load_conversation_summary
-    from app.conversation.summary import schedule_conversation_summary_update
+    from app.conversation.context import (
+        load_conversation_summary,
+        load_recent_user_questions_from_db,
+    )
+    from app.conversation.user_memory import (
+        load_user_long_term_memory,
+        schedule_post_turn_memory_updates,
+    )
     from app.conversation.title import generate_conversation_title
     from app.db.repository import count_user_messages, update_conversation_title
     from app.handoff.messages import CLOSED_SESSION_NOTICE, handoff_ack
@@ -199,21 +205,33 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         asyncio.create_task(_set_title())
     medical_provider = default_provider()
     conversation_summary = await load_conversation_summary(db, redis, req.session_id)
+    user_long_term_memory = ""
+    if uid is not None:
+        user_long_term_memory = await load_user_long_term_memory(db, redis, uid)
+    prior_user_questions = await load_recent_user_questions_from_db(
+        db,
+        cid,
+        limit=5,
+        exclude_current=req.message,
+    )
     reply, meta, assistant_message_id = await handle_medical_chat_turn(
         db,
         session_id=req.session_id,
         conversation_id=cid,
         message=req.message,
         conversation_summary=conversation_summary,
+        user_long_term_memory=user_long_term_memory,
+        prior_user_questions=prior_user_questions,
     )
     suggested = meta.get("suggested_activities") or []
 
     if meta.get("agent_name") != "HUMAN_HANDOFF":
-        schedule_conversation_summary_update(
+        schedule_post_turn_memory_updates(
             db,
             redis,
             session_id=req.session_id,
             conversation_id=cid,
+            user_id=uid,
             user_message=req.message,
             assistant_reply=reply,
             provider=medical_provider,

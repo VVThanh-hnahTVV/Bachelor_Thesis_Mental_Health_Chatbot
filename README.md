@@ -138,7 +138,7 @@ User message
 | Backend | Python 3.11+, FastAPI, LangChain, LangGraph, Motor (MongoDB), Redis |
 | RAG | Qdrant, FastEmbed (BM25), sentence-transformers (reranker), Docling/OpenAI parse |
 | Frontend | Next.js 14 (App Router), React, Tailwind, shadcn/ui |
-| Infra | Docker Compose (MongoDB 7, Redis 7) |
+| Infra | Docker Compose (backend + frontend + Redis); MongoDB Atlas |
 | Auth | JWT (PyJWT), bcrypt |
 
 ---
@@ -147,7 +147,8 @@ User message
 
 - **Python** ≥ 3.11
 - **Node.js** ≥ 18 (khuyến nghị 20+)
-- **Docker** & Docker Compose (MongoDB + Redis)
+- **Docker** & Docker Compose (hoặc chạy local)
+- **MongoDB Atlas** (cloud — không cần mongo local)
 - Ít nhất **một API key LLM** (Groq hoặc OpenAI hoặc Gemini)
 - Tùy chọn: Ollama (embedding local), Tavily, PubMed email, ElevenLabs, Cloudinary (upload ảnh chat)
 
@@ -181,7 +182,7 @@ User message
 │   │   └── api/                BFF routes proxy tới backend
 │   └── components/             Chat, therapy, activities, admin UI
 │
-├── docker-compose.yml          MongoDB + Redis
+├── docker-compose.yml          Backend + Frontend + Redis (MongoDB Atlas)
 └── .env.example                Pointer tới backend/.env.example
 ```
 
@@ -189,16 +190,31 @@ User message
 
 ## Cài đặt & chạy local
 
-### 1. Infrastructure
+### Cách nhanh — Docker (một lệnh)
 
 ```bash
-docker compose up -d mongo redis
+cp backend/.env.example backend/.env   # điền MONGO_URI Atlas + API keys
+docker compose up -d --build
 ```
 
-- MongoDB: `mongodb://localhost:27017`
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend Swagger: [http://localhost:8000/docs](http://localhost:8000/docs)
+- MongoDB: **Atlas** (cấu hình `MONGO_URI` trong `backend/.env`; thêm IP máy vào Atlas Network Access)
+- Redis: container `redis` (port `6379`)
+
+Lần build đầu có thể mất vài phút (cài dependency Python + build Next.js). Model reranker HuggingFace được cache trong volume `hf_cache`.
+
+### Chạy từng phần (dev)
+
+#### 1. Infrastructure
+
+```bash
+docker compose up -d redis
+```
+
 - Redis: `localhost:6379`
 
-### 2. Backend
+#### 2. Backend
 
 ```bash
 cd backend
@@ -212,7 +228,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
 - Health: backend log in LLM provider + embedding provider khi startup
 
-### 3. Frontend
+#### 3. Frontend
 
 ```bash
 cd frontend

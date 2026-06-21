@@ -54,6 +54,8 @@ class AgentState(MessagesState):
     # messages: List[BaseMessage]  # Conversation history
     session_id: Optional[str]
     conversation_summary: Optional[str]
+    user_long_term_memory: Optional[str]
+    prior_user_questions: Optional[List[str]]
     agent_name: Optional[str]  # Current active agent
     current_input: Optional[Union[str, Dict]]  # Input to be processed
     output: Optional[str]  # Final output to user
@@ -89,10 +91,14 @@ def _input_text_from_state(state: AgentState) -> str:
 def _agent_memory_context(state: AgentState) -> str:
     from app.conversation.context import build_agent_memory_context
 
+    prior = state.get("prior_user_questions")
+    prior_list = prior if isinstance(prior, list) else None
     return build_agent_memory_context(
         conversation_summary=str(state.get("conversation_summary") or ""),
+        user_long_term_memory=str(state.get("user_long_term_memory") or ""),
         messages=state.get("messages") or [],
         current_input=_input_text_from_state(state),
+        prior_user_questions=prior_list,
     )
 
 
@@ -124,7 +130,7 @@ def create_agent_graph():
         # Check input through guardrails if text is present
         if input_text:
             from app.config import get_settings
-            from app.conversation.context import format_recent_user_questions
+            from app.conversation.context import resolve_recent_user_questions
             from app.medical.agents.guardrails.schemas import (
                 DEFAULT_USER_LANGUAGE,
                 detect_user_language_fallback,
@@ -158,8 +164,12 @@ def create_agent_graph():
                 }
 
             summary = str(state.get("conversation_summary") or "").strip()
-            recent_questions = format_recent_user_questions(
+            ltm = str(state.get("user_long_term_memory") or "").strip()
+            prior = state.get("prior_user_questions")
+            prior_list = prior if isinstance(prior, list) else None
+            recent_questions = resolve_recent_user_questions(
                 state.get("messages") or [],
+                prior_user_questions=prior_list,
                 limit=5,
                 exclude_current=input_text,
             )
@@ -167,6 +177,7 @@ def create_agent_graph():
                 input_text,
                 conversation_summary=summary,
                 recent_user_questions=recent_questions,
+                user_long_term_memory=ltm,
             )
             user_language = _resolved_language(
                 normalize_language_code(guard_result.user_language),
@@ -615,6 +626,8 @@ def init_agent_state() -> AgentState:
         "messages": [],
         "session_id": None,
         "conversation_summary": None,
+        "user_long_term_memory": None,
+        "prior_user_questions": None,
         "agent_name": None,
         "current_input": None,
         "output": None,
@@ -638,6 +651,8 @@ def process_query(
     thread_id: str,
     conversation_history: List[BaseMessage] | None = None,
     conversation_summary: str = "",
+    user_long_term_memory: str = "",
+    prior_user_questions: List[str] | None = None,
 ) -> dict:
     """
     Process a user query through the agent decision system.
@@ -646,6 +661,8 @@ def process_query(
         query: User input text
         thread_id: LangGraph checkpoint id (use thesis session_id)
         conversation_history: Unused; history kept in MemorySaver per thread_id
+        user_long_term_memory: Cross-session profile for logged-in users
+        prior_user_questions: Mongo fallback for recent session questions
 
     Returns:
         Final graph state dict (messages, agent_name, output, ...)
@@ -659,6 +676,8 @@ def process_query(
     state["current_input"] = query
     state["session_id"] = thread_id
     state["conversation_summary"] = (conversation_summary or "").strip()
+    state["user_long_term_memory"] = (user_long_term_memory or "").strip()
+    state["prior_user_questions"] = prior_user_questions or []
 
     message_text = extract_input_text(query) or str(query)
 

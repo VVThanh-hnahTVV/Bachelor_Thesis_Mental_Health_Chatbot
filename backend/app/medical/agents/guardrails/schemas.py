@@ -156,8 +156,9 @@ def has_mental_health_conversation_context(
     *,
     conversation_summary: str = "",
     recent_user_questions: str = "",
+    user_long_term_memory: str = "",
 ) -> bool:
-    blob = f"{conversation_summary}\n{recent_user_questions}"
+    blob = f"{conversation_summary}\n{recent_user_questions}\n{user_long_term_memory}"
     return bool(_MENTAL_HEALTH_SCOPE.search(blob))
 
 
@@ -165,11 +166,13 @@ def has_medical_conversation_context(
     *,
     conversation_summary: str = "",
     recent_user_questions: str = "",
+    user_long_term_memory: str = "",
 ) -> bool:
     """Backward-compatible alias."""
     return has_mental_health_conversation_context(
         conversation_summary=conversation_summary,
         recent_user_questions=recent_user_questions,
+        user_long_term_memory=user_long_term_memory,
     )
 
 
@@ -178,6 +181,7 @@ def looks_like_off_topic_heuristic(
     *,
     conversation_summary: str = "",
     recent_user_questions: str = "",
+    user_long_term_memory: str = "",
 ) -> bool:
     """Fast path: block obvious off-topic queries outside mental-health scope."""
     sample = (text or "").strip()
@@ -192,6 +196,7 @@ def looks_like_off_topic_heuristic(
     if has_mental_health_conversation_context(
         conversation_summary=conversation_summary,
         recent_user_questions=recent_user_questions,
+        user_long_term_memory=user_long_term_memory,
     ) and _META_FOLLOWUP.search(sample):
         return False
     return bool(_OFF_TOPIC_TRIVIA.search(sample))

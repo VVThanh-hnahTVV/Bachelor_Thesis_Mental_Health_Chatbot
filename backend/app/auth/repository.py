@@ -286,3 +286,50 @@ async def link_session_to_user(
         {"session_id": session_id},
         {"$set": {"user_id": user_ref}},
     )
+
+
+async def resolve_user_id_for_session(
+    db: AsyncIOMotorDatabase,
+    session_id: str,
+) -> ObjectId | None:
+    """Resolve user_id from session_links first, then conversations.user_id."""
+    link = await get_session_link_by_session_id(db, session_id)
+    if link:
+        linked = link.get("user_id")
+        if isinstance(linked, ObjectId):
+            return linked
+    conv = await get_conversation_by_session(db, session_id)
+    if conv:
+        owner = conv.get("user_id")
+        if isinstance(owner, ObjectId):
+            return owner
+    return None
+
+
+async def get_user_long_term_memory(
+    db: AsyncIOMotorDatabase,
+    user_id: ObjectId,
+) -> str:
+    doc = await get_user_by_id(db, user_id)
+    if not doc:
+        return ""
+    memory = doc.get("long_term_memory")
+    return str(memory).strip() if memory else ""
+
+
+async def update_user_long_term_memory(
+    db: AsyncIOMotorDatabase,
+    user_id: ObjectId,
+    memory: str,
+) -> None:
+    now = datetime.now(UTC)
+    await db[USERS].update_one(
+        {"_id": user_id},
+        {
+            "$set": {
+                "long_term_memory": memory,
+                "long_term_memory_updated_at": now,
+                "updated_at": now,
+            }
+        },
+    )

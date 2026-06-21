@@ -28,12 +28,15 @@ class LocalGuardrails:
             """You are a content safety and scope filter for Helios, a **mental health** chatbot.
 Evaluate if the CURRENT user input is safe and within Helios scope, using the conversation context below.
 
-CONVERSATION SUMMARY (rolling, may be empty on first turn):
+CONVERSATION SUMMARY (session, short-term):
 {conversation_summary}
 
-RECENT USER QUESTIONS (up to 5 prior turns, excluding current input;
+RECENT USER QUESTIONS (session, short-term; up to 5 prior turns, excluding current input;
 numbering: 1 = most recent prior user message, larger numbers = older):
 {recent_user_questions}
+
+USER LONG-TERM MEMORY (cross-session, logged-in only):
+{user_long_term_memory}
 
 CURRENT USER INPUT:
 {input}
@@ -170,6 +173,7 @@ Final message:"""
         *,
         conversation_summary: str = "",
         recent_user_questions: str = "",
+        user_long_term_memory: str = "",
     ) -> GuardrailInputResult:
         """
         Check if user input passes safety filters and detect user language.
@@ -182,12 +186,14 @@ Final message:"""
 
         summary = (conversation_summary or "").strip()
         recent = (recent_user_questions or "").strip()
+        ltm = (user_long_term_memory or "").strip()
         user_language = detect_user_language_fallback(user_input)
 
         if looks_like_off_topic_heuristic(
             user_input,
             conversation_summary=summary,
             recent_user_questions=recent,
+            user_long_term_memory=ltm,
         ):
             from app.handoff.messages import off_topic_scope_notice
 
@@ -205,6 +211,7 @@ Final message:"""
                 "input": user_input,
                 "conversation_summary": summary or "(none yet)",
                 "recent_user_questions": recent or "(none)",
+                "user_long_term_memory": ltm or "(none yet)",
                 "format_instructions": _input_parser.get_format_instructions(),
             }
         )

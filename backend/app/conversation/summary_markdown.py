@@ -36,10 +36,14 @@ Rules:
 HANDOFF_BRIEF_SYSTEM = """\
 You prepare a handoff brief for a human support counselor joining a Helios chat session.
 
-Given the AI conversation summary and full transcript, write a Markdown brief for the counselor:
+Given the user's long-term context (prior sessions), AI conversation summary for this session,
+and full transcript, write a Markdown brief for the counselor:
+
+## Bối cảnh từ các phiên trước (long-term)
+- bullets from long-term memory, or "Không có" if none provided
 
 ## Tóm tắt nhanh
-(2-4 sentences)
+(2-4 sentences about THIS session)
 
 ## Mối quan tâm chính của người dùng
 - bullets
@@ -54,6 +58,7 @@ Given the AI conversation summary and full transcript, write a Markdown brief fo
 - suggested opening / follow-up questions
 
 Use the user's language when possible. Output Markdown only.
+Do NOT include personally identifiable information (email, phone, address).
 """
 
 HUMAN_SESSION_SYSTEM = """\
@@ -99,6 +104,31 @@ Rules:
 - Same language as the user when possible
 - Markdown only — no outer code fences
 - Keep concise but complete (~15 sentences max)
+"""
+
+USER_LONG_TERM_MEMORY_SYSTEM = """\
+You maintain a concise long-term memory profile for a mental-health chat user across multiple sessions.
+
+Given the previous long-term memory and new session information, produce an UPDATED Markdown profile:
+
+## Bối cảnh / hồ sơ tâm lý
+(1-3 sentences)
+
+## Chủ đề đã thảo luận qua các phiên
+- bullet list
+
+## Triệu chứng / mối quan tâm lặp lại
+- bullet list (omit section if none)
+
+## Can thiện / gợi ý đã từng đưa
+- bullet list
+
+Rules:
+- Merge new facts from the session update; drop redundant or outdated details
+- Keep ONLY mental-health-related context — no PII (email, phone, address, full names)
+- Use the same language as the user when possible (Vietnamese or English)
+- Output Markdown only — no code fences wrapping the whole document
+- Keep total length under ~20 sentences across sections
 """
 
 
@@ -162,11 +192,14 @@ async def generate_handoff_brief(
     *,
     ai_summary: str,
     transcript_messages: list[dict[str, Any]],
+    user_long_term_memory: str = "",
     provider: ProviderName | None = None,
 ) -> str:
     transcript = _format_transcript(transcript_messages)
+    ltm = (user_long_term_memory or "").strip() or "(none — guest or first session)"
     human = (
-        f"AI rolling summary:\n{(ai_summary or '').strip() or '(none)'}\n\n"
+        f"User long-term memory (prior sessions):\n{ltm}\n\n"
+        f"AI rolling summary (this session):\n{(ai_summary or '').strip() or '(none)'}\n\n"
         f"Full transcript:\n{transcript}\n\n"
         "Handoff brief:"
     )
@@ -211,4 +244,28 @@ async def generate_merged_conversation_summary(
         human=human,
         provider=provider,
         label="conversation_summary.merged",
+    )
+
+
+async def generate_user_long_term_memory_update(
+    *,
+    previous_memory: str,
+    session_summary: str,
+    source: str = "ai_turn",
+    provider: ProviderName | None = None,
+) -> str:
+    prev = (previous_memory or "").strip() or "(none yet)"
+    summary = (session_summary or "").strip()
+    if not summary:
+        return prev if prev != "(none yet)" else ""
+    human = (
+        f"Previous long-term memory:\n{prev}\n\n"
+        f"New session information (source={source}):\n{summary}\n\n"
+        "Updated long-term memory profile:"
+    )
+    return await _invoke_summary(
+        system=USER_LONG_TERM_MEMORY_SYSTEM,
+        human=human,
+        provider=provider,
+        label="user_long_term_memory.markdown",
     )
