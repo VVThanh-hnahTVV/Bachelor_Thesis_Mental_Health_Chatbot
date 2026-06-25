@@ -58,6 +58,42 @@ export interface ApiResponse {
   assigned_support_name?: string | null;
 }
 
+export class RateLimitError extends Error {
+  code = "DAILY_CHAT_LIMIT_EXCEEDED";
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  resetsAt?: string;
+
+  constructor(detail: {
+    message?: string;
+    used?: number;
+    limit?: number;
+    remaining?: number;
+    resets_at?: string;
+  }) {
+    super(detail.message || "Bạn đã đạt giới hạn câu hỏi hôm nay.");
+    this.name = "RateLimitError";
+    this.used = detail.used;
+    this.limit = detail.limit;
+    this.remaining = detail.remaining;
+    this.resetsAt = detail.resets_at;
+  }
+}
+
+/** Build a RateLimitError from a 429 response body ({ detail: {...} }). */
+async function rateLimitErrorFromResponse(
+  response: Response
+): Promise<RateLimitError> {
+  try {
+    const data = await response.json();
+    const detail = data?.detail ?? data ?? {};
+    return new RateLimitError(detail);
+  } catch {
+    return new RateLimitError({});
+  }
+}
+
 export const createChatSession = async (): Promise<string> => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -145,6 +181,10 @@ export const sendChatMessageStream = async (
     }),
   });
 
+  if (response.status === 429) {
+    throw await rateLimitErrorFromResponse(response);
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(errorText || "Failed to send message");
@@ -193,6 +233,9 @@ export const sendChatMessageWithStatus = async (
   try {
     return await sendChatMessageStream(sessionId, message, onStatus);
   } catch (streamErr) {
+    if (streamErr instanceof RateLimitError) {
+      throw streamErr;
+    }
     console.error("Chat stream failed, using standard API:", streamErr);
     onStatus?.("Đang xử lý yêu cầu", "fallback");
     return sendChatMessage(sessionId, message);
@@ -214,6 +257,9 @@ export const sendChatMessage = async (
       session_id: sessionId,
     }),
   });
+  if (response.status === 429) {
+    throw await rateLimitErrorFromResponse(response);
+  }
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(errorText || "Failed to send message");

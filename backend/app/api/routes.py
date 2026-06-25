@@ -40,6 +40,24 @@ def get_redis(request: Request):
     return getattr(request.app.state, "redis", None)
 
 
+def client_ip_from_request(request: Request) -> str | None:
+    """Best-effort real client IP.
+
+    Prefers the first hop in X-Forwarded-For (trustworthy only behind a proxy
+    such as Render/nginx), falling back to the direct socket peer.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()
+    client = request.client
+    return client.host if client else None
+
+
 class ConversationSummary(BaseModel):
     session_id: str
     title: str
@@ -104,6 +122,65 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     return await _execute_chat(req, request)
 
 
+class ChatQuotaResponse(BaseModel):
+    enabled: bool
+    allowed: bool
+    used: int
+    limit: int
+    remaining: int
+    resets_at: str | None = None
+
+
+@router.get("/chat/quota", response_model=ChatQuotaResponse)
+async def chat_quota(request: Request) -> ChatQuotaResponse:
+    """Current daily chat quota for the caller (user if logged in, else IP)."""
+    from app.cache.chat_rate_limit import peek_quota
+    from app.config import get_settings
+
+    settings = get_settings()
+    db = get_db(request)
+    redis = get_redis(request)
+    maybe_user = await resolve_optional_current_user(request, db)
+
+    if maybe_user and maybe_user.get("role") in ("admin", "support"):
+        return ChatQuotaResponse(
+            enabled=False,
+            allowed=True,
+            used=0,
+            limit=settings.user_daily_chat_limit,
+            remaining=settings.user_daily_chat_limit,
+        )
+
+    if not settings.enable_user_daily_chat_limit:
+        return ChatQuotaResponse(
+            enabled=False,
+            allowed=True,
+            used=0,
+            limit=settings.user_daily_chat_limit,
+            remaining=settings.user_daily_chat_limit,
+        )
+
+    uid: ObjectId | None = None
+    if maybe_user:
+        raw_uid = maybe_user.get("_id")
+        if isinstance(raw_uid, ObjectId):
+            uid = raw_uid
+
+    status = await peek_quota(
+        redis,
+        user_id=str(uid) if uid is not None else None,
+        ip=client_ip_from_request(request),
+    )
+    return ChatQuotaResponse(
+        enabled=True,
+        allowed=status.allowed,
+        used=status.used,
+        limit=status.limit,
+        remaining=status.remaining,
+        resets_at=status.resets_at.isoformat(),
+    )
+
+
 async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     from app.api.medical_handlers import handle_medical_chat_turn, resolve_conversation
     from app.chat_progress import emit_progress
@@ -152,6 +229,38 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         )
     if support_mode == "closed":
         raise HTTPException(403, detail=CLOSED_SESSION_NOTICE["vi"])
+
+    from app.config import get_settings
+
+    settings = get_settings()
+    role = (maybe_user or {}).get("role")
+    if (
+        settings.enable_user_daily_chat_limit
+        and support_mode == "ai"
+        and role not in ("admin", "support")
+    ):
+        from app.cache.chat_rate_limit import check_and_consume
+
+        status = await check_and_consume(
+            redis,
+            user_id=str(uid) if uid is not None else None,
+            ip=client_ip_from_request(request),
+        )
+        if not status.allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "DAILY_CHAT_LIMIT_EXCEEDED",
+                    "message": (
+                        f"Bạn đã đạt giới hạn {status.limit} câu hỏi hôm nay. "
+                        "Vui lòng quay lại vào ngày mai."
+                    ),
+                    "used": status.used,
+                    "limit": status.limit,
+                    "remaining": status.remaining,
+                    "resets_at": status.resets_at.isoformat(),
+                },
+            )
 
     await append_message(
         db,

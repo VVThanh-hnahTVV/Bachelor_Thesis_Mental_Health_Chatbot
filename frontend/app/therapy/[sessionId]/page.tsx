@@ -37,6 +37,7 @@ import {
   ChatMessage,
   getAllChatSessions,
   ChatSession,
+  RateLimitError,
 } from "@/lib/api/chat";
 import { VoiceMicButton } from "@/components/therapy/voice-mic-button";
 import { VoiceRecordingVisualizer } from "@/components/therapy/voice-recording-visualizer";
@@ -443,15 +444,34 @@ export default function TherapyPage() {
         setAssignedSupportName(response.assigned_support_name);
       }
     } catch (err) {
-      console.error("Chat stream failed:", err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, I'm having connection issues. Please try again later.",
-          timestamp: new Date(),
-        },
-      ]);
+      if (err instanceof RateLimitError) {
+        let resetNote = "";
+        if (err.resetsAt) {
+          const resetDate = new Date(err.resetsAt);
+          if (!Number.isNaN(resetDate.getTime())) {
+            resetNote = ` Bạn có thể tiếp tục sau ${resetDate.toLocaleString("vi-VN")}.`;
+          }
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `${err.message}${resetNote}`,
+            timestamp: new Date(),
+            metadata: { sender_name: "Helios", message_type: "off_topic" },
+          },
+        ]);
+      } else {
+        console.error("Chat stream failed:", err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Sorry, I'm having connection issues. Please try again later.",
+            timestamp: new Date(),
+          },
+        ]);
+      }
     } finally {
       setIsTyping(false);
       setTypingStatus(null);

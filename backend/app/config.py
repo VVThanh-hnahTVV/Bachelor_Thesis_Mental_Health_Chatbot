@@ -100,6 +100,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ENABLE_OUTPUT_GUARDRAILS"),
     )
 
+    enable_user_daily_chat_limit: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_USER_DAILY_CHAT_LIMIT"),
+    )
+    user_daily_chat_limit: int = Field(
+        default=5,
+        ge=1,
+        validation_alias=AliasChoices("USER_DAILY_CHAT_LIMIT"),
+    )
+    ip_daily_chat_limit: int = Field(
+        default=5,
+        ge=1,
+        validation_alias=AliasChoices("IP_DAILY_CHAT_LIMIT"),
+    )
+
     enable_internal_mcp_server: bool = False
     enable_external_mcp_gateway: bool = False
     enable_graph_external_enrichment: bool = False
