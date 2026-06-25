@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 
-from app.auth.dependencies import require_admin
+from app.auth.dependencies import require_admin, require_admin_panel
 from app.auth.repository import (
     admin_user_public,
     count_admins,
@@ -101,12 +101,12 @@ class AdminUserCreateBody(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    role: Literal["user", "admin"] = "user"
+    role: Literal["user", "admin", "support"] = "user"
 
 
 class AdminUserUpdateBody(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=120)
-    role: Literal["user", "admin"] | None = None
+    role: Literal["user", "admin", "support"] | None = None
     password: str | None = Field(None, min_length=8, max_length=128)
 
 
@@ -540,7 +540,7 @@ async def _ensure_not_last_admin(
 async def admin_conversation_stats(
     request: Request,
     days: int = Query(7, ge=1, le=30),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     db = _get_db(request)
     return await get_conversation_admin_stats(db, days=days)
@@ -553,7 +553,7 @@ async def admin_list_conversations(
     page_size: int = Query(10, ge=1, le=100),
     search: str | None = Query(None, max_length=120),
     owner: Literal["registered", "guest"] | None = Query(None),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     db = _get_db(request)
     skip = (page - 1) * page_size
@@ -577,7 +577,7 @@ async def admin_list_conversations(
 @router.get("/conversations/queue")
 async def admin_conversations_queue(
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     db = _get_db(request)
     admin_id = admin.get("_id")
@@ -592,7 +592,7 @@ async def admin_conversations_queue(
 async def admin_get_conversation(
     session_id: str,
     request: Request,
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     db = _get_db(request)
     conv = await get_conversation_by_session(db, session_id)
@@ -606,7 +606,7 @@ async def admin_conversation_messages(
     session_id: str,
     request: Request,
     limit: int = Query(500, ge=1, le=1000),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> list[dict[str, Any]]:
     db = _get_db(request)
     conv = await get_conversation_by_session(db, session_id)
@@ -639,7 +639,7 @@ async def admin_conversation_messages(
 async def admin_join_conversation(
     session_id: str,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     from app.handoff.service import join_support_session
 
@@ -655,7 +655,7 @@ async def admin_join_conversation(
 async def admin_leave_conversation(
     session_id: str,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_admin_panel),
 ) -> dict[str, Any]:
     from app.handoff.service import leave_support_session
 
@@ -673,7 +673,7 @@ async def admin_list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     search: str | None = Query(None, max_length=120),
-    role: Literal["user", "admin"] | None = Query(None),
+    role: Literal["user", "admin", "support"] | None = Query(None),
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     db = _get_db(request)

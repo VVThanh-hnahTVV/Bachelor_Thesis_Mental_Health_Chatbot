@@ -219,6 +219,9 @@ Available agents:
 {rag_catalog}
 3. WEB_SEARCH_PROCESSOR_AGENT - For questions about recent medical developments, current outbreaks, or time-sensitive medical information not covered by the ingested sources.
 
+### Conversation context for this routing decision
+{conversation_context}
+
 Make your decision based on these guidelines:
 - Route general conversation, greetings, or non-medical questions to the conversation agent.
 - If the user asks about recent medical developments or current health situations, use the web search processor agent.
@@ -229,11 +232,19 @@ Make your decision based on these guidelines:
 When you select RAG_AGENT, also provide sub_queries for retrieval:
 - Return 1-4 sub-queries per distinct information need (definition, symptoms, treatment, mechanisms, etc.).
 - For simple single-intent questions, sub_queries may contain one item.
-- Use conversation memory to resolve pronouns in follow-up questions (e.g. "what about treatment?" after PTSD discussion -> include PTSD in sub-queries).
+- **Each sub_query must be self-contained for vector search** — include the medical topic/condition explicitly (not pronouns like "it", "đó", "bệnh này" alone).
+- **Follow-up messages:** Read RECENT USER QUESTIONS and LAST ASSISTANT REPLY in the conversation context above.
+  - If the current message is short or omits the topic (e.g. "cách điều trị", "triệu chứng", "treatment", "how to treat"), inherit the active topic from the most recent prior turn.
+  - Every sub_query must name that topic (correct typos when helpful, e.g. pstd -> PTSD).
+  - Do NOT retrieve a different condition (e.g. do not answer PTSD follow-up with generic anxiety-disorder queries).
 - Generate sub_queries in ALL languages present in the matched ingested sources (check the "lang=" field in the catalog above). If any matched source has lang=vi, also add Vietnamese sub-queries for the same intent.
 - For non-RAG agents, set sub_queries to an empty list [].
 
-Examples:
+Examples (assume conversation context shows recent question "pstd là gì" / assistant explained PTSD):
+- Current: "cách điều trị" -> sub_queries: ["PTSD treatment methods", "điều trị PTSD", "post-traumatic stress disorder therapy"]
+- Current: "triệu chứng" -> sub_queries: ["PTSD symptoms", "triệu chứng PTSD"]
+
+Other examples:
 - "Dạo này tôi hay lo âu mất ngủ" -> RAG_AGENT or CONVERSATION_AGENT
 - "Bạn có hoạt động nào giảm căng thẳng không" -> CONVERSATION_AGENT
 - "Tiểu đường type 2 là gì?" -> RAG_AGENT with sub_queries: ["type 2 diabetes definition symptoms"]
@@ -255,11 +266,19 @@ def build_decision_system_prompt(
     raw_dir: str,
     metadata_path: str,
     web_catalog_path: str = "",
+    *,
+    conversation_context: str = "",
 ) -> str:
-    """Build the full routing system prompt with up-to-date raw document metadata."""
+    """Build the full routing system prompt with catalog and per-request conversation context."""
     catalog = build_rag_catalog_section(
         raw_dir,
         metadata_path,
         web_catalog_path=web_catalog_path,
     )
-    return DECISION_SYSTEM_PROMPT_BASE.format(rag_catalog=catalog)
+    context_block = (conversation_context or "").strip() or (
+        "(First turn — no prior user questions in this session.)"
+    )
+    return DECISION_SYSTEM_PROMPT_BASE.format(
+        rag_catalog=catalog,
+        conversation_context=context_block,
+    )

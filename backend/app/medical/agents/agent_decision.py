@@ -243,25 +243,29 @@ def create_agent_graph():
     def route_to_agent(state: AgentState) -> Dict:
         """Make decision about which agent should handle the query."""
         from app.chat_progress import emit_progress
+        from app.conversation.context import build_routing_conversation_section
 
         emit_progress("medical_route")
         input_text = _input_text_from_state(state)
-        memory_context = _agent_memory_context(state)
+        prior = state.get("prior_user_questions")
+        prior_list = prior if isinstance(prior, list) else None
+        routing_context = build_routing_conversation_section(
+            conversation_summary=str(state.get("conversation_summary") or ""),
+            messages=state.get("messages") or [],
+            current_input=input_text,
+            prior_user_questions=prior_list,
+        )
 
-        decision_input = f"""
-        User query: {input_text}
+        decision_input = f"""Current user message:
+{input_text}
 
-        Conversation memory:
-        {memory_context}
+Which agent should handle this message? If RAG_AGENT, write sub_queries that preserve the topic from the conversation context in the system instructions (especially for short follow-ups)."""
 
-        Based on this information, which agent should handle this query?
-        """
-        
-        # Rebuild routing prompt from raw/ so new ingested PDFs are reflected automatically
         system_prompt = build_decision_system_prompt(
             raw_dir=config.rag.raw_documents_dir,
             metadata_path=config.rag.document_metadata_path,
             web_catalog_path=config.web_corpus.web_catalog_path,
+            conversation_context=routing_context,
         )
         decision = decision_runner.invoke(
             [

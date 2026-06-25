@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -117,7 +118,7 @@ class RAGConfig:
         self.reranker_top_k = 5
         self.max_context_length = 8192
         self.include_sources = True
-        self.min_retrieval_confidence = 0.20
+        self.min_retrieval_confidence = 0.50
         self.context_limit = 20
         self.max_sub_queries = int(os.getenv("RAG_MAX_SUB_QUERIES", "4"))
 
@@ -175,6 +176,8 @@ class WellnessConfig:
             "WELLNESS_QDRANT_COLLECTION", "helios_wellness_activities"
         )
         self.vector_local_path = str(DATA_MEDICAL / "qdrant_wellness")
+        self.url = os.getenv("QDRANT_URL")
+        self.api_key = os.getenv("QDRANT_API_KEY")
         self.top_k = int(os.getenv("WELLNESS_SEARCH_TOP_K", "5"))
         self.min_score = float(os.getenv("WELLNESS_SEARCH_MIN_SCORE", "0.25"))
         # Min top-hit score to attach activity buttons after RAG / web search
@@ -215,3 +218,53 @@ Config = MedicalConfig
 @lru_cache
 def get_medical_config() -> MedicalConfig:
     return MedicalConfig()
+
+
+def log_qdrant_startup() -> None:
+    """Log Qdrant connection mode for each corpus when the backend starts."""
+    logger = logging.getLogger("uvicorn.error")
+    med = get_medical_config()
+    rag, web, wellness = med.rag, med.web_corpus, med.wellness
+
+    if rag.url:
+        logger.info(
+            "Qdrant backend: cloud (QDRANT_URL=%s, api_key=%s)",
+            rag.url,
+            "set" if rag.api_key else "MISSING",
+        )
+    else:
+        logger.info(
+            "Qdrant backend: local file storage (QDRANT_URL not set, default path=%s)",
+            rag.vector_local_path,
+        )
+
+    for name, url, api_key, local_path, collection in (
+        ("pdf_rag", rag.url, rag.api_key, rag.vector_local_path, rag.collection_name),
+        (
+            "web_corpus",
+            web.url,
+            web.api_key,
+            web.vector_local_path,
+            web.collection_name,
+        ),
+        (
+            "wellness",
+            wellness.url,
+            wellness.api_key,
+            wellness.vector_local_path,
+            wellness.collection_name,
+        ),
+    ):
+        mode = "cloud" if url else "local"
+        target = url or local_path
+        key_note = ""
+        if url:
+            key_note = f", api_key={'set' if api_key else 'MISSING'}"
+        logger.info(
+            "Qdrant corpus %s: mode=%s target=%s collection=%s%s",
+            name,
+            mode,
+            target,
+            collection,
+            key_note,
+        )

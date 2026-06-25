@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAdminSidebar } from "@/lib/contexts/admin-sidebar-context";
+import { useSession } from "@/lib/contexts/session-context";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -40,12 +41,18 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/settings", label: "Cài đặt", icon: Settings, exact: true },
 ];
 
-function AdminSidebarBrand({ compact = false }: { compact?: boolean }) {
+function AdminSidebarBrand({
+  compact = false,
+  homeHref = "/admin",
+}: {
+  compact?: boolean;
+  homeHref?: string;
+}) {
   const size = compact ? 28 : 44;
 
   return (
     <Link
-      href="/admin"
+      href={homeHref}
       className={cn(
         "block shrink-0",
         compact ? "flex items-center justify-center" : "min-w-0"
@@ -89,6 +96,13 @@ function AdminSidebarBrand({ compact = false }: { compact?: boolean }) {
 export function AdminSidebar() {
   const pathname = usePathname();
   const { open, toggle } = useAdminSidebar();
+  const { user } = useSession();
+
+  const isSupport = user?.role === "support";
+  const homeHref = isSupport ? "/admin/conversations" : "/admin";
+  const visibleItems = isSupport
+    ? NAV_ITEMS.filter((item) => item.href.startsWith("/admin/conversations"))
+    : NAV_ITEMS;
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return pathname === href;
@@ -111,11 +125,11 @@ export function AdminSidebar() {
         </Button>
 
         <div className="mt-3">
-          <AdminSidebarBrand compact />
+          <AdminSidebarBrand compact homeHref={homeHref} />
         </div>
 
         <nav className="admin-scrollbar mt-4 flex flex-1 flex-col items-center gap-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
             const active = !item.disabled && isActive(item.href, item.exact);
 
@@ -162,7 +176,7 @@ export function AdminSidebar() {
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 flex-col bg-[#f4f4ef] px-6 py-8">
       <div className="mb-8 flex items-start justify-between gap-2">
-        <AdminSidebarBrand />
+        <AdminSidebarBrand homeHref={homeHref} />
         <Button
           type="button"
           variant="ghost"
@@ -177,7 +191,7 @@ export function AdminSidebar() {
       </div>
 
       <nav className="admin-scrollbar flex-1 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           const active = !item.disabled && isActive(item.href, item.exact);
 

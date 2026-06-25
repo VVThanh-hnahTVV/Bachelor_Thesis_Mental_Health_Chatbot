@@ -20,6 +20,7 @@ from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
 from app.llm.factory import build_provider_chain, default_provider
 from app.mcp.server import create_mcp_asgi_app
+from app.medical.config import log_qdrant_startup
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
         emb_provider,
         emb_model,
     )
+    log_qdrant_startup()
 
     # MongoDB
     client = get_mongo_client()

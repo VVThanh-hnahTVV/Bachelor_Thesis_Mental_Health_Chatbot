@@ -69,7 +69,7 @@ async def create_user(
         "email": email.lower().strip(),
         "name": name.strip(),
         "password_hash": password_hash,
-        "role": role if role in ("user", "admin") else "user",
+        "role": role if role in ("user", "admin", "support") else "user",
         "created_at": now,
         "updated_at": now,
     }
@@ -104,7 +104,7 @@ def _users_filter_query(
     role: str | None = None,
 ) -> dict[str, Any]:
     query: dict[str, Any] = {}
-    if role in ("user", "admin"):
+    if role in ("user", "admin", "support"):
         query["role"] = role
     if search and search.strip():
         term = search.strip()
@@ -159,8 +159,8 @@ async def update_user_by_id(
     if name is not None:
         updates["name"] = name.strip()
     if role is not None:
-        if role not in ("user", "admin"):
-            raise ValueError("role must be user or admin")
+        if role not in ("user", "admin", "support"):
+            raise ValueError("role must be user, admin, or support")
         updates["role"] = role
     if password_hash is not None:
         updates["password_hash"] = password_hash
@@ -190,8 +190,8 @@ async def set_user_role(
     email: str,
     role: str,
 ) -> dict[str, Any] | None:
-    if role not in ("user", "admin"):
-        raise ValueError("role must be user or admin")
+    if role not in ("user", "admin", "support"):
+        raise ValueError("role must be user, admin, or support")
     await db[USERS].update_one(
         {"email": email.lower().strip()},
         {"$set": {"role": role, "updated_at": datetime.now(UTC)}},

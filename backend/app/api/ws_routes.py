@@ -40,7 +40,7 @@ async def _resolve_support_user(db: Any, token: str | None) -> dict[str, Any] | 
     except Exception:  # noqa: BLE001
         return None
     user = await get_user_by_id(db, user_id)
-    if not user or user.get("role") != "admin":
+    if not user or user.get("role") not in ("admin", "support"):
         return None
     return user
 

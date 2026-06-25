@@ -71,6 +71,14 @@ async def get_optional_current_user(
     return await resolve_optional_current_user(request, db, credentials)
 
 
+async def require_admin_panel(
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    if user.get("role") not in ("admin", "support"):
+        raise HTTPException(403, "Admin panel access required")
+    return user
+
+
 async def require_admin(
     user: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:

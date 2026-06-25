@@ -132,6 +132,9 @@ class ResponseGenerator:
         The user has asked the following question:
         {query}
 
+        If the question is a short follow-up (e.g. "cách điều trị", "triệu chứng"), interpret it using
+        conversation memory so you answer the same medical topic as the prior turn — not a different condition.
+
         I've retrieved the following information to help answer this question:
 
         {context}

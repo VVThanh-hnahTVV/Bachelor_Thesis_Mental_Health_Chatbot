@@ -23,13 +23,13 @@ export function AdminLoginForm() {
     try {
       await loginUser(email, password);
       const user = await fetchCurrentUser();
-      if (!user || user.role !== "admin") {
+      if (!user || (user.role !== "admin" && user.role !== "support")) {
         logoutUser();
         setError("Tài khoản này không có quyền quản trị.");
         return;
       }
       await checkSession();
-      router.replace("/admin");
+      router.replace(user.role === "support" ? "/admin/conversations" : "/admin");
     } catch (err) {
       setError(
         err instanceof Error

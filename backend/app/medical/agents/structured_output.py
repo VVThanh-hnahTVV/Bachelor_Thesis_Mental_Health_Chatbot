@@ -49,9 +49,9 @@ class RouteAgentDecision(BaseModel):
     sub_queries: list[str] = Field(
         default_factory=list,
         description=(
-            "When agent is RAG_AGENT: 1-4 retrieval sub-queries per distinct information need, "
-            "in English and in any other language indicated by lang= on matched ingested sources "
-            "(e.g. Vietnamese when lang=vi). Empty for other agents."
+            "When agent is RAG_AGENT: 1-4 self-contained retrieval sub-queries per distinct "
+            "information need. Each must name the medical topic explicitly — use conversation "
+            "context for follow-ups. Empty for other agents."
         ),
     )
 

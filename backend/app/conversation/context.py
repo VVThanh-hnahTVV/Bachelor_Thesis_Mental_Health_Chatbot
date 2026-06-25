@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from bson import ObjectId
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 
 def build_agent_memory_context(
@@ -26,12 +27,15 @@ def build_agent_memory_context(
         limit=recent_questions_limit,
         exclude_current=current_input,
     )
+    last_assistant = _last_assistant_excerpt(messages)
     return (
         f"CONVERSATION SUMMARY (session, short-term):\n"
         f"{summary}\n\n"
         f"RECENT USER QUESTIONS (session, short-term — up to {recent_questions_limit} "
         f"prior turns, excluding current input — 1 = most recent, higher = older):\n"
         f"{recent_questions}\n\n"
+        f"LAST ASSISTANT REPLY (excerpt from previous turn):\n"
+        f"{last_assistant}\n\n"
         f"USER LONG-TERM MEMORY (cross-session, logged-in only):\n"
         f"{ltm}"
     )
@@ -109,6 +113,49 @@ def _format_question_list(picked: list[str]) -> str:
     if not picked:
         return "(none)"
     return "\n".join(f"{i}. {line}" for i, line in enumerate(picked, start=1))
+
+
+def _last_assistant_excerpt(
+    messages: list[BaseMessage] | list[Any],
+    *,
+    max_chars: int = 500,
+) -> str:
+    for msg in reversed(messages):
+        if not isinstance(msg, AIMessage):
+            continue
+        text = str(msg.content or "").strip()
+        if not text:
+            continue
+        text = re.sub(r"\s+", " ", text)
+        if len(text) > max_chars:
+            return text[: max_chars - 3].rstrip() + "..."
+        return text
+    return "(none)"
+
+
+def build_routing_conversation_section(
+    *,
+    conversation_summary: str = "",
+    messages: list[BaseMessage] | list[Any],
+    current_input: str = "",
+    prior_user_questions: list[str] | None = None,
+    recent_questions_limit: int = 5,
+) -> str:
+    """Conversation block embedded in the routing system prompt (per request)."""
+    summary = (conversation_summary or "").strip() or "(none yet)"
+    recent_questions = resolve_recent_user_questions(
+        messages,
+        prior_user_questions=prior_user_questions,
+        limit=recent_questions_limit,
+        exclude_current=current_input,
+    )
+    last_assistant = _last_assistant_excerpt(messages)
+    return (
+        f"SESSION SUMMARY:\n{summary}\n\n"
+        f"RECENT USER QUESTIONS (newest first — 1 = immediately before the current message):\n"
+        f"{recent_questions}\n\n"
+        f"LAST ASSISTANT REPLY (excerpt):\n{last_assistant}"
+    )
 
 
 async def load_recent_user_questions_from_db(

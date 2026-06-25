@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 
 def _client() -> QdrantClient:
     cfg = get_medical_config().wellness
-    return build_qdrant_client(vector_local_path=cfg.vector_local_path)
+    return build_qdrant_client(
+        vector_local_path=cfg.vector_local_path,
+        url=cfg.url,
+        api_key=cfg.api_key,
+    )
 
 
 def _collection_name() -> str:

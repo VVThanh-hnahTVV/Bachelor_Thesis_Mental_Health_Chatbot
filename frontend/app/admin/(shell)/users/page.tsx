@@ -273,6 +273,7 @@ export default function AdminUsersPage() {
               <SelectContent>
                 <SelectItem value="all">Tất cả vai trò</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="support">Support</SelectItem>
                 <SelectItem value="user">User</SelectItem>
               </SelectContent>
             </Select>
@@ -341,7 +342,9 @@ export default function AdminUsersPage() {
                           "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold",
                           u.role === "admin"
                             ? "bg-serene-green/25 text-serene-accent"
-                            : "bg-secondary/30 text-muted-foreground"
+                            : u.role === "support"
+                              ? "bg-blue-100 text-blue-600"
+                              : "bg-secondary/30 text-muted-foreground"
                         )}
                       >
                         {initials(u.name)}
@@ -361,7 +364,11 @@ export default function AdminUsersPage() {
                       {u.role === "admin" && (
                         <Shield className="h-3.5 w-3.5 text-serene-accent" />
                       )}
-                      {u.role === "admin" ? "Admin" : "User"}
+                      {u.role === "admin"
+                        ? "Admin"
+                        : u.role === "support"
+                          ? "Support"
+                          : "User"}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-muted-foreground">
@@ -455,7 +462,7 @@ export default function AdminUsersPage() {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Cập nhật thông tin hoặc đổi quyền admin."
+                ? "Cập nhật thông tin hoặc thay đổi vai trò."
                 : "Tạo tài khoản mới cho Helios."}
             </DialogDescription>
           </DialogHeader>
@@ -505,6 +512,7 @@ export default function AdminUsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="support">Support</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
