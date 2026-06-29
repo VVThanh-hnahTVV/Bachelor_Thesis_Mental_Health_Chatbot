@@ -1,0 +1,45 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: helios
+  region: ap-southeast-1
+  # Dùng version còn "standard support" để tránh cảnh báo extended support.
+  version: "1.32"
+
+# Bật OIDC để dùng IAM Roles for Service Accounts (IRSA),
+# cần cho AWS Load Balancer Controller.
+iam:
+  withOIDC: true
+
+# Managed nodegroup. t3.large (2 vCPU / 8GB) đủ cho backend tải model
+# embedding/reranker HuggingFace. Tăng/giảm theo nhu cầu.
+managedNodeGroups:
+  - name: ng-1
+    instanceType: t3.large
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 30
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    labels:
+      role: workers
+    tags:
+      project: helios
+    # Cho phép pod (ví dụ AWS LB Controller) gọi các API AWS cần thiết.
+    iam:
+      withAddonPolicies:
+        albIngress: true
+        cloudWatch: true
+        autoScaler: true
+
+# Add-on cơ bản do EKS quản lý.
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "audit", "authenticator"]

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: helios
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: ${BACKEND_IMAGE}
+          ports:
+            - containerPort: 8000
+          # Toàn bộ biến môi trường (API keys, MONGO_URI, ...) lấy từ Secret.
+          envFrom:
+            - secretRef:
+                name: backend-secrets
+          # Ghi đè các giá trị phụ thuộc môi trường cluster / domain.
+          env:
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            # PUBLIC_URL = origin công khai của ALB (vd: http://<alb-dns>
+            # hoặc https://app.yourdomain.com). Browser và frontend dùng chung host này.
+            - name: CORS_ORIGINS
+              value: "${PUBLIC_URL}"
+            - name: FRONTEND_URL
+              value: "${PUBLIC_URL}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 90
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1500m"
+              memory: "2.5Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: helios
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000

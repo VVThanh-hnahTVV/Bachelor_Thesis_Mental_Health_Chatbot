@@ -1,0 +1,66 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: helios
+  namespace: helios
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/group.name: helios
+    # HTTPS qua chứng chỉ ACM; ssl-redirect tự đẩy HTTP(80) -> HTTPS(443).
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+spec:
+  ingressClassName: alb
+  # Định tuyến trên 1 host (ALB DNS). Quy tắc cụ thể hơn đặt TRƯỚC,
+  # catch-all "/" -> frontend đặt CUỐI.
+  #   /api/v1/*  -> backend (browser gọi trực tiếp, kể cả WebSocket /api/v1/ws)
+  #   /mcp,/health,/docs,/openapi.json -> backend
+  #   mọi thứ còn lại (trang Next.js + Next BFF /api/chat,...) -> frontend
+  rules:
+    - http:
+        paths:
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /openapi.json
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
