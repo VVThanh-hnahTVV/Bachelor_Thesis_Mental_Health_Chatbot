@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.admin_routes import router as admin_router
 from app.api.auth_routes import router as auth_router
-from app.api.mcp_routes import router as mcp_router
 from app.api.routes import router as api_router
 from app.api.ws_routes import router as ws_router
 from app.auth.repository import ensure_auth_indexes
@@ -19,7 +18,6 @@ from app.rag.embeddings import resolve_embedding_model, resolve_embedding_provid
 from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
 from app.llm.factory import build_provider_chain, default_provider
-from app.mcp.server import create_mcp_asgi_app
 from app.medical.config import log_qdrant_startup
 
 
@@ -103,14 +101,8 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(auth_router)
     app.include_router(admin_router)
-    app.include_router(mcp_router)
     app.include_router(ws_router)
 
-    if s.enable_internal_mcp_server:
-        mcp_asgi_app = create_mcp_asgi_app(
-            db_getter=lambda: getattr(app.state, "db", None),
-        )
-        app.mount("/mcp", mcp_asgi_app)
     return app
 
 

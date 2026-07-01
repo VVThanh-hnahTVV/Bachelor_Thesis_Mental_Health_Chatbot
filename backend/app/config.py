@@ -115,13 +115,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("IP_DAILY_CHAT_LIMIT"),
     )
 
-    enable_internal_mcp_server: bool = False
-    enable_external_mcp_gateway: bool = False
-    enable_graph_external_enrichment: bool = False
-    external_mcp_servers_json: str = "{}"
-    external_mcp_allowed_tools: str = ""
-    external_mcp_timeout_seconds: float = 6.0
-    external_mcp_max_response_chars: int = 2000
     conversation_summary_max_tokens: int = Field(
         default=512,
         validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),
@@ -130,8 +123,6 @@ class Settings(BaseSettings):
         default=0.85,
         validation_alias=AliasChoices("HANDOFF_CONFIDENCE_THRESHOLD"),
     )
-    graph_external_mcp_server: str | None = None
-    graph_external_mcp_tool: str | None = None
 
     # None = auto: OpenAI embeddings when OPENAI_API_KEY is set, else Ollama
     embedding_provider: str | None = Field(

@@ -11,7 +11,7 @@ Internet
    │
    ▼
  ALB (do AWS Load Balancer Controller tạo từ Ingress)
-   ├── /api/v1/*  /mcp  /health  /docs  /openapi.json ─► Service backend  (:8000)
+   ├── /api/v1/*  /health  /docs  /openapi.json ─► Service backend  (:8000)
    └── mọi path còn lại (trang Next + /api/chat BFF)  ─► Service frontend (:3000)
 
 backend ─► Redis (trong cluster)
