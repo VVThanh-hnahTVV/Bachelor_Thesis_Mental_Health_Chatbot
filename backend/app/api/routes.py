@@ -59,79 +59,233 @@ def client_ip_from_request(request: Request) -> str | None:
 
 
 class ConversationSummary(BaseModel):
-    session_id: str
-    title: str
-    updated_at: str
+    session_id: str = Field(description="Định danh phiên (ổn định phía client).")
+    title: str = Field(description="Tiêu đề hội thoại (tự sinh sau lượt đầu tiên).")
+    updated_at: str = Field(description="Thời điểm cập nhật gần nhất (ISO 8601).")
     chat_mode: str = CHAT_MODE
-    summary: str | None = None
+    summary: str | None = Field(default=None, description="Tóm tắt hội thoại (nếu có).")
     summary_updated_at: str | None = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "session_id": "b3f1c2d4e5f60718",
+                    "title": "Cách giảm căng thẳng trước kỳ thi",
+                    "updated_at": "2026-07-04T06:45:12+00:00",
+                    "chat_mode": "medical",
+                    "summary": "Người dùng lo lắng trước kỳ thi, đã gợi ý bài tập thở.",
+                    "summary_updated_at": "2026-07-04T06:45:12+00:00",
+                }
+            ]
+        }
+    }
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=8000)
-    session_id: str = Field(..., min_length=8, max_length=128)
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=8000,
+        description="Nội dung tin nhắn của người dùng.",
+        examples=["Dạo này tôi khó ngủ và hay lo lắng, tôi nên làm gì?"],
+    )
+    session_id: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Định danh phiên chat. Client tự sinh và giữ ổn định giữa các lượt.",
+        examples=["b3f1c2d4e5f60718"],
+    )
 
 
 class ActivitySuggestionOut(BaseModel):
-    id: str
-    title: str
-    description: str
+    id: str = Field(description="Mã bài tập.", examples=["breathing_478"])
+    title: str = Field(description="Tên bài tập.", examples=["Bài thở 4-7-8"])
+    description: str = Field(
+        description="Mô tả ngắn về bài tập.",
+        examples=["Kỹ thuật thở giúp thư giãn nhanh trong 2 phút."],
+    )
 
 
 class ChatResponse(BaseModel):
-    reply: str
-    session_id: str
-    conversation_id: str
-    assistant_message_id: str | None = None
-    provider: str
+    reply: str = Field(description="Câu trả lời của trợ lý.")
+    session_id: str = Field(description="Định danh phiên chat.")
+    conversation_id: str = Field(description="ObjectId của hội thoại trong MongoDB.")
+    assistant_message_id: str | None = Field(
+        default=None, description="ID tin nhắn của trợ lý vừa được lưu."
+    )
+    provider: str = Field(description="Nhà cung cấp LLM đã dùng cho lượt này.")
     message_type: str = "medical"
-    suggested_activities: list[ActivitySuggestionOut] = Field(default_factory=list)
-    metadata: dict[str, Any] | None = None
-    support_mode: str = "ai"
-    assigned_support_name: str | None = None
+    suggested_activities: list[ActivitySuggestionOut] = Field(
+        default_factory=list, description="Danh sách bài tập được gợi ý (nếu có)."
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Metadata bổ sung (agent, nguồn tham khảo, cờ handoff...)."
+    )
+    support_mode: str = Field(
+        default="ai",
+        description="Chế độ hỗ trợ: `ai`, `awaiting_support`, `human` hoặc `closed`.",
+    )
+    assigned_support_name: str | None = Field(
+        default=None, description="Tên chuyên viên hỗ trợ được gán (nếu có)."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "reply": "Mình hiểu cảm giác khó ngủ và lo lắng rất mệt mỏi...",
+                    "session_id": "b3f1c2d4e5f60718",
+                    "conversation_id": "665f0a1b2c3d4e5f60718293",
+                    "assistant_message_id": "665f0a1b2c3d4e5f60718294",
+                    "provider": "gemini",
+                    "message_type": "medical",
+                    "suggested_activities": [
+                        {
+                            "id": "breathing_478",
+                            "title": "Bài thở 4-7-8",
+                            "description": "Kỹ thuật thở giúp thư giãn nhanh trong 2 phút.",
+                        }
+                    ],
+                    "metadata": {"agent_name": "RAG_AGENT", "chat_mode": "medical"},
+                    "support_mode": "ai",
+                    "assigned_support_name": None,
+                }
+            ]
+        }
+    }
 
 
 class HandoffRequestBody(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
-    confirm: bool = False
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
+    confirm: bool = Field(
+        default=False,
+        description="`false`: gửi thông báo xin xác nhận. `true`: xác nhận chuyển giao cho người hỗ trợ.",
+        examples=[True],
+    )
 
 
 class ConversationStatusOut(BaseModel):
     session_id: str
-    support_mode: str
+    support_mode: str = Field(
+        description="Chế độ hỗ trợ hiện tại: `ai`, `awaiting_support`, `human`, `closed`."
+    )
     assigned_support_name: str | None = None
     assigned_support_id: str | None = None
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "session_id": "b3f1c2d4e5f60718",
+                    "support_mode": "human",
+                    "assigned_support_name": "Nguyễn Văn A",
+                    "assigned_support_id": "665f0a1b2c3d4e5f60718200",
+                }
+            ]
+        }
+    }
+
 
 class WellnessStartRequest(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
-    activity_id: str = Field(..., min_length=2, max_length=64)
-    quiet: bool = False
-    lang: str | None = Field(None, pattern="^(vi|en)$")
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
+    activity_id: str = Field(
+        ...,
+        min_length=2,
+        max_length=64,
+        description="Mã bài tập cần bắt đầu (xem `/activities/catalog`).",
+        examples=["breathing_478"],
+    )
+    quiet: bool = Field(
+        default=False,
+        description="Nếu `true`, không lưu/trả về tin nhắn giới thiệu bài tập.",
+    )
+    lang: str | None = Field(
+        None, pattern="^(vi|en)$", description="Ngôn ngữ hiển thị (`vi` hoặc `en`).", examples=["vi"]
+    )
 
 
 class WellnessCompleteRequest(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
-    lang: str | None = Field(None, pattern="^(vi|en)$")
-    activity_id: str | None = Field(None, min_length=2, max_length=64)
-    duration_sec: int | None = Field(None, ge=1, le=86400)
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
+    lang: str | None = Field(None, pattern="^(vi|en)$", examples=["vi"])
+    activity_id: str | None = Field(
+        None,
+        min_length=2,
+        max_length=64,
+        description="Mã bài tập. Nếu bỏ trống, lấy từ phiên wellness đang hoạt động.",
+        examples=["breathing_478"],
+    )
+    duration_sec: int | None = Field(
+        None, ge=1, le=86400, description="Thời lượng thực hiện (giây).", examples=[120]
+    )
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    tags=["Chat"],
+    summary="Gửi tin nhắn tới trợ lý Helios",
+    description=(
+        "Xử lý một lượt hội thoại y tế: định tuyến qua các agent (RAG, tìm kiếm web, "
+        "wellness), lưu tin nhắn và trả về câu trả lời kèm gợi ý bài tập.\n\n"
+        "- Hoạt động ẩn danh theo `session_id`; gửi kèm `Authorization: Bearer <token>` "
+        "để gắn hội thoại vào tài khoản.\n"
+        "- Nếu phiên đang ở chế độ `human`, hãy gửi tin nhắn qua WebSocket thay vì endpoint này."
+    ),
+    responses={
+        200: {"description": "Câu trả lời của trợ lý."},
+        403: {"description": "Phiên đã đóng (`closed`)."},
+        409: {"description": "Phiên đang ở chế độ hỗ trợ người thật (`human`)."},
+        429: {"description": "Vượt hạn mức chat trong ngày."},
+    },
+)
 async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     return await _execute_chat(req, request)
 
 
 class ChatQuotaResponse(BaseModel):
-    enabled: bool
-    allowed: bool
-    used: int
-    limit: int
-    remaining: int
-    resets_at: str | None = None
+    enabled: bool = Field(description="Cơ chế giới hạn có được bật hay không.")
+    allowed: bool = Field(description="Người gọi còn được phép chat hay không.")
+    used: int = Field(description="Số lượt đã dùng trong ngày.")
+    limit: int = Field(description="Hạn mức tối đa mỗi ngày.")
+    remaining: int = Field(description="Số lượt còn lại.")
+    resets_at: str | None = Field(
+        default=None, description="Thời điểm hạn mức được reset (ISO 8601)."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "enabled": True,
+                    "allowed": True,
+                    "used": 3,
+                    "limit": 20,
+                    "remaining": 17,
+                    "resets_at": "2026-07-05T00:00:00+00:00",
+                }
+            ]
+        }
+    }
 
 
-@router.get("/chat/quota", response_model=ChatQuotaResponse)
+@router.get(
+    "/chat/quota",
+    response_model=ChatQuotaResponse,
+    tags=["Chat"],
+    summary="Xem hạn mức chat trong ngày",
+    description=(
+        "Trả về hạn mức chat còn lại của người gọi (theo tài khoản nếu đã đăng nhập, "
+        "ngược lại theo địa chỉ IP). Tài khoản `admin`/`support` không bị giới hạn."
+    ),
+)
 async def chat_quota(request: Request) -> ChatQuotaResponse:
     """Current daily chat quota for the caller (user if logged in, else IP)."""
     from app.cache.chat_rate_limit import peek_quota
@@ -360,7 +514,18 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     )
 
 
-@router.post("/handoff/request", response_model=ChatResponse)
+@router.post(
+    "/handoff/request",
+    response_model=ChatResponse,
+    tags=["Chat"],
+    summary="Yêu cầu chuyển giao cho người hỗ trợ",
+    description=(
+        "Khởi tạo luồng chuyển giao từ AI sang chuyên viên hỗ trợ là người thật.\n\n"
+        "- Gọi lần đầu với `confirm=false` để nhận thông báo xin xác nhận đồng ý.\n"
+        "- Gọi lại với `confirm=true` để chính thức đưa phiên vào hàng đợi hỗ trợ "
+        "(`awaiting_support`)."
+    ),
+)
 async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatResponse:
     from app.api.medical_handlers import resolve_conversation
     from app.handoff.escalate import escalate_to_awaiting_support
@@ -448,7 +613,16 @@ async def request_handoff(body: HandoffRequestBody, request: Request) -> ChatRes
     )
 
 
-@router.get("/conversations/{session_id}/status", response_model=ConversationStatusOut)
+@router.get(
+    "/conversations/{session_id}/status",
+    response_model=ConversationStatusOut,
+    tags=["Conversations"],
+    summary="Trạng thái hỗ trợ của phiên",
+    description=(
+        "Trả về chế độ hỗ trợ hiện tại của phiên và thông tin chuyên viên được gán "
+        "(nếu đang ở chế độ `human`). Nếu phiên chưa tồn tại, mặc định là `ai`."
+    ),
+)
 async def conversation_status(session_id: str, request: Request) -> ConversationStatusOut:
     db = get_db(request)
     conv = await get_conversation_by_session(db, session_id)
@@ -469,7 +643,32 @@ def _json_default(obj: Any) -> Any:
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
-@router.post("/chat/stream")
+@router.post(
+    "/chat/stream",
+    tags=["Chat"],
+    summary="Gửi tin nhắn (streaming SSE)",
+    description=(
+        "Giống `/chat` nhưng trả về luồng **Server-Sent Events** (`text/event-stream`).\n\n"
+        "Mỗi sự kiện là một dòng `data: <json>`:\n"
+        "- `{\"type\": \"status\", \"step\": \"...\", \"label\": \"...\"}` — bước xử lý hiện tại.\n"
+        "- `{\"type\": \"done\", ...}` — kết quả cuối cùng (tương đương `ChatResponse`).\n"
+        "- `{\"type\": \"error\", \"message\": \"...\"}` — khi có lỗi.\n\n"
+        "Lưu ý: Swagger UI không render tốt SSE; nên thử bằng `curl -N` hoặc `EventSource`."
+    ),
+    responses={
+        200: {
+            "content": {
+                "text/event-stream": {
+                    "example": (
+                        'data: {"type": "status", "step": "analyzing_request", '
+                        '"label": "Đang phân tích yêu cầu"}\n\n'
+                        'data: {"type": "done", "reply": "...", "session_id": "b3f1c2d4e5f60718"}\n\n'
+                    )
+                }
+            }
+        }
+    },
+)
 async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     """SSE stream: status steps while processing, then final ChatResponse JSON."""
     from app.chat_progress import (
@@ -562,7 +761,17 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     )
 
 
-@router.post("/wellness/start", response_model=ChatResponse)
+@router.post(
+    "/wellness/start",
+    response_model=ChatResponse,
+    tags=["Wellness"],
+    summary="Bắt đầu một bài tập wellness",
+    description=(
+        "Khởi tạo phiên wellness cho một bài tập cụ thể và (tùy chọn) lưu tin nhắn "
+        "giới thiệu vào hội thoại. Trả về lỗi 400 nếu `activity_id` không hợp lệ."
+    ),
+    responses={400: {"description": "Bài tập không tồn tại hoặc không khả dụng."}},
+)
 async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatResponse:
     from app.db.repository import is_valid_activity_id
     from app.wellness.session import set_active, start_session
@@ -610,7 +819,31 @@ async def wellness_start(body: WellnessStartRequest, request: Request) -> ChatRe
     )
 
 
-@router.post("/wellness/complete")
+@router.post(
+    "/wellness/complete",
+    tags=["Wellness"],
+    summary="Hoàn thành bài tập wellness",
+    description=(
+        "Kết thúc phiên wellness đang hoạt động, ghi nhận lượt hoàn thành và trả về "
+        "tin nhắn check-in cùng cờ hiển thị ô đánh giá bài tập."
+    ),
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "checkin_message": "Bạn vừa hoàn thành bài thở 4-7-8. Cảm giác thế nào?",
+                        "show_activity_rating": True,
+                        "activity_id": "breathing_478",
+                        "completion_id": "665f0a1b2c3d4e5f60718295",
+                        "assistant_message_id": "665f0a1b2c3d4e5f60718296",
+                        "wellness_session": {"activity_id": "breathing_478", "step": "completed"},
+                    }
+                }
+            }
+        }
+    },
+)
 async def wellness_complete(body: WellnessCompleteRequest, request: Request) -> dict[str, Any]:
     from app.wellness.session import clear_session, complete_session, get_session
 
@@ -679,7 +912,19 @@ async def wellness_complete(body: WellnessCompleteRequest, request: Request) -> 
     }
 
 
-@router.get("/conversations", response_model=list[ConversationSummary])
+@router.get(
+    "/conversations",
+    response_model=list[ConversationSummary],
+    tags=["Conversations"],
+    summary="Danh sách hội thoại",
+    description=(
+        "Trả về danh sách hội thoại của người dùng đã đăng nhập và/hoặc theo các "
+        "`session_id` được cung cấp.\n\n"
+        "- `session_id`: một phiên đơn lẻ.\n"
+        "- `session_ids`: danh sách phiên, phân tách bằng dấu phẩy.\n"
+        "- Khi đã đăng nhập, các phiên ẩn danh khớp sẽ được gắn vào tài khoản."
+    ),
+)
 async def conversations(
     request: Request,
     session_id: str | None = None,
@@ -772,7 +1017,20 @@ async def conversations(
     return out
 
 
-@router.delete("/conversations/{session_id}")
+@router.delete(
+    "/conversations/{session_id}",
+    tags=["Conversations"],
+    summary="Xóa một hội thoại",
+    description=(
+        "Xóa hội thoại theo `session_id` cùng dữ liệu cache liên quan. Nếu hội thoại "
+        "thuộc về một tài khoản, người gọi phải đăng nhập và là chủ sở hữu."
+    ),
+    responses={
+        200: {"content": {"application/json": {"example": {"status": "deleted"}}}},
+        401: {"description": "Cần đăng nhập để xóa hội thoại thuộc tài khoản."},
+        403: {"description": "Không phải chủ sở hữu hội thoại."},
+    },
+)
 async def delete_conversation(session_id: str, request: Request) -> dict[str, str]:
     from app.auth.repository import delete_session_link, is_session_owned_by_user
     from app.cache.session_memory import purge_chat_session_cache
@@ -811,39 +1069,79 @@ class ActivityVideoSourceOut(BaseModel):
 
 
 class ActivityCatalogOut(BaseModel):
-    id: str
-    title: str
-    description: str
-    content_type: str
-    activity_type: str
-    ui_component: str
+    id: str = Field(description="Mã bài tập.", examples=["breathing_478"])
+    title: str = Field(examples=["Bài thở 4-7-8"])
+    description: str = Field(examples=["Kỹ thuật thở giúp thư giãn nhanh."])
+    content_type: str = Field(examples=["exercise"])
+    activity_type: str = Field(examples=["breathing"])
+    ui_component: str = Field(
+        description="Component UI dùng để hiển thị bài tập.", examples=["BreathingTimer"]
+    )
     video_url: str | None = None
     youtube_id: str | None = None
     video_source: ActivityVideoSourceOut | None = None
-    duration_min: int
-    avg_rating: float
-    rating_count: int
-    benefits: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
+    duration_min: int = Field(description="Thời lượng gợi ý (phút).", examples=[2])
+    avg_rating: float = Field(description="Điểm đánh giá trung bình.", examples=[4.6])
+    rating_count: int = Field(description="Số lượt đánh giá.", examples=[128])
+    benefits: list[str] = Field(
+        default_factory=list, examples=[["Giảm lo âu", "Dễ ngủ hơn"]]
+    )
+    tags: list[str] = Field(default_factory=list, examples=[["thở", "thư giãn"]])
 
 
 class ActivityRateBody(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
-    activity_id: str = Field(..., min_length=2, max_length=64)
-    completion_id: str = Field(..., min_length=1)
-    rating: int = Field(..., ge=1, le=5)
-    message_id: str | None = Field(None, max_length=32)
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
+    activity_id: str = Field(
+        ..., min_length=2, max_length=64, examples=["breathing_478"]
+    )
+    completion_id: str = Field(
+        ...,
+        min_length=1,
+        description="ID lượt hoàn thành (nhận được từ `/wellness/complete`).",
+        examples=["665f0a1b2c3d4e5f60718295"],
+    )
+    rating: int = Field(
+        ..., ge=1, le=5, description="Điểm đánh giá từ 1 đến 5 sao.", examples=[5]
+    )
+    message_id: str | None = Field(
+        None, max_length=32, description="ID tin nhắn chứa ô đánh giá (tùy chọn)."
+    )
 
 
 class MessageOut(BaseModel):
-    id: str
-    role: str
-    content: str
-    created_at: str
+    id: str = Field(description="ID tin nhắn.")
+    role: str = Field(description="Vai trò: `user` hoặc `assistant`.")
+    content: str = Field(description="Nội dung tin nhắn.")
+    created_at: str = Field(description="Thời điểm tạo (ISO 8601).")
     metadata: dict[str, Any] | None = None
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "665f0a1b2c3d4e5f60718294",
+                    "role": "assistant",
+                    "content": "Mình gợi ý bạn thử bài thở 4-7-8 nhé...",
+                    "created_at": "2026-07-04T06:45:12+00:00",
+                    "metadata": {"chat_mode": "medical", "sender_name": "Helios"},
+                }
+            ]
+        }
+    }
 
-@router.get("/messages", response_model=list[MessageOut])
+
+@router.get(
+    "/messages",
+    response_model=list[MessageOut],
+    tags=["Conversations"],
+    summary="Lịch sử tin nhắn của phiên",
+    description=(
+        "Trả về danh sách tin nhắn theo thứ tự thời gian của một phiên. "
+        "Trả về mảng rỗng nếu phiên chưa tồn tại."
+    ),
+)
 async def list_messages(session_id: str, request: Request, limit: int = 100) -> list[MessageOut]:
     db = get_db(request)
     conv = await get_conversation_by_session(db, session_id)
@@ -882,21 +1180,54 @@ async def list_messages(session_id: str, request: Request, limit: int = 100) -> 
 
 
 class ActivityCompleteBody(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
-    activity_id: str = Field(..., min_length=2, max_length=64)
-    linked_message_id: str | None = Field(None, max_length=32)
-    duration_sec: int | None = Field(None, ge=1, le=86400)
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
+    activity_id: str = Field(
+        ..., min_length=2, max_length=64, examples=["breathing_478"]
+    )
+    linked_message_id: str | None = Field(
+        None, max_length=32, description="ID tin nhắn liên kết với lượt hoàn thành."
+    )
+    duration_sec: int | None = Field(
+        None, ge=1, le=86400, description="Thời lượng thực hiện (giây).", examples=[120]
+    )
 
 
 class ActivityCompletionOut(BaseModel):
-    id: str
+    id: str = Field(description="ID lượt hoàn thành.")
     session_id: str
     activity_id: str
-    linked_message_id: str | None
+    linked_message_id: str | None = None
     created_at: str
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "665f0a1b2c3d4e5f60718295",
+                    "session_id": "b3f1c2d4e5f60718",
+                    "activity_id": "breathing_478",
+                    "linked_message_id": "665f0a1b2c3d4e5f60718296",
+                    "created_at": "2026-07-04T06:50:00+00:00",
+                }
+            ]
+        }
+    }
 
-@router.get("/activities/catalog", response_model=list[ActivityCatalogOut])
+
+@router.get(
+    "/activities/catalog",
+    response_model=list[ActivityCatalogOut],
+    tags=["Activities"],
+    summary="Danh mục bài tập wellness",
+    description=(
+        "Trả về danh mục bài tập đang bật và đã triển khai. Nếu MongoDB chưa có dữ liệu, "
+        "hệ thống dùng danh mục mặc định (seed).\n\n"
+        "- `scope`: phạm vi bài tập (mặc định `helios`).\n"
+        "- `lang`: ngôn ngữ hiển thị (`vi` hoặc `en`)."
+    ),
+)
 async def get_activity_catalog(
     request: Request,
     scope: str = "helios",
@@ -921,7 +1252,30 @@ async def get_activity_catalog(
     return [ActivityCatalogOut(**activity_to_api(r, lang=ui_lang)) for r in rows]
 
 
-@router.post("/activities/rate")
+@router.post(
+    "/activities/rate",
+    tags=["Activities"],
+    summary="Đánh giá bài tập đã hoàn thành",
+    description=(
+        "Lưu điểm đánh giá (1–5 sao) cho một lượt hoàn thành bài tập. "
+        "Nếu truyền `message_id`, metadata của tin nhắn tương ứng sẽ được cập nhật."
+    ),
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                        "message": "Cảm ơn bạn đã đánh giá!",
+                    }
+                }
+            }
+        },
+        400: {"description": "`completion_id` không hợp lệ hoặc sai bài tập."},
+        403: {"description": "`session_id` không khớp với lượt hoàn thành."},
+        404: {"description": "Không tìm thấy lượt hoàn thành."},
+    },
+)
 async def rate_activity(body: ActivityRateBody, request: Request) -> dict[str, str]:
     from app.auth.dependencies import resolve_optional_current_user
     from app.db.repository import (
@@ -984,7 +1338,17 @@ async def rate_activity(body: ActivityRateBody, request: Request) -> dict[str, s
     return {"status": "ok", "message": thanks}
 
 
-@router.post("/activities/complete", response_model=ActivityCompletionOut)
+@router.post(
+    "/activities/complete",
+    response_model=ActivityCompletionOut,
+    tags=["Activities"],
+    summary="Ghi nhận hoàn thành bài tập",
+    description=(
+        "Ghi nhận một lượt hoàn thành bài tập độc lập (không qua phiên wellness). "
+        "Tự tạo hội thoại nếu phiên chưa tồn tại."
+    ),
+    responses={400: {"description": "Bài tập hoặc `linked_message_id` không hợp lệ."}},
+)
 async def complete_activity(body: ActivityCompleteBody, request: Request) -> ActivityCompletionOut:
     from app.db.repository import is_valid_activity_id
 
@@ -1027,7 +1391,13 @@ async def complete_activity(body: ActivityCompleteBody, request: Request) -> Act
     )
 
 
-@router.get("/activities", response_model=list[ActivityCompletionOut])
+@router.get(
+    "/activities",
+    response_model=list[ActivityCompletionOut],
+    tags=["Activities"],
+    summary="Lịch sử bài tập đã hoàn thành",
+    description="Trả về danh sách các lượt hoàn thành bài tập của một phiên.",
+)
 async def list_activities(session_id: str, request: Request, limit: int = 100) -> list[ActivityCompletionOut]:
     db = get_db(request)
     rows = await list_activity_completions(db, session_id=session_id, limit=limit)
@@ -1053,15 +1423,40 @@ async def list_activities(session_id: str, request: Request, limit: int = 100) -
 
 
 class SpeechToTextResponse(BaseModel):
-    text: str
-    language_code: str | None = None
+    text: str = Field(description="Văn bản đã nhận dạng từ audio.")
+    language_code: str | None = Field(
+        default=None, description="Mã ngôn ngữ được phát hiện (nếu có)."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"text": "Dạo này tôi hay mất ngủ.", "language_code": "vie"}
+            ]
+        }
+    }
 
 
-@router.post("/speech/transcribe", response_model=SpeechToTextResponse)
+@router.post(
+    "/speech/transcribe",
+    response_model=SpeechToTextResponse,
+    tags=["Speech"],
+    summary="Chuyển giọng nói thành văn bản",
+    description=(
+        "Nhận file audio (multipart/form-data) và trả về văn bản nhận dạng qua ElevenLabs.\n\n"
+        "- `audio`: file ghi âm (ví dụ `audio/webm`, `audio/mp3`).\n"
+        "- `language_code`: mã ngôn ngữ gợi ý (tùy chọn).\n\n"
+        "Yêu cầu cấu hình `ELEVEN_LABS_API_KEY` trên server."
+    ),
+    responses={
+        400: {"description": "File audio rỗng hoặc lỗi nhận dạng."},
+        503: {"description": "Chưa cấu hình dịch vụ speech-to-text."},
+    },
+)
 async def transcribe_speech(
     request: Request,
-    audio: UploadFile = File(...),
-    language_code: str | None = Form(None),
+    audio: UploadFile = File(..., description="File audio cần chuyển thành văn bản."),
+    language_code: str | None = Form(None, description="Mã ngôn ngữ gợi ý, ví dụ `vie`."),
 ) -> SpeechToTextResponse:
     from app.config import get_settings
     from app.speech.elevenlabs_stt import SpeechToTextError, transcribe_with_elevenlabs

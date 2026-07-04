@@ -31,45 +31,104 @@ router = APIRouter(prefix="/api/v1/auth")
 
 
 class RegisterBody(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    session_id: str | None = Field(None, min_length=8, max_length=128)
+    name: str = Field(..., min_length=1, max_length=120, examples=["Nguyễn Văn A"])
+    email: EmailStr = Field(examples=["user@example.com"])
+    password: str = Field(
+        ..., min_length=8, max_length=128, description="Tối thiểu 8 ký tự.", examples=["MatKhau123"]
+    )
+    session_id: str | None = Field(
+        None,
+        min_length=8,
+        max_length=128,
+        description="Nếu có, gắn phiên ẩn danh hiện tại vào tài khoản mới.",
+        examples=["b3f1c2d4e5f60718"],
+    )
 
 
 class LoginBody(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=1, max_length=128)
-    session_id: str | None = Field(None, min_length=8, max_length=128)
+    email: EmailStr = Field(examples=["user@example.com"])
+    password: str = Field(..., min_length=1, max_length=128, examples=["MatKhau123"])
+    session_id: str | None = Field(
+        None,
+        min_length=8,
+        max_length=128,
+        description="Nếu có, gắn phiên ẩn danh hiện tại vào tài khoản.",
+        examples=["b3f1c2d4e5f60718"],
+    )
 
 
 class LinkSessionBody(BaseModel):
-    session_id: str = Field(..., min_length=8, max_length=128)
+    session_id: str = Field(
+        ..., min_length=8, max_length=128, examples=["b3f1c2d4e5f60718"]
+    )
 
 
 class ForgotPasswordBody(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(examples=["user@example.com"])
 
 
 class ResetPasswordBody(BaseModel):
-    token: str = Field(..., min_length=16, max_length=256)
-    password: str = Field(..., min_length=8, max_length=128)
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="Token đặt lại nhận qua email.",
+        examples=["a1b2c3d4e5f6a7b8c9d0e1f2"],
+    )
+    password: str = Field(
+        ..., min_length=8, max_length=128, description="Mật khẩu mới (tối thiểu 8 ký tự).", examples=["MatKhauMoi123"]
+    )
 
 
 class MessageResponse(BaseModel):
     message: str
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"message": "Đặt lại mật khẩu thành công."}]
+        }
+    }
+
 
 class UserOut(BaseModel):
-    id: str
+    id: str = Field(description="ObjectId của người dùng.")
     email: str
     name: str
-    role: str = "user"
+    role: str = Field(default="user", description="Vai trò: `user`, `admin` hoặc `support`.")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "665f0a1b2c3d4e5f60718200",
+                    "email": "user@example.com",
+                    "name": "Nguyễn Văn A",
+                    "role": "user",
+                }
+            ]
+        }
+    }
 
 
 class AuthResponse(BaseModel):
-    token: str
+    token: str = Field(description="JWT access token dùng cho header Authorization.")
     user: UserOut
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "user": {
+                        "id": "665f0a1b2c3d4e5f60718200",
+                        "email": "user@example.com",
+                        "name": "Nguyễn Văn A",
+                        "role": "user",
+                    },
+                }
+            ]
+        }
+    }
 
 
 def get_db(request: Request):
@@ -113,7 +172,17 @@ async def _issue_token_and_maybe_link(
     return AuthResponse(token=token, user=_to_user_out(user))
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post(
+    "/register",
+    response_model=AuthResponse,
+    tags=["Auth"],
+    summary="Đăng ký tài khoản",
+    description=(
+        "Tạo tài khoản mới và trả về JWT access token. Nếu truyền `session_id`, "
+        "phiên ẩn danh hiện tại sẽ được gắn vào tài khoản."
+    ),
+    responses={409: {"description": "Email đã được đăng ký."}},
+)
 async def register(body: RegisterBody, request: Request) -> AuthResponse:
     db = get_db(request)
     existing = await get_user_by_email(db, body.email)
@@ -129,7 +198,14 @@ async def register(body: RegisterBody, request: Request) -> AuthResponse:
     return await _issue_token_and_maybe_link(db, user, body.session_id)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    tags=["Auth"],
+    summary="Đăng nhập",
+    description="Xác thực bằng email/mật khẩu và trả về JWT access token.",
+    responses={401: {"description": "Email hoặc mật khẩu không đúng."}},
+)
 async def login(body: LoginBody, request: Request) -> AuthResponse:
     db = get_db(request)
     user = await get_user_by_email(db, body.email)
@@ -138,12 +214,28 @@ async def login(body: LoginBody, request: Request) -> AuthResponse:
     return await _issue_token_and_maybe_link(db, user, body.session_id)
 
 
-@router.get("/me", response_model=UserOut)
+@router.get(
+    "/me",
+    response_model=UserOut,
+    tags=["Auth"],
+    summary="Thông tin tài khoản hiện tại",
+    description="Trả về thông tin của người dùng đang đăng nhập (dựa trên Bearer token).",
+    responses={401: {"description": "Thiếu hoặc token không hợp lệ."}},
+)
 async def me(user: dict[str, Any] = Depends(get_current_user)) -> UserOut:
     return _to_user_out(user)
 
 
-@router.post("/forgot-password", response_model=MessageResponse)
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    tags=["Auth"],
+    summary="Quên mật khẩu",
+    description=(
+        "Gửi email chứa liên kết đặt lại mật khẩu nếu email tồn tại. "
+        "Luôn trả về thông báo trung lập để tránh lộ thông tin tài khoản."
+    ),
+)
 async def forgot_password(body: ForgotPasswordBody, request: Request) -> MessageResponse:
     db = get_db(request)
     user = await get_user_by_email(db, body.email)
@@ -166,7 +258,14 @@ async def forgot_password(body: ForgotPasswordBody, request: Request) -> Message
     )
 
 
-@router.post("/reset-password", response_model=MessageResponse)
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    tags=["Auth"],
+    summary="Đặt lại mật khẩu",
+    description="Đặt lại mật khẩu bằng token nhận được qua email quên mật khẩu.",
+    responses={400: {"description": "Liên kết đặt lại không hợp lệ hoặc đã hết hạn."}},
+)
 async def reset_password(body: ResetPasswordBody, request: Request) -> MessageResponse:
     db = get_db(request)
     token_hash = hash_token(body.token)
@@ -183,7 +282,25 @@ async def reset_password(body: ResetPasswordBody, request: Request) -> MessageRe
     return MessageResponse(message="Đặt lại mật khẩu thành công.")
 
 
-@router.post("/link-session")
+@router.post(
+    "/link-session",
+    tags=["Auth"],
+    summary="Gắn phiên ẩn danh vào tài khoản",
+    description=(
+        "Liên kết một `session_id` ẩn danh với tài khoản đang đăng nhập, giúp giữ lại "
+        "lịch sử hội thoại sau khi đăng nhập."
+    ),
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {"status": "linked", "session_id": "b3f1c2d4e5f60718"}
+                }
+            }
+        },
+        401: {"description": "Cần đăng nhập."},
+    },
+)
 async def link_session(body: LinkSessionBody, request: Request) -> dict[str, str]:
     db = get_db(request)
     user = await get_current_user(request, db)

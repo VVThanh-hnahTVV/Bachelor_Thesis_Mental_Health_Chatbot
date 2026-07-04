@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -153,22 +153,6 @@ class Settings(BaseSettings):
         default="scribe_v2",
         validation_alias=AliasChoices("ELEVEN_LABS_STT_MODEL"),
     )
-
-    cloudinary_cloud_name: str | None = None
-    cloudinary_api_key: str | None = None
-    cloudinary_api_secret: str | None = None
-
-    @field_validator(
-        "cloudinary_cloud_name",
-        "cloudinary_api_key",
-        "cloudinary_api_secret",
-        mode="before",
-    )
-    @classmethod
-    def strip_cloudinary_settings(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip()
-        return value
 
     @property
     def cors_origins_list(self) -> list[str]:

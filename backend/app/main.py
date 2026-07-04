@@ -24,6 +24,49 @@ from app.medical.config import log_qdrant_startup
 logger = logging.getLogger("uvicorn.error")
 
 
+
+TAGS_METADATA = [
+    {
+        "name": "Chat",
+        "description": "Hội thoại với trợ lý y tế Helios: gửi tin nhắn, streaming SSE, "
+        "kiểm tra hạn mức và yêu cầu chuyển giao cho người hỗ trợ.",
+    },
+    {
+        "name": "Conversations",
+        "description": "Danh sách hội thoại, trạng thái phiên và lịch sử tin nhắn.",
+    },
+    {
+        "name": "Wellness",
+        "description": "Bắt đầu và hoàn thành các bài tập chăm sóc sức khỏe trong phiên chat.",
+    },
+    {
+        "name": "Activities",
+        "description": "Danh mục bài tập, ghi nhận hoàn thành và đánh giá của người dùng.",
+    },
+    {
+        "name": "Speech",
+        "description": "Chuyển giọng nói thành văn bản (speech-to-text) bằng ElevenLabs.",
+    },
+    {
+        "name": "Auth",
+        "description": "Đăng ký, đăng nhập, thông tin tài khoản và luồng đặt lại mật khẩu.",
+    },
+    {
+        "name": "Admin",
+        "description": "Bảng điều khiển quản trị: người dùng, hội thoại, kho tri thức và chỉ mục vector. "
+        "Yêu cầu vai trò `admin`/`support`.",
+    },
+    {
+        "name": "WebSocket",
+        "description": "Kênh WebSocket cho chat hỗ trợ trực tiếp giữa người dùng và chuyên viên.",
+    },
+    {
+        "name": "System",
+        "description": "Kiểm tra tình trạng dịch vụ (health check).",
+    },
+]
+
+
 def _active_model_for_provider(primary: str, settings) -> str:
     if primary == "local":
         return settings.local_model
@@ -85,6 +128,7 @@ def create_app() -> FastAPI:
         title="Helios — Tra cứu & tư vấn sức khỏe tâm thần",
         version="0.1.0",
         lifespan=lifespan,
+        openapi_tags=TAGS_METADATA,
     )
     app.add_middleware(
         CORSMiddleware,
@@ -94,7 +138,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.get("/health")
+    @app.get(
+        "/health",
+        tags=["System"],
+        summary="Health check",
+        description="Trả về trạng thái sống của dịch vụ. Dùng cho load balancer / uptime monitor.",
+        responses={200: {"content": {"application/json": {"example": {"status": "ok"}}}}},
+    )
     async def health():
         return {"status": "ok"}
 

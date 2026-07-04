@@ -52,6 +52,31 @@ async def ws_chat(
     role: str = Query("user"),
     token: str | None = Query(None),
 ) -> None:
+    """Kênh WebSocket cho chat hỗ trợ trực tiếp (người dùng ↔ chuyên viên).
+
+    Ghi chú: OpenAPI/Swagger không mô tả được WebSocket nên endpoint này không xuất
+    hiện trong `/docs`. Giao thức được tài liệu hóa tại đây.
+
+    Endpoint: ``ws(s)://<host>/api/v1/ws/chat``
+
+    Query params:
+        - ``session_id``: Định danh phiên (8–128 ký tự). Bắt buộc.
+        - ``role``: ``user`` (mặc định) hoặc ``support``.
+        - ``token``: JWT access token. Bắt buộc khi ``role=support``; tài khoản phải
+          có vai trò ``admin``/``support``.
+
+    Mã đóng kết nối:
+        - ``4400``: ``role`` không hợp lệ.
+        - ``4401``: Xác thực chuyên viên thất bại.
+
+    Tin nhắn client → server (JSON):
+        - ``{"type": "ping"}`` → server trả ``{"type": "pong"}``.
+        - ``{"type": "message", "content": "..."}`` → gửi một tin nhắn.
+
+    Tin nhắn server → client (JSON):
+        - Tin nhắn chat được phát qua kênh Redis pub/sub của phiên.
+        - ``{"type": "error", "detail": "..."}`` khi có lỗi hoặc trạng thái phiên không hợp lệ.
+    """
     if role not in ("user", "support"):
         await websocket.close(code=4400)
         return

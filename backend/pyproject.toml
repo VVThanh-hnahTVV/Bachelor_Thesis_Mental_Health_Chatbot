@@ -23,7 +23,6 @@ dependencies = [
     "matplotlib>=3.10.9",
     "gdown>=6.1.0",
     "fastembed>=0.8.0",
-    "cloudinary>=1.41.0",
 ]
 
 [project.optional-dependencies]

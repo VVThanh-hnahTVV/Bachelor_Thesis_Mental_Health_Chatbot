@@ -66,27 +66,33 @@ from app.llm.openai_platform_usage import get_admin_usage_stats
 from app.medical.agents.rag_agent import MedicalRAG
 from app.medical.config import get_medical_config
 
-router = APIRouter(prefix="/api/v1/admin")
+router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 _index_jobs: dict[str, dict[str, Any]] = {}
 
 
 class CrawlRunBody(BaseModel):
-    max_per_feed: int = Field(8, ge=1, le=50)
-    max_total: int = Field(25, ge=1, le=100)
-    max_age_days: int = Field(730, ge=30, le=3650)
-    include_research: bool = True
-    research_max: int = Field(8, ge=0, le=30)
+    max_per_feed: int = Field(8, ge=1, le=50, description="Số bài tối đa lấy từ mỗi nguồn feed.")
+    max_total: int = Field(25, ge=1, le=100, description="Tổng số bài tối đa cho một lần crawl.")
+    max_age_days: int = Field(730, ge=30, le=3650, description="Chỉ lấy bài mới hơn số ngày này.")
+    include_research: bool = Field(True, description="Có gồm nguồn nghiên cứu (research) hay không.")
+    research_max: int = Field(8, ge=0, le=30, description="Số bài research tối đa.")
 
 
 class ArticlePatchBody(BaseModel):
-    action: Literal["approve", "reject"] | None = None
-    topics: list[str] | None = None
+    action: Literal["approve", "reject"] | None = Field(
+        None, description="Hành động duyệt: `approve` hoặc `reject`."
+    )
+    topics: list[str] | None = Field(
+        None, description="Danh sách chủ đề gán cho bài.", examples=[["lo âu", "giấc ngủ"]]
+    )
 
 
 class BulkArticleBody(BaseModel):
-    source_ids: list[str] = Field(..., min_length=1)
-    action: Literal["approve", "reject"]
+    source_ids: list[str] = Field(
+        ..., min_length=1, description="Danh sách ID bài cần xử lý hàng loạt."
+    )
+    action: Literal["approve", "reject"] = Field(description="Hành động áp dụng cho tất cả.")
 
 
 class BuildIndexBody(BaseModel):
@@ -98,16 +104,22 @@ class BuildIndexBody(BaseModel):
 
 
 class AdminUserCreateBody(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    role: Literal["user", "admin", "support"] = "user"
+    name: str = Field(..., min_length=1, max_length=120, examples=["Trần Thị B"])
+    email: EmailStr = Field(examples=["support@example.com"])
+    password: str = Field(..., min_length=8, max_length=128, examples=["MatKhau123"])
+    role: Literal["user", "admin", "support"] = Field(
+        "user", description="Vai trò của tài khoản."
+    )
 
 
 class AdminUserUpdateBody(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=120)
-    role: Literal["user", "admin", "support"] | None = None
-    password: str | None = Field(None, min_length=8, max_length=128)
+    name: str | None = Field(None, min_length=1, max_length=120, examples=["Trần Thị B"])
+    role: Literal["user", "admin", "support"] | None = Field(
+        None, description="Vai trò mới (nếu đổi)."
+    )
+    password: str | None = Field(
+        None, min_length=8, max_length=128, description="Mật khẩu mới (nếu đổi)."
+    )
 
 
 class PdfIngestBody(BaseModel):
@@ -141,7 +153,11 @@ def _get_db(request: Request):
     return db
 
 
-@router.get("/overview")
+@router.get(
+    "/overview",
+    summary="Tổng quan bảng điều khiển",
+    description="Thống kê tổng quan hệ thống trong `days` ngày gần nhất, kèm tình trạng kho tri thức.",
+)
 async def admin_overview(
     request: Request,
     days: int = Query(7, ge=1, le=30),
@@ -162,14 +178,22 @@ async def admin_overview(
     return stats
 
 
-@router.get("/settings")
+@router.get(
+    "/settings",
+    summary="Cấu hình hệ thống",
+    description="Trả về snapshot cấu hình hiện tại (LLM, embedding, RAG, tính năng...).",
+)
 async def admin_settings(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     return build_admin_settings_snapshot()
 
 
-@router.get("/settings/usage")
+@router.get(
+    "/settings/usage",
+    summary="Thống kê sử dụng LLM",
+    description="Thống kê mức sử dụng nền tảng OpenAI trong `days` ngày gần nhất.",
+)
 async def admin_settings_usage(
     days: int = Query(7, ge=1, le=90),
     _admin: dict[str, Any] = Depends(require_admin),
@@ -177,7 +201,11 @@ async def admin_settings_usage(
     return await get_admin_usage_stats(days=days)
 
 
-@router.post("/crawl/run")
+@router.post(
+    "/crawl/run",
+    summary="Chạy crawl nội dung",
+    description="Kích hoạt pipeline thu thập bài viết y tế từ các nguồn RSS/nghiên cứu vào staging.",
+)
 async def admin_crawl_run(
     body: CrawlRunBody,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -194,7 +222,11 @@ async def admin_crawl_run(
     return result
 
 
-@router.get("/articles")
+@router.get(
+    "/articles",
+    summary="Danh sách bài trong staging",
+    description="Liệt kê bài viết theo trạng thái duyệt: `pending`, `approved`, `rejected`, `indexed`.",
+)
 async def admin_list_articles(
     status: Literal["pending", "approved", "rejected", "indexed"] = Query("pending"),
     _admin: dict[str, Any] = Depends(require_admin),
@@ -203,7 +235,12 @@ async def admin_list_articles(
     return {"status": status, "count": len(rows), "articles": rows}
 
 
-@router.get("/articles/{source_id}")
+@router.get(
+    "/articles/{source_id}",
+    summary="Chi tiết một bài",
+    description="Trả về nội dung đầy đủ của một bài trong staging theo `source_id`.",
+    responses={404: {"description": "Không tìm thấy bài."}},
+)
 async def admin_get_article(
     source_id: str,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -214,7 +251,15 @@ async def admin_get_article(
     return article.to_dict()
 
 
-@router.patch("/articles/{source_id}")
+@router.patch(
+    "/articles/{source_id}",
+    summary="Duyệt / cập nhật bài",
+    description="Cập nhật chủ đề và/hoặc duyệt (`approve`) hay từ chối (`reject`) một bài đang chờ.",
+    responses={
+        400: {"description": "Không thể chuyển trạng thái từ trạng thái hiện tại."},
+        404: {"description": "Không tìm thấy bài."},
+    },
+)
 async def admin_patch_article(
     source_id: str,
     body: ArticlePatchBody,
@@ -261,7 +306,11 @@ async def admin_patch_article(
     return article.to_dict()
 
 
-@router.post("/articles/bulk")
+@router.post(
+    "/articles/bulk",
+    summary="Duyệt / từ chối hàng loạt",
+    description="Duyệt hoặc từ chối nhiều bài cùng lúc. Trả về danh sách đã đổi và các lỗi (nếu có).",
+)
 async def admin_bulk_articles(
     body: BulkArticleBody,
     admin: dict[str, Any] = Depends(require_admin),
@@ -352,7 +401,14 @@ def _start_job(job_type: Literal["web", "pdf"], title: str, runner, *args: Any) 
     return job_id
 
 
-@router.post("/index/build")
+@router.post(
+    "/index/build",
+    summary="Xây chỉ mục vector web",
+    description=(
+        "Khởi chạy job nền để lập chỉ mục vector cho các bài đã duyệt. "
+        "Trả về `job_id` để theo dõi tiến độ qua `/index/jobs/{job_id}`."
+    ),
+)
 async def admin_build_index(
     body: BuildIndexBody | None = None,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -366,7 +422,11 @@ async def admin_build_index(
     return {"job_id": job_id}
 
 
-@router.get("/index/jobs")
+@router.get(
+    "/index/jobs",
+    summary="Danh sách job chỉ mục",
+    description="Liệt kê tối đa 50 job lập chỉ mục gần nhất (web/PDF).",
+)
 async def admin_list_index_jobs(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
@@ -378,7 +438,12 @@ async def admin_list_index_jobs(
     return {"jobs": jobs[:50]}
 
 
-@router.get("/index/jobs/{job_id}")
+@router.get(
+    "/index/jobs/{job_id}",
+    summary="Trạng thái job chỉ mục",
+    description="Theo dõi tiến độ/kết quả của một job lập chỉ mục theo `job_id`.",
+    responses={404: {"description": "Không tìm thấy job."}},
+)
 async def admin_index_job_status(
     job_id: str,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -389,7 +454,11 @@ async def admin_index_job_status(
     return job
 
 
-@router.get("/index/stats")
+@router.get(
+    "/index/stats",
+    summary="Thống kê chỉ mục & kho tri thức",
+    description="Số điểm vector web/PDF, số file PDF, cấu hình chunk và embedding.",
+)
 async def admin_index_stats(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
@@ -414,7 +483,11 @@ async def admin_index_stats(
     }
 
 
-@router.get("/pdf")
+@router.get(
+    "/pdf",
+    summary="Danh sách file PDF",
+    description="Liệt kê các file PDF trong kho tài liệu thô (`data/medical/raw`).",
+)
 async def admin_list_pdfs(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
@@ -422,7 +495,12 @@ async def admin_list_pdfs(
     return {"files": files, "count": len(files)}
 
 
-@router.post("/pdf/upload")
+@router.post(
+    "/pdf/upload",
+    summary="Tải lên file PDF",
+    description="Tải một file PDF vào kho tài liệu thô để chuẩn bị lập chỉ mục.",
+    responses={400: {"description": "File không phải PDF hoặc rỗng."}},
+)
 async def admin_upload_pdf(
     file: UploadFile = File(...),
     _admin: dict[str, Any] = Depends(require_admin),
@@ -446,7 +524,12 @@ async def admin_upload_pdf(
     }
 
 
-@router.delete("/articles/{source_id}")
+@router.delete(
+    "/articles/{source_id}",
+    summary="Xóa bài web (cả vector)",
+    description="Xóa một bài web khỏi staging và loại bỏ các vector liên quan.",
+    responses={404: {"description": "Không tìm thấy bài."}},
+)
 async def admin_delete_web_article(
     source_id: str,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -461,7 +544,12 @@ async def admin_delete_web_article(
     return result
 
 
-@router.delete("/articles/{source_id}/vectors")
+@router.delete(
+    "/articles/{source_id}/vectors",
+    summary="Bỏ chỉ mục vector của bài web",
+    description="Xóa các vector của một bài web nhưng vẫn giữ bài trong staging.",
+    responses={404: {"description": "Không tìm thấy bài."}},
+)
 async def admin_unindex_web_article(
     source_id: str,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -476,7 +564,11 @@ async def admin_unindex_web_article(
     return result
 
 
-@router.delete("/pdf/vectors")
+@router.delete(
+    "/pdf/vectors",
+    summary="Bỏ chỉ mục vector của PDF",
+    description="Xóa các vector sinh ra từ một file PDF (theo `path`), giữ nguyên file gốc.",
+)
 async def admin_unindex_pdf_vectors(
     path: str = Query(..., min_length=1),
     _admin: dict[str, Any] = Depends(require_admin),
@@ -484,7 +576,12 @@ async def admin_unindex_pdf_vectors(
     return await asyncio.to_thread(unindex_pdf_vectors, path)
 
 
-@router.delete("/pdf")
+@router.delete(
+    "/pdf",
+    summary="Xóa file PDF",
+    description="Xóa một file PDF; mặc định xóa luôn các vector liên quan (`remove_vectors=true`).",
+    responses={404: {"description": "Không tìm thấy PDF."}},
+)
 async def admin_delete_pdf(
     path: str = Query(..., min_length=1),
     remove_vectors: bool = Query(True),
@@ -504,7 +601,14 @@ async def admin_delete_pdf(
     }
 
 
-@router.post("/pdf/ingest")
+@router.post(
+    "/pdf/ingest",
+    summary="Lập chỉ mục PDF",
+    description=(
+        "Khởi chạy job nền để nạp và lập chỉ mục PDF. Bỏ trống `path` để nạp toàn bộ. "
+        "Trả về `job_id` để theo dõi qua `/index/jobs/{job_id}`."
+    ),
+)
 async def admin_pdf_ingest(
     body: PdfIngestBody,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -536,7 +640,11 @@ async def _ensure_not_last_admin(
         raise HTTPException(400, "Cannot remove the last admin account")
 
 
-@router.get("/conversations/stats")
+@router.get(
+    "/conversations/stats",
+    summary="Thống kê hội thoại",
+    description="Thống kê hội thoại trong `days` ngày gần nhất (dành cho admin/support).",
+)
 async def admin_conversation_stats(
     request: Request,
     days: int = Query(7, ge=1, le=30),
@@ -546,7 +654,11 @@ async def admin_conversation_stats(
     return await get_conversation_admin_stats(db, days=days)
 
 
-@router.get("/conversations")
+@router.get(
+    "/conversations",
+    summary="Danh sách hội thoại (phân trang)",
+    description="Liệt kê hội thoại có phân trang, hỗ trợ tìm kiếm và lọc theo loại chủ sở hữu.",
+)
 async def admin_list_conversations(
     request: Request,
     page: int = Query(1, ge=1),
@@ -574,7 +686,11 @@ async def admin_list_conversations(
     }
 
 
-@router.get("/conversations/queue")
+@router.get(
+    "/conversations/queue",
+    summary="Hàng đợi hỗ trợ",
+    description="Danh sách hội thoại đang chờ hỗ trợ hoặc được gán cho chuyên viên hiện tại.",
+)
 async def admin_conversations_queue(
     request: Request,
     admin: dict[str, Any] = Depends(require_admin_panel),
@@ -588,7 +704,12 @@ async def admin_conversations_queue(
     }
 
 
-@router.get("/conversations/{session_id}")
+@router.get(
+    "/conversations/{session_id}",
+    summary="Chi tiết hội thoại",
+    description="Trả về thông tin quản trị của một hội thoại theo `session_id`.",
+    responses={404: {"description": "Không tìm thấy hội thoại."}},
+)
 async def admin_get_conversation(
     session_id: str,
     request: Request,
@@ -601,7 +722,12 @@ async def admin_get_conversation(
     return conversation_admin_dict({**conv, "message_count": 0, "_user_doc": []})
 
 
-@router.get("/conversations/{session_id}/messages")
+@router.get(
+    "/conversations/{session_id}/messages",
+    summary="Tin nhắn của hội thoại (admin)",
+    description="Lịch sử tin nhắn theo thời gian, bao gồm cả tin nội bộ dành cho support.",
+    responses={404: {"description": "Không tìm thấy hội thoại."}},
+)
 async def admin_conversation_messages(
     session_id: str,
     request: Request,
@@ -635,7 +761,12 @@ async def admin_conversation_messages(
     return out
 
 
-@router.post("/conversations/{session_id}/join")
+@router.post(
+    "/conversations/{session_id}/join",
+    summary="Tham gia hỗ trợ hội thoại",
+    description="Chuyên viên tiếp nhận phiên và chuyển sang chế độ hỗ trợ người thật (`human`).",
+    responses={400: {"description": "Không thể tham gia ở trạng thái hiện tại."}},
+)
 async def admin_join_conversation(
     session_id: str,
     request: Request,
@@ -651,7 +782,12 @@ async def admin_join_conversation(
         raise HTTPException(400, detail=str(exc)) from exc
 
 
-@router.post("/conversations/{session_id}/leave")
+@router.post(
+    "/conversations/{session_id}/leave",
+    summary="Rời phiên hỗ trợ",
+    description="Chuyên viên rời phiên; hội thoại có thể trở lại chế độ AI.",
+    responses={400: {"description": "Không thể rời ở trạng thái hiện tại."}},
+)
 async def admin_leave_conversation(
     session_id: str,
     request: Request,
@@ -667,7 +803,11 @@ async def admin_leave_conversation(
         raise HTTPException(400, detail=str(exc)) from exc
 
 
-@router.get("/users")
+@router.get(
+    "/users",
+    summary="Danh sách người dùng",
+    description="Liệt kê người dùng có phân trang, hỗ trợ tìm kiếm và lọc theo vai trò.",
+)
 async def admin_list_users(
     request: Request,
     page: int = Query(1, ge=1),
@@ -691,7 +831,12 @@ async def admin_list_users(
     }
 
 
-@router.post("/users")
+@router.post(
+    "/users",
+    summary="Tạo người dùng",
+    description="Tạo tài khoản mới với vai trò chỉ định (`user`/`admin`/`support`).",
+    responses={409: {"description": "Email đã được đăng ký."}},
+)
 async def admin_create_user(
     request: Request,
     body: AdminUserCreateBody,
@@ -711,7 +856,15 @@ async def admin_create_user(
     return admin_user_public(doc)
 
 
-@router.get("/users/{user_id}")
+@router.get(
+    "/users/{user_id}",
+    summary="Chi tiết người dùng",
+    description="Trả về thông tin quản trị của một người dùng theo `user_id`.",
+    responses={
+        400: {"description": "`user_id` không hợp lệ."},
+        404: {"description": "Không tìm thấy người dùng."},
+    },
+)
 async def admin_get_user(
     request: Request,
     user_id: str,
@@ -725,7 +878,15 @@ async def admin_get_user(
     return admin_user_public(doc)
 
 
-@router.patch("/users/{user_id}")
+@router.patch(
+    "/users/{user_id}",
+    summary="Cập nhật người dùng",
+    description="Cập nhật tên, vai trò và/hoặc mật khẩu. Không thể hạ cấp admin cuối cùng.",
+    responses={
+        400: {"description": "Dữ liệu không hợp lệ hoặc là admin cuối cùng."},
+        404: {"description": "Không tìm thấy người dùng."},
+    },
+)
 async def admin_update_user(
     request: Request,
     user_id: str,
@@ -757,7 +918,11 @@ async def admin_update_user(
     return updated
 
 
-@router.get("/wellness/stats")
+@router.get(
+    "/wellness/stats",
+    summary="Thống kê bài tập wellness",
+    description="Số bài tập trong DB/seed và số điểm vector của bộ sưu tập wellness.",
+)
 async def admin_wellness_stats(
     request: Request,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -784,7 +949,11 @@ async def admin_wellness_stats(
     }
 
 
-@router.get("/wellness/activities")
+@router.get(
+    "/wellness/activities",
+    summary="Danh sách bài tập (admin)",
+    description="Liệt kê bài tập wellness với bộ lọc trạng thái; fallback sang seed nếu DB trống.",
+)
 async def admin_list_wellness_activities(
     request: Request,
     active_only: bool = Query(False),
@@ -820,7 +989,12 @@ async def admin_list_wellness_activities(
     }
 
 
-@router.get("/wellness/activities/{activity_id}")
+@router.get(
+    "/wellness/activities/{activity_id}",
+    summary="Chi tiết bài tập (admin)",
+    description="Trả về chi tiết một bài tập từ MongoDB hoặc danh mục seed.",
+    responses={404: {"description": "Không tìm thấy bài tập."}},
+)
 async def admin_get_wellness_activity(
     request: Request,
     activity_id: str,
@@ -843,7 +1017,12 @@ async def admin_get_wellness_activity(
     raise HTTPException(404, "Activity not found")
 
 
-@router.patch("/wellness/activities/{activity_id}")
+@router.patch(
+    "/wellness/activities/{activity_id}",
+    summary="Cập nhật bài tập",
+    description="Cập nhật nội dung song ngữ, trạng thái, thời lượng, tag và lợi ích của bài tập.",
+    responses={404: {"description": "Không tìm thấy bài tập."}},
+)
 async def admin_patch_wellness_activity(
     request: Request,
     activity_id: str,
@@ -901,7 +1080,11 @@ async def admin_patch_wellness_activity(
     return {"activity": wellness_activity_admin_dict(updated)}
 
 
-@router.post("/wellness/seed")
+@router.post(
+    "/wellness/seed",
+    summary="Nạp danh mục bài tập mặc định",
+    description="Ghi (upsert) toàn bộ danh mục bài tập mặc định vào MongoDB.",
+)
 async def admin_seed_wellness_activities(
     request: Request,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -917,7 +1100,11 @@ async def admin_seed_wellness_activities(
     return {"seeded": seeded, "total": len(DEFAULT_WELLNESS_ACTIVITIES)}
 
 
-@router.delete("/wellness/vectors")
+@router.delete(
+    "/wellness/vectors",
+    summary="Xóa toàn bộ vector wellness",
+    description="Xóa sạch bộ sưu tập vector của các bài tập wellness.",
+)
 async def admin_clear_wellness_vectors(
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
@@ -926,7 +1113,11 @@ async def admin_clear_wellness_vectors(
     return await asyncio.to_thread(clear_wellness_vectors)
 
 
-@router.delete("/wellness/activities/{activity_id}/vectors")
+@router.delete(
+    "/wellness/activities/{activity_id}/vectors",
+    summary="Xóa vector của một bài tập",
+    description="Xóa các vector thuộc về một bài tập wellness cụ thể.",
+)
 async def admin_delete_wellness_activity_vectors(
     activity_id: str,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -936,7 +1127,11 @@ async def admin_delete_wellness_activity_vectors(
     return await asyncio.to_thread(delete_wellness_activity_vectors, activity_id)
 
 
-@router.post("/wellness/reindex")
+@router.post(
+    "/wellness/reindex",
+    summary="Xây lại chỉ mục wellness",
+    description="Xây lại toàn bộ chỉ mục vector cho các bài tập đang bật và đã triển khai.",
+)
 async def admin_reindex_wellness_vectors(
     request: Request,
     _admin: dict[str, Any] = Depends(require_admin),
@@ -958,7 +1153,15 @@ async def admin_reindex_wellness_vectors(
     return await asyncio.to_thread(rebuild_wellness_index, rows)
 
 
-@router.delete("/users/{user_id}")
+@router.delete(
+    "/users/{user_id}",
+    summary="Xóa người dùng",
+    description="Xóa một tài khoản. Không thể tự xóa chính mình hoặc admin cuối cùng.",
+    responses={
+        400: {"description": "Tự xóa hoặc là admin cuối cùng."},
+        404: {"description": "Không tìm thấy người dùng."},
+    },
+)
 async def admin_delete_user(
     request: Request,
     user_id: str,
