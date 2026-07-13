@@ -114,7 +114,15 @@ class RAGConfig:
         self.top_k = 5
         self.vector_search_type = "similarity"
         self.huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
-        self.reranker_model = "cross-encoder/ms-marco-TinyBERT-L-6"
+        # Lightweight multilingual cross-encoder (~470MB): handles Vietnamese
+        # queries against the (largely English) corpus, unlike the English-only
+        # ms-marco model, while staying small enough for the deploy pod.
+        # Override via RERANKER_MODEL (e.g. BAAI/bge-reranker-v2-m3 for marginally
+        # better ranking at ~2.3GB, or cross-encoder/ms-marco-TinyBERT-L-6 for
+        # English-only).
+        self.reranker_model = os.getenv(
+            "RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+        )
         self.reranker_top_k = 5
         self.max_context_length = 8192
         self.include_sources = True
@@ -186,6 +194,21 @@ class WellnessConfig:
         )
 
 
+class EpisodicMemoryConfig:
+    """Vector store for per-session long-term memory (one point per session)."""
+
+    def __init__(self) -> None:
+        self.collection_name = os.getenv(
+            "EPISODIC_QDRANT_COLLECTION", "user_session_memory"
+        )
+        self.vector_local_path = os.getenv(
+            "EPISODIC_QDRANT_PATH",
+            str(DATA_MEDICAL / "qdrant_db"),
+        )
+        self.url = os.getenv("QDRANT_URL")
+        self.api_key = os.getenv("QDRANT_API_KEY")
+
+
 class MedicalConfig:
     def __init__(self) -> None:
         self.agent_decision = AgentDecisoinConfig()
@@ -195,6 +218,7 @@ class MedicalConfig:
         self.web_corpus = WebCorpusConfig()
         self.web_search = WebSearchConfig()
         self.wellness = WellnessConfig()
+        self.episodic = EpisodicMemoryConfig()
         self.api = APIConfig()
         self.speech = SpeechConfig()
         self.ui = UIConfig()

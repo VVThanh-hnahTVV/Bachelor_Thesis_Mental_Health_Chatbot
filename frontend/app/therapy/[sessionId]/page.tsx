@@ -49,7 +49,10 @@ import {
   isChatSystemNotice,
   isSupportOnlyMessage,
 } from "@/components/chat/system-notice";
-import { HeliosTypingIndicator } from "@/components/therapy/helios-typing-indicator";
+import {
+  HeliosTypingIndicator,
+  type HeliosTypingStep,
+} from "@/components/therapy/helios-typing-indicator";
 import { HandoffButton } from "@/components/therapy/handoff-button";
 import {
   HandoffConsentCard,
@@ -118,7 +121,7 @@ export default function TherapyPage() {
   const skipSessionInitRef = useRef(false);
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [typingStatus, setTypingStatus] = useState<string | null>(null);
+  const [typingSteps, setTypingSteps] = useState<HeliosTypingStep[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -216,6 +219,22 @@ export default function TherapyPage() {
       return (msg.metadata?.sender_name as string | undefined) || "System";
     }
     return (msg.metadata?.sender_name as string | undefined) || "Helios";
+  };
+
+  const agentBadgeLabel = (value: unknown) => {
+    const label = String(value ?? "")
+      .replace(/_?AGENT/gi, "")
+      .replace(/_/g, " ")
+      .trim();
+    if (!label) return null;
+    return label
+      .split(/\s+/)
+      .map((word) =>
+        word === "RAG"
+          ? word
+          : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      )
+      .join(" ");
   };
 
   const isHumanChat = supportMode === "human";
@@ -370,16 +389,16 @@ export default function TherapyPage() {
     requestAnimationFrame(() => {
       const container = messagesScrollRef.current;
       if (container) {
-        container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+        container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
         return;
       }
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
     });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping, typingStatus]);
+  }, [messages, isTyping]);
 
   useEffect(() => {
     setMounted(true);
@@ -406,7 +425,13 @@ export default function TherapyPage() {
     }
 
     setIsTyping(true);
-    setTypingStatus("Đang phân tích yêu cầu");
+    setTypingSteps([
+      {
+        id: "analyzing_request",
+        label: "Đang phân tích yêu cầu",
+        status: "active",
+      },
+    ]);
     setMessages((prev) => [
       ...prev,
       { role: "user", content: currentMessage, timestamp: new Date() },
@@ -417,7 +442,10 @@ export default function TherapyPage() {
       const response = await sendChatMessageWithStatus(
         sessionId,
         currentMessage,
-        (label) => setTypingStatus(label)
+        (label, step, detail) => {
+          // Single-line indicator: the newest event replaces the previous one.
+          setTypingSteps([{ id: step, label, status: "active", detail }]);
+        }
       );
 
       setMessages((prev) => [
@@ -474,7 +502,7 @@ export default function TherapyPage() {
       }
     } finally {
       setIsTyping(false);
-      setTypingStatus(null);
+      setTypingSteps([]);
       scrollToBottom();
     }
   };
@@ -891,9 +919,9 @@ export default function TherapyPage() {
                   </div>
                 )}
 
-                <motion.div
+                <div
                   ref={messagesScrollRef}
-                  className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
+                  className="min-h-0 flex-1 overflow-y-auto"
                 >
                   <motion.div className="w-full">
                     <AnimatePresence initial={false}>
@@ -967,12 +995,12 @@ export default function TherapyPage() {
                                 </p>
                                 {msg.role === "assistant" &&
                                   !isHumanChat &&
-                                  msg.metadata?.agent_name && (
+                                  agentBadgeLabel(msg.metadata?.agent_name) && (
                                     <Badge
                                       variant="outline"
                                       className="rounded-full text-xs text-gray-600"
                                     >
-                                      {String(msg.metadata.agent_name)}
+                                      {agentBadgeLabel(msg.metadata?.agent_name)}
                                     </Badge>
                                   )}
                                 {msg.role === "assistant" &&
@@ -1147,11 +1175,11 @@ export default function TherapyPage() {
                     </AnimatePresence>
 
                     {isTyping && !isHumanChat && (
-                      <HeliosTypingIndicator statusMessage={typingStatus} />
+                      <HeliosTypingIndicator steps={typingSteps} />
                     )}
                     <div ref={messagesEndRef} />
                   </motion.div>
-                </motion.div>
+                </div>
               </>
             )}
 

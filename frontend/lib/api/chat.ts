@@ -166,7 +166,7 @@ function consumeSseBuffer(
 export const sendChatMessageStream = async (
   sessionId: string,
   message: string,
-  onStatus?: (label: string, step: string) => void
+  onStatus?: (label: string, step: string, detail?: string) => void
 ): Promise<ApiResponse> => {
   const token = getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -201,7 +201,11 @@ export const sendChatMessageStream = async (
 
   const handlePayload = (payload: StreamPayload) => {
     if (payload.type === "status" && payload.label) {
-      onStatus?.(payload.label, String(payload.step ?? ""));
+      onStatus?.(
+        payload.label,
+        String(payload.step ?? ""),
+        typeof payload.detail === "string" ? payload.detail : undefined
+      );
     } else if (payload.type === "done") {
       finalResponse = mapStreamDoneToApiResponse(payload);
     } else if (payload.type === "error") {
@@ -228,7 +232,7 @@ export const sendChatMessageStream = async (
 export const sendChatMessageWithStatus = async (
   sessionId: string,
   message: string,
-  onStatus?: (label: string, step: string) => void
+  onStatus?: (label: string, step: string, detail?: string) => void
 ): Promise<ApiResponse> => {
   try {
     return await sendChatMessageStream(sessionId, message, onStatus);

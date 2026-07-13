@@ -11,14 +11,15 @@ from app.conversation.summary_markdown import (
     generate_handoff_brief,
     generate_merged_conversation_summary,
 )
-from app.conversation.user_memory import (
-    load_user_long_term_memory,
-    schedule_user_long_term_memory_update,
+from app.conversation.episodic_memory import (
+    retrieve_relevant_session_memories,
+    schedule_finalize_session_memory,
 )
 from app.auth.repository import resolve_user_id_for_session
 from app.db.repository import (
     MESSAGE_VISIBILITY_ALL,
     MESSAGE_VISIBILITY_SUPPORT_ONLY,
+    count_user_messages,
     get_conversation_by_session,
     get_conversation_summary,
     get_latest_handoff_brief,
@@ -145,7 +146,18 @@ async def join_support_session(
     user_long_term_memory = ""
     user_id = await resolve_user_id_for_session(db, session_id)
     if user_id is not None:
-        user_long_term_memory = await load_user_long_term_memory(db, redis, user_id)
+        # Past sessions relevant to this one, for the counselor brief.
+        user_long_term_memory = await retrieve_relevant_session_memories(
+            db,
+            user_id=user_id,
+            query_text=(ai_summary or "").strip()
+            or " ".join(
+                str(m.get("content") or "")
+                for m in transcript[-6:]
+                if str(m.get("role") or "") == "user"
+            ),
+            exclude_session_id=session_id,
+        )
 
     brief = ""
     try:
@@ -265,22 +277,18 @@ async def leave_support_session(
             human_messages=human_messages,
             provider=default_provider(),
         )
-        await update_conversation_summary(db, cid, summary)
+        # Merged summary covers every turn so far — move the watermark with it.
+        covered = await count_user_messages(db, cid)
+        await update_conversation_summary(db, cid, summary, covered_turns=covered)
         if redis is not None:
             from app.cache.session_memory import set_conversation_summary_cache
 
             await set_conversation_summary_cache(redis, session_id, summary)
 
-        user_id = await resolve_user_id_for_session(db, session_id)
-        if user_id is not None and summary.strip():
-            schedule_user_long_term_memory_update(
-                db,
-                redis,
-                user_id=user_id,
-                session_summary=summary,
-                source="handoff_leave",
-                provider=default_provider(),
-            )
+        # Counselor left: fold this session into the user's episodic memory.
+        schedule_finalize_session_memory(
+            db, redis, session_id=session_id, reason="handoff_leave"
+        )
 
     now = datetime.now(UTC)
     notice = support_left_notice("vi")

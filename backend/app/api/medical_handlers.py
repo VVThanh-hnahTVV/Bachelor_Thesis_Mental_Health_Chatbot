@@ -37,7 +37,7 @@ async def handle_medical_chat_turn(
     message: str,
     conversation_summary: str = "",
     user_long_term_memory: str = "",
-    prior_user_questions: list[str] | None = None,
+    prior_turns: list[dict[str, str]] | None = None,
 ) -> tuple[str, dict[str, Any], str | None]:
     settings = get_settings()
     if not settings.enable_medical_mode:
@@ -50,7 +50,7 @@ async def handle_medical_chat_turn(
             message,
             conversation_summary=conversation_summary,
             user_long_term_memory=user_long_term_memory,
-            prior_user_questions=prior_user_questions,
+            prior_turns=prior_turns,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, detail=f"Medical assistant error: {exc}") from exc

@@ -217,7 +217,7 @@ Available agents:
 1. CONVERSATION_AGENT - For general chat, greetings, and non-medical questions.
 2. RAG_AGENT - For specific medical knowledge questions that can be answered from established medical literature in the ingested knowledge base below.
 {rag_catalog}
-3. WEB_SEARCH_PROCESSOR_AGENT - For questions about recent medical developments, current outbreaks, or time-sensitive medical information not covered by the ingested sources.
+3. WEB_SEARCH_PROCESSOR_AGENT - For questions about recent medical developments, current outbreaks, or time-sensitive medical information not covered by the ingested sources, which mental information don't contain in rag.
 
 ### Conversation context for this routing decision
 {conversation_context}
@@ -227,13 +227,14 @@ Make your decision based on these guidelines:
 - If the user asks about recent medical developments or current health situations, use the web search processor agent.
 - If the user asks specific medical knowledge questions that match an ingested source topic above, use the RAG agent.
 - If the user shares symptoms or asks about conditions (e.g. anxiety, insomnia, stress, pain), use RAG_AGENT when the topic matches ingested sources, otherwise CONVERSATION_AGENT for empathetic guidance.
-- Do NOT route to a separate wellness agent. Each agent decides whether to suggest in-app wellness activities in its own output.
+- New-session follow-ups: when SESSION SUMMARY and RECENT TURNS are empty but RELEVANT PAST SESSIONS shows what the user discussed most recently, treat a short/vague message (e.g. "sinh viên thì sao", "còn cách điều trị?") as CONTINUING the most recent past session's topic. Route to RAG_AGENT when that inherited topic matches ingested sources, and write sub_queries combining the inherited topic with the new aspect/group (e.g. past topic "đau đầu và sức khỏe tâm thần" + current "sinh viên thì sao" -> ["đau đầu do căng thẳng ở sinh viên", "stress headaches in students"]).
+- Do NOT route to a separate wellness agent. Wellness activities are attached automatically after RAG or web search or conversation replies when the responding pipeline opts in (suggest_activities).
 
 When you select RAG_AGENT, also provide sub_queries for retrieval:
 - Return 1-4 sub-queries per distinct information need (definition, symptoms, treatment, mechanisms, etc.).
 - For simple single-intent questions, sub_queries may contain one item.
 - **Each sub_query must be self-contained for vector search** — include the medical topic/condition explicitly (not pronouns like "it", "đó", "bệnh này" alone).
-- **Follow-up messages:** Read RECENT USER QUESTIONS and LAST ASSISTANT REPLY in the conversation context above.
+- **Follow-up messages:** Read RECENT TURNS (question/answer pairs) in the conversation context above.
   - If the current message is short or omits the topic (e.g. "cách điều trị", "triệu chứng", "treatment", "how to treat"), inherit the active topic from the most recent prior turn.
   - Every sub_query must name that topic (correct typos when helpful, e.g. pstd -> PTSD).
   - Do NOT retrieve a different condition (e.g. do not answer PTSD follow-up with generic anxiety-disorder queries).
@@ -243,6 +244,10 @@ When you select RAG_AGENT, also provide sub_queries for retrieval:
 Examples (assume conversation context shows recent question "pstd là gì" / assistant explained PTSD):
 - Current: "cách điều trị" -> sub_queries: ["PTSD treatment methods", "điều trị PTSD", "post-traumatic stress disorder therapy"]
 - Current: "triệu chứng" -> sub_queries: ["PTSD symptoms", "triệu chứng PTSD"]
+
+Demographic / group follow-ups inherit the topic too (assume prior turn discussed headaches & mental health):
+- Current: "Ở giáo viên thì sao" -> RAG_AGENT with sub_queries: ["đau đầu căng thẳng ở giáo viên", "stress headaches in teachers", "occupational stress and headaches"]
+- Current: "sinh viên thì sao" -> RAG_AGENT with sub_queries: ["đau đầu do căng thẳng ở sinh viên", "stress headaches in students"]
 
 Other examples:
 - "Dạo này tôi hay lo âu mất ngủ" -> RAG_AGENT or CONVERSATION_AGENT

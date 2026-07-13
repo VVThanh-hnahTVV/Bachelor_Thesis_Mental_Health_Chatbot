@@ -9,6 +9,7 @@ MESSAGES = "messages"
 ACTIVITY_COMPLETIONS = "activity_completions"
 WELLNESS_ACTIVITIES = "wellness_activities"
 ACTIVITY_RATINGS = "activity_ratings"
+USER_SESSION_MEMORIES = "user_session_memories"
 
 
 SUPPORT_MODES = ("ai", "awaiting_support", "human", "closed")
@@ -29,6 +30,8 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[ACTIVITY_RATINGS].create_index(
         [("completion_id", 1), ("session_id", 1)], unique=True
     )
+    await db[USER_SESSION_MEMORIES].create_index([("session_id", 1)], unique=True)
+    await db[USER_SESSION_MEMORIES].create_index([("user_id", 1), ("session_started_at", -1)])
 
 
 async def create_conversation(
@@ -146,13 +149,54 @@ async def update_conversation_summary(
     db: AsyncIOMotorDatabase,
     conversation_id: ObjectId,
     summary: str,
+    *,
+    covered_turns: int | None = None,
 ) -> None:
     now = datetime.now(UTC)
+    fields: dict[str, Any] = {
+        "summary": summary,
+        "summary_updated_at": now,
+        "updated_at": now,
+    }
+    if covered_turns is not None:
+        fields["summary_covered_turns"] = covered_turns
     await db[CONVERSATIONS].update_one(
         {"_id": conversation_id},
         {
+            "$set": fields,
+            "$unset": {
+                "human_session_summary": "",
+                "human_session_summary_updated_at": "",
+            },
+        },
+    )
+
+
+async def update_conversation_summary_guarded(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+    summary: str,
+    *,
+    expected_covered_turns: int,
+    covered_turns: int,
+) -> bool:
+    """Optimistic write: only persist if the watermark is still what we read.
+
+    Two concurrent consolidations cannot both match the filter, so the loser
+    is dropped silently and the next turn re-triggers. Safe across replicas.
+    """
+    now = datetime.now(UTC)
+    watermark_guard: list[dict[str, Any]] = [
+        {"summary_covered_turns": expected_covered_turns}
+    ]
+    if expected_covered_turns == 0:
+        watermark_guard.append({"summary_covered_turns": {"$exists": False}})
+    res = await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id, "$or": watermark_guard},
+        {
             "$set": {
                 "summary": summary,
+                "summary_covered_turns": covered_turns,
                 "summary_updated_at": now,
                 "updated_at": now,
             },
@@ -162,6 +206,38 @@ async def update_conversation_summary(
             },
         },
     )
+    return res.modified_count > 0
+
+
+async def list_messages_for_last_user_turns(
+    db: AsyncIOMotorDatabase,
+    *,
+    conversation_id: ObjectId,
+    user_turns: int,
+) -> list[dict[str, Any]]:
+    """User-visible user/assistant messages of the last `user_turns` turns, chronological."""
+    if user_turns <= 0:
+        return []
+    query: dict[str, Any] = {
+        "conversation_id": conversation_id,
+        "role": {"$in": ["user", "assistant"]},
+        "$or": [
+            {"metadata.visibility": {"$exists": False}},
+            {"metadata.visibility": MESSAGE_VISIBILITY_ALL},
+            {"metadata": {"$exists": False}},
+        ],
+    }
+    cursor = db[MESSAGES].find(query).sort("created_at", -1)
+    picked: list[dict[str, Any]] = []
+    seen_user = 0
+    async for doc in cursor:
+        picked.append(doc)
+        if str(doc.get("role") or "") == "user":
+            seen_user += 1
+            if seen_user >= user_turns:
+                break
+    picked.reverse()
+    return picked
 
 
 def _admin_summary(doc: dict[str, Any]) -> str | None:
@@ -191,6 +267,7 @@ async def delete_conversation_by_session(
         )
     else:
         await db[ACTIVITY_COMPLETIONS].delete_many({"session_id": session_id})
+    await db[USER_SESSION_MEMORIES].delete_one({"session_id": session_id})
     await db[CONVERSATIONS].delete_one({"session_id": session_id})
     return True
 
@@ -486,6 +563,81 @@ async def count_user_messages(
 ) -> int:
     return await db[MESSAGES].count_documents(
         {"conversation_id": conversation_id, "role": "user"}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Episodic long-term memory (one record per finished session)
+# ---------------------------------------------------------------------------
+
+
+async def upsert_session_memory(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+    user_id: ObjectId,
+    conversation_id: ObjectId,
+    title: str,
+    summary_md: str,
+    session_started_at: datetime,
+    source: str = "session_end",
+) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    doc: dict[str, Any] = {
+        "session_id": session_id,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "title": title,
+        "summary_md": summary_md,
+        "session_started_at": session_started_at,
+        "source": source,
+        "updated_at": now,
+    }
+    await db[USER_SESSION_MEMORIES].update_one(
+        {"session_id": session_id},
+        {"$set": doc, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return doc
+
+
+async def get_session_memories_by_session_ids(
+    db: AsyncIOMotorDatabase,
+    *,
+    user_id: ObjectId,
+    session_ids: list[str],
+) -> list[dict[str, Any]]:
+    if not session_ids:
+        return []
+    cursor = db[USER_SESSION_MEMORIES].find(
+        {"user_id": user_id, "session_id": {"$in": session_ids}}
+    )
+    return [doc async for doc in cursor]
+
+
+async def delete_session_memory_record(
+    db: AsyncIOMotorDatabase,
+    *,
+    session_id: str,
+) -> bool:
+    res = await db[USER_SESSION_MEMORIES].delete_one({"session_id": session_id})
+    return res.deleted_count > 0
+
+
+async def mark_conversation_memory_extracted(
+    db: AsyncIOMotorDatabase,
+    conversation_id: ObjectId,
+    *,
+    extracted_turns: int,
+) -> None:
+    await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id},
+        {
+            "$set": {
+                "memory_extracted_turns": extracted_turns,
+                "memory_extracted_at": datetime.now(UTC),
+            }
+        },
     )
 
 

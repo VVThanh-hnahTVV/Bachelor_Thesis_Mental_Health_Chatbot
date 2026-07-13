@@ -31,11 +31,11 @@ Evaluate if the CURRENT user input is safe and within Helios scope, using the co
 CONVERSATION SUMMARY (session, short-term):
 {conversation_summary}
 
-RECENT USER QUESTIONS (session, short-term; up to 5 prior turns, excluding current input;
-numbering: 1 = most recent prior user message, larger numbers = older):
-{recent_user_questions}
+RECENT TURNS (session, short-term; up to 5 prior question/answer pairs, excluding current
+input; numbering: 1 = most recent, larger numbers = older; Helios replies are truncated excerpts):
+{recent_turns}
 
-USER LONG-TERM MEMORY (cross-session, logged-in only):
+RELEVANT PAST SESSIONS (cross-session episodic memory, retrieved by relevance; logged-in only):
 {user_long_term_memory}
 
 CURRENT USER INPUT:
@@ -48,6 +48,8 @@ Helios scope (IN scope — keep SAFE, off_topic=false):
   therapy (CBT, counseling, psychotherapy), psychiatric medications in a mental-health context,
   crisis support, self-harm/suicide help-seeking, requests for a human counselor (needs_human when appropriate)
 - Wellness, mindfulness, relaxation, burnout, emotional coping
+- Psychosomatic / stress-linked physical symptoms (headaches, insomnia, fatigue, muscle tension,
+  appetite changes), including in specific groups (teachers, students, workers) — SAFE, in scope
 - Follow-ups in an ongoing mental-health conversation (including sources, trust, clarifications)
 - Ambiguous typos or very short unclear messages (benefit of the doubt — SAFE)
 
@@ -172,7 +174,7 @@ Final message:"""
         user_input: str,
         *,
         conversation_summary: str = "",
-        recent_user_questions: str = "",
+        recent_turns: str = "",
         user_long_term_memory: str = "",
     ) -> GuardrailInputResult:
         """
@@ -185,14 +187,14 @@ Final message:"""
             return GuardrailInputResult(True, user_input, DEFAULT_USER_LANGUAGE, needs_human=False)
 
         summary = (conversation_summary or "").strip()
-        recent = (recent_user_questions or "").strip()
+        recent = (recent_turns or "").strip()
         ltm = (user_long_term_memory or "").strip()
         user_language = detect_user_language_fallback(user_input)
 
         if looks_like_off_topic_heuristic(
             user_input,
             conversation_summary=summary,
-            recent_user_questions=recent,
+            recent_turns=recent,
             user_long_term_memory=ltm,
         ):
             from app.handoff.messages import off_topic_scope_notice
@@ -210,7 +212,7 @@ Final message:"""
             {
                 "input": user_input,
                 "conversation_summary": summary or "(none yet)",
-                "recent_user_questions": recent or "(none)",
+                "recent_turns": recent or "(none)",
                 "user_long_term_memory": ltm or "(none yet)",
                 "format_instructions": _input_parser.get_format_instructions(),
             }

@@ -12,7 +12,8 @@ from app.llm.factory import default_provider, get_chat_model, invoke_with_fallba
 AI_ROLLING_SYSTEM = """\
 You maintain a concise rolling summary of a chat session between a user and Helios (AI medical assistant).
 
-Given the previous summary and the latest turn, produce an UPDATED summary in Markdown with these sections:
+Given the previous summary and a transcript of the turns since it was written
+(one or more user/assistant exchanges), produce an UPDATED summary in Markdown with these sections:
 
 ## Chủ đề chính
 (1-3 sentences)
@@ -185,6 +186,28 @@ async def generate_ai_rolling_summary(
         human=human,
         provider=provider,
         label="conversation_summary.markdown",
+    )
+
+
+async def generate_ai_rolling_summary_batch(
+    *,
+    previous_summary: str,
+    transcript_messages: list[dict[str, Any]],
+    provider: ProviderName | None = None,
+) -> str:
+    """Fold several un-summarized turns into the rolling summary in one call."""
+    prev = (previous_summary or "").strip() or "(none yet)"
+    transcript = _format_transcript(transcript_messages)
+    human = (
+        f"Previous summary:\n{prev}\n\n"
+        f"Turns since the previous summary:\n{transcript}\n\n"
+        "Updated Markdown summary:"
+    )
+    return await _invoke_summary(
+        system=AI_ROLLING_SYSTEM,
+        human=human,
+        provider=provider,
+        label="conversation_summary.markdown_batch",
     )
 
 

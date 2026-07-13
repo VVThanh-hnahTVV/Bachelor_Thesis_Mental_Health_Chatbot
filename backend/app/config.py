@@ -89,7 +89,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("MAILDEV_INCOMING_PASS"),
     )
 
-    debug_llm_prompts: bool = True
+    debug_llm_prompts: bool = True 
 
     enable_input_guardrails: bool = Field(
         default=True,
@@ -118,6 +118,61 @@ class Settings(BaseSettings):
     conversation_summary_max_tokens: int = Field(
         default=512,
         validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),
+    )
+    # Consolidate the rolling summary only after this many un-summarized user turns.
+    # The last 5 raw turns are always injected into agent context regardless.
+    summary_consolidate_after_turns: int = Field(
+        default=5,
+        ge=1,
+        validation_alias=AliasChoices("SUMMARY_CONSOLIDATE_AFTER_TURNS"),
+    )
+    # Hybrid trigger: also consolidate before the turn threshold when the
+    # pending (un-summarized) transcript exceeds this estimated token budget
+    # (~4 chars/token) — protects the summarizer from very long user messages.
+    summary_consolidate_after_tokens: int = Field(
+        default=1500,
+        ge=100,
+        validation_alias=AliasChoices("SUMMARY_CONSOLIDATE_AFTER_TOKENS"),
+    )
+
+    # Episodic long-term memory: one record per finished session, retrieved by
+    # relevance to the current query instead of one ever-growing merged profile.
+    enable_episodic_memory: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_EPISODIC_MEMORY"),
+    )
+    episodic_memory_top_k: int = Field(
+        default=3,
+        ge=1,
+        validation_alias=AliasChoices("EPISODIC_MEMORY_TOP_K"),
+    )
+    episodic_memory_min_score: float = Field(
+        default=0.35,
+        validation_alias=AliasChoices("EPISODIC_MEMORY_MIN_SCORE"),
+    )
+    episodic_memory_recency_half_life_days: float = Field(
+        default=30.0,
+        gt=0,
+        validation_alias=AliasChoices("EPISODIC_MEMORY_RECENCY_HALF_LIFE_DAYS"),
+    )
+    episodic_memory_recency_weight: float = Field(
+        default=0.10,
+        ge=0,
+        validation_alias=AliasChoices("EPISODIC_MEMORY_RECENCY_WEIGHT"),
+    )
+    # First turn of a new session waits this long for previous sessions to be
+    # folded into episodic memory, so retrieval can already see them.
+    episodic_finalize_inline_timeout_seconds: float = Field(
+        default=8.0,
+        gt=0,
+        validation_alias=AliasChoices("EPISODIC_FINALIZE_INLINE_TIMEOUT_SECONDS"),
+    )
+    # Sessions shorter than this many user turns are not worth remembering
+    # (single vague questions pollute retrieval with near-duplicate text).
+    episodic_memory_min_turns: int = Field(
+        default=2,
+        ge=1,
+        validation_alias=AliasChoices("EPISODIC_MEMORY_MIN_TURNS"),
     )
     handoff_confidence_threshold: float = Field(
         default=0.85,

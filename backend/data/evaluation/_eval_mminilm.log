@@ -1,0 +1,122 @@
+Loading RAG components and evaluating 86 questions...
+Overriding reranker model -> cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/.venv/lib/python3.12/site-packages/torch/cuda/__init__.py:187: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12060). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return torch._C._cuda_getDeviceCount() > 0
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 5096.98it/s]
+[1/86] q0001 (vi) baseline=6 +subquery=8 +rerank=1 both=1
+[2/86] q0002 (en) baseline=9 +subquery=16 +rerank=2 both=2
+[3/86] q0003 (vi) baseline=- +subquery=- +rerank=- both=2
+[4/86] q0004 (en) baseline=7 +subquery=17 +rerank=2 both=2
+[5/86] q0005 (vi) baseline=- +subquery=7 +rerank=- both=-
+[6/86] q0006 (en) baseline=- +subquery=- +rerank=- both=-
+[7/86] q0007 (vi) baseline=- +subquery=14 +rerank=- both=1
+[8/86] q0008 (en) baseline=8 +subquery=16 +rerank=1 both=2
+[9/86] q0009 (vi) baseline=7 +subquery=1 +rerank=2 both=4
+[10/86] q0010 (en) baseline=6 +subquery=1 +rerank=1 both=3
+[11/86] q0011 (vi) baseline=- +subquery=13 +rerank=- both=1
+[12/86] q0012 (en) baseline=7 +subquery=- +rerank=1 both=1
+[13/86] q0013 (vi) baseline=9 +subquery=12 +rerank=1 both=1
+[14/86] q0014 (en) baseline=7 +subquery=12 +rerank=1 both=1
+[15/86] q0015 (vi) baseline=2 +subquery=6 +rerank=1 both=1
+[16/86] q0016 (en) baseline=9 +subquery=- +rerank=1 both=1
+[17/86] q0017 (vi) baseline=- +subquery=10 +rerank=- both=1
+[18/86] q0018 (en) baseline=7 +subquery=2 +rerank=1 both=3
+[19/86] q0019 (vi) baseline=8 +subquery=14 +rerank=1 both=1
+[20/86] q0020 (en) baseline=7 +subquery=12 +rerank=1 both=2
+[21/86] q0021 (vi) baseline=- +subquery=14 +rerank=- both=1
+[22/86] q0022 (en) baseline=9 +subquery=1 +rerank=2 both=2
+[23/86] q0023 (vi) baseline=2 +subquery=8 +rerank=2 both=2
+[24/86] q0024 (en) baseline=9 +subquery=7 +rerank=3 both=3
+[25/86] q0025 (vi) baseline=- +subquery=1 +rerank=- both=2
+[26/86] q0026 (en) baseline=7 +subquery=2 +rerank=1 both=1
+[27/86] q0027 (vi) baseline=- +subquery=15 +rerank=- both=1
+[28/86] q0028 (en) baseline=7 +subquery=17 +rerank=1 both=1
+[29/86] q0029 (vi) baseline=- +subquery=18 +rerank=- both=1
+[30/86] q0030 (en) baseline=8 +subquery=4 +rerank=1 both=1
+[31/86] q0031 (vi) baseline=4 +subquery=8 +rerank=1 both=1
+[32/86] q0032 (en) baseline=7 +subquery=- +rerank=1 both=1
+[33/86] q0033 (vi) baseline=3 +subquery=6 +rerank=1 both=1
+[34/86] q0034 (en) baseline=8 +subquery=7 +rerank=1 both=1
+[35/86] q0035 (vi) baseline=- +subquery=- +rerank=- both=-
+[36/86] q0036 (en) baseline=- +subquery=- +rerank=- both=-
+[37/86] q0037 (vi) baseline=3 +subquery=8 +rerank=1 both=1
+[38/86] q0038 (en) baseline=7 +subquery=11 +rerank=1 both=1
+[39/86] q0039 (vi) baseline=5 +subquery=9 +rerank=2 both=2
+[40/86] q0040 (en) baseline=5 +subquery=- +rerank=1 both=-
+[41/86] q0041 (vi) baseline=6 +subquery=12 +rerank=1 both=1
+[42/86] q0042 (en) baseline=9 +subquery=13 +rerank=3 both=3
+[43/86] q0043 (vi) baseline=4 +subquery=12 +rerank=3 both=3
+[44/86] q0044 (en) baseline=9 +subquery=11 +rerank=1 both=5
+[45/86] q0045 (vi) baseline=10 +subquery=15 +rerank=1 both=1
+[46/86] q0046 (en) baseline=8 +subquery=16 +rerank=1 both=1
+[47/86] q0047 (vi) baseline=5 +subquery=15 +rerank=1 both=1
+[48/86] q0048 (en) baseline=9 +subquery=12 +rerank=1 both=1
+[49/86] q0049 (vi) baseline=- +subquery=- +rerank=- both=-
+[50/86] q0050 (en) baseline=8 +subquery=14 +rerank=1 both=1
+[51/86] q0051 (vi) baseline=- +subquery=18 +rerank=- both=1
+[52/86] q0052 (en) baseline=8 +subquery=18 +rerank=1 both=1
+[53/86] q0053 (vi) baseline=10 +subquery=17 +rerank=1 both=1
+[54/86] q0054 (en) baseline=7 +subquery=14 +rerank=1 both=1
+[55/86] q0055 (vi) baseline=4 +subquery=- +rerank=3 both=-
+[56/86] q0056 (en) baseline=- +subquery=- +rerank=- both=-
+[57/86] q0057 (vi) baseline=1 +subquery=2 +rerank=3 both=3
+[58/86] q0058 (en) baseline=4 +subquery=6 +rerank=2 both=3
+[59/86] q0059 (vi) baseline=9 +subquery=10 +rerank=1 both=1
+[60/86] q0060 (en) baseline=7 +subquery=15 +rerank=1 both=7
+[61/86] q0061 (vi) baseline=7 +subquery=10 +rerank=2 both=2
+[62/86] q0062 (en) baseline=8 +subquery=11 +rerank=2 both=2
+[63/86] q0063 (vi) baseline=- +subquery=14 +rerank=- both=2
+[64/86] q0064 (en) baseline=8 +subquery=15 +rerank=2 both=2
+[65/86] q0065 (vi) baseline=8 +subquery=13 +rerank=1 both=1
+[66/86] q0066 (en) baseline=7 +subquery=- +rerank=1 both=-
+[67/86] q0067 (vi) baseline=- +subquery=13 +rerank=- both=1
+[68/86] q0068 (en) baseline=6 +subquery=6 +rerank=1 both=1
+[69/86] q0069 (vi) baseline=2 +subquery=12 +rerank=1 both=1
+[70/86] q0070 (en) baseline=7 +subquery=16 +rerank=1 both=1
+[71/86] q0071 (vi) baseline=- +subquery=- +rerank=- both=-
+[72/86] q0072 (en) baseline=7 +subquery=15 +rerank=1 both=1
+[73/86] q0073 (vi) baseline=- +subquery=19 +rerank=- both=2
+[74/86] q0074 (en) baseline=6 +subquery=13 +rerank=2 both=2
+[75/86] q0075 (vi) baseline=- +subquery=- +rerank=- both=-
+[76/86] q0076 (en) baseline=- +subquery=- +rerank=- both=-
+[77/86] q0077 (vi) baseline=- +subquery=- +rerank=- both=-
+[78/86] q0078 (en) baseline=3 +subquery=- +rerank=2 both=-
+[79/86] q0079 (vi) baseline=- +subquery=14 +rerank=- both=1
+[80/86] q0080 (en) baseline=7 +subquery=3 +rerank=1 both=2
+[81/86] q0081 (vi) baseline=- +subquery=9 +rerank=- both=1
+[82/86] q0082 (en) baseline=6 +subquery=12 +rerank=1 both=1
+[83/86] q0083 (vi) baseline=- +subquery=- +rerank=- both=-
+[84/86] q0084 (en) baseline=4 +subquery=- +rerank=4 both=-
+[85/86] q0085 (vi) baseline=10 +subquery=13 +rerank=3 both=3
+[86/86] q0086 (en) baseline=7 +subquery=13 +rerank=2 both=2
+
+============================================
+RETRIEVAL ABLATION RESULTS
+============================================
+
+Overall (n=86)
+config          R@1     R@3     R@5     MRR
+-------------------------------------------
+baseline      0.012   0.081   0.174   0.133
++subquery     0.047   0.093   0.105   0.131
++rerank       0.477   0.698   0.709   0.578
+both          0.488   0.779   0.802   0.625
+
+Language: en (n=43)
+config          R@1     R@3     R@5     MRR
+-------------------------------------------
+baseline      0.000   0.023   0.093   0.134
++subquery     0.047   0.116   0.140   0.135
++rerank       0.628   0.884   0.907   0.754
+both          0.419   0.767   0.791   0.582
+
+Language: vi (n=43)
+config          R@1     R@3     R@5     MRR
+-------------------------------------------
+baseline      0.023   0.140   0.256   0.133
++subquery     0.047   0.070   0.070   0.126
++rerank       0.326   0.512   0.512   0.403
+both          0.558   0.791   0.814   0.669
+
+Wrote detailed results to data/evaluation/retrieval_results_mminilm.json

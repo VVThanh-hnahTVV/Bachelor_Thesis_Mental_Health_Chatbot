@@ -66,14 +66,14 @@ def _run_sync(
     thread_id: str,
     conversation_summary: str = "",
     user_long_term_memory: str = "",
-    prior_user_questions: list[str] | None = None,
+    prior_turns: list[dict[str, str]] | None = None,
 ) -> MedicalTurnResult:
     result = process_query(
         query,
         thread_id=thread_id,
         conversation_summary=conversation_summary,
         user_long_term_memory=user_long_term_memory,
-        prior_user_questions=prior_user_questions,
+        prior_turns=prior_turns,
     )
     return MedicalTurnResult(
         reply=_extract_reply(result),
@@ -93,7 +93,7 @@ class MedicalChatService:
         *,
         conversation_summary: str = "",
         user_long_term_memory: str = "",
-        prior_user_questions: list[str] | None = None,
+        prior_turns: list[dict[str, str]] | None = None,
     ) -> MedicalTurnResult:
         return await asyncio.to_thread(
             _run_sync,
@@ -101,7 +101,7 @@ class MedicalChatService:
             thread_id=session_id,
             conversation_summary=conversation_summary,
             user_long_term_memory=user_long_term_memory,
-            prior_user_questions=prior_user_questions,
+            prior_turns=prior_turns,
         )
 
 

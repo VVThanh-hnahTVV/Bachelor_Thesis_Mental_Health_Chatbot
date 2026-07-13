@@ -12,6 +12,7 @@ from app.medical.agents.structured_output import (
     parse_web_search_output,
     web_search_format_instructions,
 )
+from app.chat_progress import emit_progress
 from app.medical.prompts import MARKDOWN_RESPONSE_INSTRUCTIONS
 from .tavily_search import sanitize_tavily_query
 from .web_search_agent import WebSearchAgent
@@ -119,10 +120,13 @@ class WebSearchProcessor:
                 "sources": [],
             }
 
+        emit_progress("web_search_query", detail=f'"{search_query}"')
         web_results, sources = self.web_search_agent.search(search_query)
 
         print(f"[WebSearchProcessor] Fetched results: {web_results}")
-        
+
+        emit_progress("web_search_synthesize")
+
         # Construct prompt to LLM for processing the results
         llm_prompt = (
             "You are an AI assistant specialized in medical information. Below are search results "

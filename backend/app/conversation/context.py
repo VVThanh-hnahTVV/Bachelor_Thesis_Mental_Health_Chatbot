@@ -1,4 +1,4 @@
-"""Helpers to load conversation summary and format recent user turns."""
+"""Helpers to load conversation summary and format recent conversation turns."""
 
 from __future__ import annotations
 
@@ -8,6 +8,15 @@ from typing import Any
 from bson import ObjectId
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+# The recent-turns block is injected into several LLM calls per turn (input
+# guardrail, routing, executing agent), so each part carries a hard budget:
+# questions stay near-verbatim, assistant replies become short excerpts with
+# a larger allowance for the most recent one.
+RECENT_TURNS_LIMIT = 5
+_QUESTION_MAX_CHARS = 400
+_LAST_ANSWER_MAX_CHARS = 500
+_OLDER_ANSWER_MAX_CHARS = 300
+
 
 def build_agent_memory_context(
     *,
@@ -15,122 +24,127 @@ def build_agent_memory_context(
     user_long_term_memory: str = "",
     messages: list[BaseMessage] | list[Any],
     current_input: str = "",
-    prior_user_questions: list[str] | None = None,
-    recent_questions_limit: int = 5,
+    prior_turns: list[dict[str, str]] | None = None,
+    recent_turns_limit: int = RECENT_TURNS_LIMIT,
 ) -> str:
     """Memory block for Helios agents — session summary, recent turns, and user LTM."""
     summary = (conversation_summary or "").strip() or "(none yet)"
     ltm = (user_long_term_memory or "").strip() or "(none yet)"
-    recent_questions = resolve_recent_user_questions(
-        messages,
-        prior_user_questions=prior_user_questions,
-        limit=recent_questions_limit,
-        exclude_current=current_input,
+    recent_turns = format_recent_turns(
+        resolve_recent_turns(
+            messages,
+            prior_turns=prior_turns,
+            limit=recent_turns_limit,
+            exclude_current=current_input,
+        )
     )
-    last_assistant = _last_assistant_excerpt(messages)
     return (
         f"CONVERSATION SUMMARY (session, short-term):\n"
         f"{summary}\n\n"
-        f"RECENT USER QUESTIONS (session, short-term — up to {recent_questions_limit} "
-        f"prior turns, excluding current input — 1 = most recent, higher = older):\n"
-        f"{recent_questions}\n\n"
-        f"LAST ASSISTANT REPLY (excerpt from previous turn):\n"
-        f"{last_assistant}\n\n"
-        f"USER LONG-TERM MEMORY (cross-session, logged-in only):\n"
+        f"RECENT TURNS (session, short-term — up to {recent_turns_limit} prior "
+        f"question/answer pairs, excluding current input — 1 = most recent, "
+        f"higher = older; Helios replies are truncated excerpts):\n"
+        f"{recent_turns}\n\n"
+        f"RELEVANT PAST SESSIONS (cross-session episodic memory, retrieved by "
+        f"relevance to the current question; logged-in users only):\n"
         f"{ltm}"
     )
 
 
-def format_recent_user_questions(
+def resolve_recent_turns(
     messages: list[BaseMessage] | list[Any],
     *,
-    limit: int = 5,
+    prior_turns: list[dict[str, str]] | None = None,
+    limit: int = RECENT_TURNS_LIMIT,
     exclude_current: str | None = None,
-) -> str:
-    """Return up to `limit` prior user questions, newest first (1 = most recent)."""
-    picked = _pick_recent_user_questions_from_messages(
-        messages,
+) -> list[dict[str, str]]:
+    """Q&A pairs, newest first — LangGraph messages topped up from Mongo turns.
+
+    Each pair is ``{"user": ..., "assistant": ...}``; assistant may be empty
+    (e.g. the turn was blocked before an answer was produced).
+    """
+    from_messages = _finalize_pairs(
+        _pairs_from_messages(messages),
         limit=limit,
         exclude_current=exclude_current,
     )
-    return _format_question_list(picked)
-
-
-def resolve_recent_user_questions(
-    messages: list[BaseMessage] | list[Any],
-    *,
-    prior_user_questions: list[str] | None = None,
-    limit: int = 5,
-    exclude_current: str | None = None,
-) -> str:
-    """Prefer LangGraph messages; fall back to Mongo-loaded prior questions."""
-    from_messages = _pick_recent_user_questions_from_messages(
-        messages,
-        limit=limit,
-        exclude_current=exclude_current,
-    )
-    if len(from_messages) >= limit or not prior_user_questions:
-        return _format_question_list(from_messages)
+    if len(from_messages) >= limit or not prior_turns:
+        return from_messages
 
     exclude = (exclude_current or "").strip()
-    merged: list[str] = []
-    seen: set[str] = set()
-    for text in from_messages:
-        if text not in seen:
-            merged.append(text)
-            seen.add(text)
-    for text in prior_user_questions:
+    merged = list(from_messages)
+    seen = {pair["user"] for pair in merged}
+    for item in prior_turns:
         if len(merged) >= limit:
             break
-        if not text or text == exclude or text in seen:
+        question = str((item or {}).get("user") or "").strip()
+        answer = str((item or {}).get("assistant") or "").strip()
+        if not question or question in seen:
             continue
-        merged.append(text)
-        seen.add(text)
-    return _format_question_list(merged)
+        if question == exclude and not answer:
+            continue
+        merged.append({"user": question, "assistant": answer})
+        seen.add(question)
+    return merged
 
 
-def _pick_recent_user_questions_from_messages(
+def format_recent_turns(turns: list[dict[str, str]]) -> str:
+    """Numbered block (1 = most recent) with per-part truncation budgets."""
+    if not turns:
+        return "(none)"
+    lines: list[str] = []
+    for i, turn in enumerate(turns, start=1):
+        question = _truncate_excerpt(
+            str(turn.get("user") or ""), max_chars=_QUESTION_MAX_CHARS
+        )
+        answer = str(turn.get("assistant") or "").strip()
+        budget = _LAST_ANSWER_MAX_CHARS if i == 1 else _OLDER_ANSWER_MAX_CHARS
+        answer_text = _truncate_excerpt(answer, max_chars=budget) if answer else "(no reply)"
+        lines.append(f"{i}. User: {question}\n   Helios: {answer_text}")
+    return "\n".join(lines)
+
+
+def _pairs_from_messages(
     messages: list[BaseMessage] | list[Any],
+) -> list[dict[str, str]]:
+    """Chronological Q&A pairs; each AI message answers the latest open question."""
+    pairs: list[dict[str, str]] = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            text = str(msg.content or "").strip()
+            pairs.append({"user": text, "assistant": ""})
+        elif isinstance(msg, AIMessage):
+            text = str(msg.content or "").strip()
+            if text and pairs and not pairs[-1]["assistant"]:
+                pairs[-1]["assistant"] = text
+    return pairs
+
+
+def _finalize_pairs(
+    pairs_chronological: list[dict[str, str]],
     *,
     limit: int,
     exclude_current: str | None,
-) -> list[str]:
+) -> list[dict[str, str]]:
+    """Newest first, dropping empty questions and the in-flight current turn."""
     exclude = (exclude_current or "").strip()
-    picked: list[str] = []
-    for msg in reversed(messages):
-        if not isinstance(msg, HumanMessage):
+    picked: list[dict[str, str]] = []
+    for pair in reversed(pairs_chronological):
+        if not pair["user"]:
             continue
-        text = str(msg.content or "").strip()
-        if not text or text == exclude:
+        if pair["user"] == exclude and not pair["assistant"]:
             continue
-        picked.append(text)
+        picked.append(pair)
         if len(picked) >= limit:
             break
     return picked
 
 
-def _format_question_list(picked: list[str]) -> str:
-    if not picked:
-        return "(none)"
-    return "\n".join(f"{i}. {line}" for i, line in enumerate(picked, start=1))
-
-
-def _last_assistant_excerpt(
-    messages: list[BaseMessage] | list[Any],
-    *,
-    max_chars: int = 500,
-) -> str:
-    for msg in reversed(messages):
-        if not isinstance(msg, AIMessage):
-            continue
-        text = str(msg.content or "").strip()
-        if not text:
-            continue
-        text = re.sub(r"\s+", " ", text)
-        if len(text) > max_chars:
-            return text[: max_chars - 3].rstrip() + "..."
-        return text
-    return "(none)"
+def _truncate_excerpt(text: str, *, max_chars: int = 500) -> str:
+    collapsed = re.sub(r"\s+", " ", text.strip())
+    if len(collapsed) > max_chars:
+        return collapsed[: max_chars - 3].rstrip() + "..."
+    return collapsed
 
 
 def build_routing_conversation_section(
@@ -138,34 +152,40 @@ def build_routing_conversation_section(
     conversation_summary: str = "",
     messages: list[BaseMessage] | list[Any],
     current_input: str = "",
-    prior_user_questions: list[str] | None = None,
-    recent_questions_limit: int = 5,
+    prior_turns: list[dict[str, str]] | None = None,
+    recent_turns_limit: int = RECENT_TURNS_LIMIT,
+    user_long_term_memory: str = "",
 ) -> str:
     """Conversation block embedded in the routing system prompt (per request)."""
     summary = (conversation_summary or "").strip() or "(none yet)"
-    recent_questions = resolve_recent_user_questions(
-        messages,
-        prior_user_questions=prior_user_questions,
-        limit=recent_questions_limit,
-        exclude_current=current_input,
+    ltm = (user_long_term_memory or "").strip() or "(none)"
+    recent_turns = format_recent_turns(
+        resolve_recent_turns(
+            messages,
+            prior_turns=prior_turns,
+            limit=recent_turns_limit,
+            exclude_current=current_input,
+        )
     )
-    last_assistant = _last_assistant_excerpt(messages)
     return (
         f"SESSION SUMMARY:\n{summary}\n\n"
-        f"RECENT USER QUESTIONS (newest first — 1 = immediately before the current message):\n"
-        f"{recent_questions}\n\n"
-        f"LAST ASSISTANT REPLY (excerpt):\n{last_assistant}"
+        f"RECENT TURNS (question/answer pairs, newest first — 1 = immediately "
+        f"before the current message; Helios replies are truncated excerpts):\n"
+        f"{recent_turns}\n\n"
+        f"RELEVANT PAST SESSIONS (episodic memory from the user's previous sessions, "
+        f"most relevant first — when the session context above is empty, short/vague "
+        f"messages usually continue the most recent past session's topic):\n{ltm}"
     )
 
 
-async def load_recent_user_questions_from_db(
+async def load_recent_turns_from_db(
     db: Any,
     conversation_id: ObjectId,
     *,
-    limit: int = 5,
+    limit: int = RECENT_TURNS_LIMIT,
     exclude_current: str | None = None,
-) -> list[str]:
-    """Load recent user messages from MongoDB (newest first, excluding current)."""
+) -> list[dict[str, str]]:
+    """Load recent Q&A pairs from MongoDB (newest first, excluding current)."""
     from app.db.repository import list_messages_for_user
 
     docs = await list_messages_for_user(
@@ -173,18 +193,15 @@ async def load_recent_user_questions_from_db(
         conversation_id=conversation_id,
         limit=max(limit * 4, 20),
     )
-    exclude = (exclude_current or "").strip()
-    picked: list[str] = []
-    for doc in reversed(docs):
-        if str(doc.get("role") or "") != "user":
-            continue
+    pairs: list[dict[str, str]] = []
+    for doc in docs:
+        role = str(doc.get("role") or "")
         text = str(doc.get("content") or "").strip()
-        if not text or text == exclude:
-            continue
-        picked.append(text)
-        if len(picked) >= limit:
-            break
-    return picked
+        if role == "user":
+            pairs.append({"user": text, "assistant": ""})
+        elif role == "assistant" and text and pairs and not pairs[-1]["assistant"]:
+            pairs[-1]["assistant"] = text
+    return _finalize_pairs(pairs, limit=limit, exclude_current=exclude_current)
 
 
 async def load_conversation_summary(

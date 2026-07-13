@@ -9,6 +9,7 @@ from bson import ObjectId
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from pprint import pprint
 
 from app.auth.dependencies import resolve_optional_current_user
 from app.auth.repository import link_session_to_user
@@ -55,6 +56,8 @@ def client_ip_from_request(request: Request) -> str | None:
     if real_ip and real_ip.strip():
         return real_ip.strip()
     client = request.client
+    print("client")
+    pprint(client.host)
     return client.host if client else None
 
 
@@ -295,8 +298,8 @@ async def chat_quota(request: Request) -> ChatQuotaResponse:
     db = get_db(request)
     redis = get_redis(request)
     maybe_user = await resolve_optional_current_user(request, db)
-
     if maybe_user and maybe_user.get("role") in ("admin", "support"):
+
         return ChatQuotaResponse(
             enabled=False,
             allowed=True,
@@ -340,12 +343,14 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
     from app.chat_progress import emit_progress
     from app.conversation.context import (
         load_conversation_summary,
-        load_recent_user_questions_from_db,
+        load_recent_turns_from_db,
     )
-    from app.conversation.user_memory import (
-        load_user_long_term_memory,
-        schedule_post_turn_memory_updates,
+    from app.conversation.episodic_memory import (
+        finalize_previous_sessions,
+        retrieve_relevant_session_memories,
+        schedule_finalize_previous_sessions,
     )
+    from app.conversation.user_memory import schedule_post_turn_memory_updates
     from app.conversation.title import generate_conversation_title
     from app.db.repository import count_user_messages, update_conversation_title
     from app.handoff.messages import CLOSED_SESSION_NOTICE, handoff_ack
@@ -466,16 +471,51 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
             await update_conversation_title(db, cid, title)
 
         asyncio.create_task(_set_title())
+        # New session started: fold the user's previous sessions into episodic
+        # memory NOW (bounded wait) so this very first turn can already
+        # retrieve them; on timeout, finish in the background instead.
+        if uid is not None:
+            try:
+                await asyncio.wait_for(
+                    finalize_previous_sessions(
+                        db, redis, user_id=uid, exclude_session_id=req.session_id
+                    ),
+                    timeout=settings.episodic_finalize_inline_timeout_seconds,
+                )
+            except TimeoutError:
+                schedule_finalize_previous_sessions(
+                    db, redis, user_id=uid, exclude_session_id=req.session_id
+                )
+            except Exception as exc:  # noqa: BLE001 — memory must never block the turn
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "inline previous-session finalize failed (non-critical): %s", exc
+                )
     medical_provider = default_provider()
     conversation_summary = await load_conversation_summary(db, redis, req.session_id)
-    user_long_term_memory = ""
-    if uid is not None:
-        user_long_term_memory = await load_user_long_term_memory(db, redis, uid)
-    prior_user_questions = await load_recent_user_questions_from_db(
-        db,
-        cid,
-        limit=5,
-        exclude_current=req.message,
+
+    async def _load_episodic_memory() -> str:
+        if uid is None:
+            return ""
+        return await retrieve_relevant_session_memories(
+            db,
+            user_id=uid,
+            query_text=f"{req.message}\n\n{conversation_summary[:500]}",
+            exclude_session_id=req.session_id,
+            # Early in a new session there is no summary yet; a terse first
+            # message may not clear the threshold — allow the recency fallback.
+            fallback_most_recent=not conversation_summary.strip(),
+        )
+
+    user_long_term_memory, prior_turns = await asyncio.gather(
+        _load_episodic_memory(),
+        load_recent_turns_from_db(
+            db,
+            cid,
+            limit=5,
+            exclude_current=req.message,
+        ),
     )
     reply, meta, assistant_message_id = await handle_medical_chat_turn(
         db,
@@ -484,7 +524,7 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
         message=req.message,
         conversation_summary=conversation_summary,
         user_long_term_memory=user_long_term_memory,
-        prior_user_questions=prior_user_questions,
+        prior_turns=prior_turns,
     )
     suggested = meta.get("suggested_activities") or []
 
@@ -494,9 +534,6 @@ async def _execute_chat(req: ChatRequest, request: Request) -> ChatResponse:
             redis,
             session_id=req.session_id,
             conversation_id=cid,
-            user_id=uid,
-            user_message=req.message,
-            assistant_reply=reply,
             provider=medical_provider,
         )
 
@@ -650,7 +687,7 @@ def _json_default(obj: Any) -> Any:
     description=(
         "Giống `/chat` nhưng trả về luồng **Server-Sent Events** (`text/event-stream`).\n\n"
         "Mỗi sự kiện là một dòng `data: <json>`:\n"
-        "- `{\"type\": \"status\", \"step\": \"...\", \"label\": \"...\"}` — bước xử lý hiện tại.\n"
+        "- `{\"type\": \"status\", \"step\": \"...\", \"label\": \"...\", \"detail\": \"...\"}` — bước xử lý hiện tại (detail tùy chọn).\n"
         "- `{\"type\": \"done\", ...}` — kết quả cuối cùng (tương đương `ChatResponse`).\n"
         "- `{\"type\": \"error\", \"message\": \"...\"}` — khi có lỗi.\n\n"
         "Lưu ý: Swagger UI không render tốt SSE; nên thử bằng `curl -N` hoặc `EventSource`."
@@ -672,6 +709,7 @@ def _json_default(obj: Any) -> Any:
 async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
     """SSE stream: status steps while processing, then final ChatResponse JSON."""
     from app.chat_progress import (
+        ProgressEvent,
         label_for_step,
         reset_progress_callback,
         set_progress_callback,
@@ -682,24 +720,27 @@ async def chat_stream(req: ChatRequest, request: Request) -> StreamingResponse:
 
     async def event_generator():
         loop = asyncio.get_running_loop()
-        progress_queue: asyncio.Queue[str] = asyncio.Queue()
-        last_step: list[str | None] = [None]
+        progress_queue: asyncio.Queue[ProgressEvent] = asyncio.Queue()
+        last_event: list[tuple[str, str | None] | None] = [None]
 
-        def _enqueue(step: str) -> None:
-            if step == last_step[0]:
+        def _enqueue(event: ProgressEvent) -> None:
+            key = (event.step, event.detail)
+            if key == last_event[0]:
                 return
-            last_step[0] = step
-            progress_queue.put_nowait(step)
+            last_event[0] = key
+            progress_queue.put_nowait(event)
 
-        def on_progress(step: str) -> None:
-            loop.call_soon_threadsafe(_enqueue, step)
+        def on_progress(event: ProgressEvent) -> None:
+            loop.call_soon_threadsafe(_enqueue, event)
 
-        def _status_sse(step: str) -> str:
-            payload = {
+        def _status_sse(event: ProgressEvent) -> str:
+            payload: dict[str, str] = {
                 "type": "status",
-                "step": step,
-                "label": label_for_step(step, lang),
+                "step": event.step,
+                "label": label_for_step(event.step, lang),
             }
+            if event.detail:
+                payload["detail"] = event.detail
             return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
         token = set_progress_callback(on_progress)
@@ -1034,6 +1075,7 @@ async def conversations(
 async def delete_conversation(session_id: str, request: Request) -> dict[str, str]:
     from app.auth.repository import delete_session_link, is_session_owned_by_user
     from app.cache.session_memory import purge_chat_session_cache
+    from app.conversation.episodic_memory import delete_session_memory
     from app.db.repository import delete_conversation_by_session, get_conversation_by_session
 
     db = get_db(request)
@@ -1057,6 +1099,7 @@ async def delete_conversation(session_id: str, request: Request) -> dict[str, st
         await delete_conversation_by_session(db, session_id)
         await delete_session_link(db, session_id=session_id)
         await purge_chat_session_cache(redis, session_id)
+        await delete_session_memory(db, session_id=session_id)
 
     return {"status": "deleted"}
 

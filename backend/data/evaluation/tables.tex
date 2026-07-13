@@ -1,0 +1,53 @@
+% Yêu cầu trong preamble: \usepackage{booktabs}, \usepackage{multirow},
+% và \usepackage{makecell} (cho bảng so sánh 3 reranker).
+% Số liệu đánh giá truy xuất trên bộ 86 câu hỏi (43 tiếng Việt, 43 tiếng Anh)
+% sinh tự động từ kho tri thức, dùng reranker đa ngôn ngữ nhẹ
+% cross-encoder/mmarco-mMiniLMv2-L12-H384-v1.
+% R@k = Recall@k, MRR = Mean Reciprocal Rank.
+
+\begin{table}[htbp]
+\centering
+\caption{Đóng góp của việc sinh sub-query khi kết hợp với tái xếp hạng
+(reranker \texttt{mmarco-mMiniLMv2-L12}). Cả hai cấu hình đều dùng tái xếp hạng;
+điểm khác biệt là truy vấn gốc so với các sub-query đa ngôn ngữ. Giá trị tốt hơn
+trong mỗi nhóm được in đậm.}
+\label{tab:subquery-rerank}
+\begin{tabular}{llcccc}
+\toprule
+Nhóm & Cấu hình & R@1 & R@3 & R@5 & MRR \\
+\midrule
+\multirow{2}{*}{Tổng thể}
+ & Tái xếp hạng (query gốc)  & 0.477 & 0.698 & 0.709 & 0.578 \\
+ & Tái xếp hạng + sub-query  & \textbf{0.488} & \textbf{0.779} & \textbf{0.802} & \textbf{0.625} \\
+\midrule
+\multirow{2}{*}{Tiếng Anh}
+ & Tái xếp hạng (query gốc)  & \textbf{0.628} & \textbf{0.884} & \textbf{0.907} & \textbf{0.754} \\
+ & Tái xếp hạng + sub-query  & 0.419 & 0.767 & 0.791 & 0.582 \\
+\midrule
+\multirow{2}{*}{Tiếng Việt}
+ & Tái xếp hạng (query gốc)  & 0.326 & 0.512 & 0.512 & 0.403 \\
+ & Tái xếp hạng + sub-query  & \textbf{0.558} & \textbf{0.791} & \textbf{0.814} & \textbf{0.669} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+% Bảng phụ (tùy chọn): so sánh ba reranker theo cấu hình đề xuất (rerank + sub-query),
+% Recall@5 / MRR. Cho thấy reranker đa ngôn ngữ vá lỗi tiếng Việt của model đơn ngữ.
+% ---------------------------------------------------------------------------
+\begin{table}[htbp]
+\centering
+\caption{So sánh ba mô hình tái xếp hạng ở cấu hình đề xuất (tái xếp hạng +
+sub-query), Recall@5 / MRR. Reranker đơn ngữ \texttt{ms-marco} thất bại hoàn toàn
+với truy vấn tiếng Việt đơn lẻ, trong khi hai reranker đa ngôn ngữ khắc phục được.}
+\label{tab:reranker-3way}
+\begin{tabular}{lccc}
+\toprule
+Nhóm & \makecell{ms-marco\\(60MB, đơn ngữ)} & \makecell{mMiniLM-L12\\(470MB, đa ngữ)} & \makecell{bge-m3\\(2.3GB, đa ngữ)} \\
+\midrule
+Tổng thể   & 0.488 / 0.341 & 0.802 / 0.625 & \textbf{0.826 / 0.707} \\
+Tiếng Anh  & 0.488 / 0.350 & 0.791 / 0.582 & \textbf{0.837 / 0.731} \\
+Tiếng Việt & 0.488 / 0.331 & 0.814 / \textbf{0.669} & \textbf{0.814} / 0.684 \\
+\bottomrule
+\end{tabular}
+\end{table}

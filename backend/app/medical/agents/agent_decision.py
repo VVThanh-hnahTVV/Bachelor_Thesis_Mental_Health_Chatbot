@@ -55,7 +55,7 @@ class AgentState(MessagesState):
     session_id: Optional[str]
     conversation_summary: Optional[str]
     user_long_term_memory: Optional[str]
-    prior_user_questions: Optional[List[str]]
+    prior_turns: Optional[List[Dict[str, str]]]  # Mongo fallback: recent Q&A pairs
     agent_name: Optional[str]  # Current active agent
     current_input: Optional[Union[str, Dict]]  # Input to be processed
     output: Optional[str]  # Final output to user
@@ -88,17 +88,55 @@ def _input_text_from_state(state: AgentState) -> str:
     return ""
 
 
+def _most_recent_prior_user_question(state: AgentState, *, exclude: str) -> str:
+    """Last user question before the current one (LangGraph messages, then Mongo)."""
+    ex = (exclude or "").strip()
+    for msg in reversed(state.get("messages") or []):
+        if isinstance(msg, HumanMessage):
+            text = str(msg.content or "").strip()
+            if text and text != ex:
+                return text
+    for item in state.get("prior_turns") or []:
+        text = str((item or {}).get("user") or "").strip()
+        if text and text != ex:
+            return text
+    return ""
+
+
+def build_fallback_rag_queries(
+    input_text: str,
+    prior_question: str,
+    *,
+    max_count: int = 4,
+) -> List[str]:
+    """Retrieval queries when the router wrote none (e.g. low-confidence fallback).
+
+    Short follow-ups like "Ở giáo viên thì sao?" carry no topic on their own;
+    anchoring them with the previous user question keeps retrieval on-topic.
+    """
+    current = (input_text or "").strip()
+    prior = (prior_question or "").strip()
+    if not current:
+        return []
+    if not prior:
+        return [current]
+    return [f"{prior} — {current}", current][:max_count]
+
+
+def _prior_turns_from_state(state: AgentState) -> List[Dict[str, str]] | None:
+    prior = state.get("prior_turns")
+    return prior if isinstance(prior, list) else None
+
+
 def _agent_memory_context(state: AgentState) -> str:
     from app.conversation.context import build_agent_memory_context
 
-    prior = state.get("prior_user_questions")
-    prior_list = prior if isinstance(prior, list) else None
     return build_agent_memory_context(
         conversation_summary=str(state.get("conversation_summary") or ""),
         user_long_term_memory=str(state.get("user_long_term_memory") or ""),
         messages=state.get("messages") or [],
         current_input=_input_text_from_state(state),
-        prior_user_questions=prior_list,
+        prior_turns=_prior_turns_from_state(state),
     )
 
 
@@ -130,7 +168,10 @@ def create_agent_graph():
         # Check input through guardrails if text is present
         if input_text:
             from app.config import get_settings
-            from app.conversation.context import resolve_recent_user_questions
+            from app.conversation.context import (
+                format_recent_turns,
+                resolve_recent_turns,
+            )
             from app.medical.agents.guardrails.schemas import (
                 DEFAULT_USER_LANGUAGE,
                 detect_user_language_fallback,
@@ -165,18 +206,18 @@ def create_agent_graph():
 
             summary = str(state.get("conversation_summary") or "").strip()
             ltm = str(state.get("user_long_term_memory") or "").strip()
-            prior = state.get("prior_user_questions")
-            prior_list = prior if isinstance(prior, list) else None
-            recent_questions = resolve_recent_user_questions(
-                state.get("messages") or [],
-                prior_user_questions=prior_list,
-                limit=5,
-                exclude_current=input_text,
+            recent_turns = format_recent_turns(
+                resolve_recent_turns(
+                    state.get("messages") or [],
+                    prior_turns=_prior_turns_from_state(state),
+                    limit=5,
+                    exclude_current=input_text,
+                )
             )
             guard_result = guardrails.check_input(
                 input_text,
                 conversation_summary=summary,
-                recent_user_questions=recent_questions,
+                recent_turns=recent_turns,
                 user_long_term_memory=ltm,
             )
             user_language = _resolved_language(
@@ -247,13 +288,12 @@ def create_agent_graph():
 
         emit_progress("medical_route")
         input_text = _input_text_from_state(state)
-        prior = state.get("prior_user_questions")
-        prior_list = prior if isinstance(prior, list) else None
         routing_context = build_routing_conversation_section(
             conversation_summary=str(state.get("conversation_summary") or ""),
             messages=state.get("messages") or [],
             current_input=input_text,
-            prior_user_questions=prior_list,
+            prior_turns=_prior_turns_from_state(state),
+            user_long_term_memory=str(state.get("user_long_term_memory") or ""),
         )
 
         decision_input = f"""Current user message:
@@ -274,34 +314,53 @@ Which agent should handle this message? If RAG_AGENT, write sub_queries that pre
             ]
         )
 
-        # Decided agent
-        print(f"Decision: {decision['agent']}")
         from app.chat_progress import emit_progress
         from app.medical.agents.rag_agent.query_expander import normalize_sub_queries
 
-        emit_progress(str(decision["agent"]))
+        known_agents = {"CONVERSATION_AGENT", "RAG_AGENT", "WEB_SEARCH_PROCESSOR_AGENT"}
+        raw_agent = str(decision.get("agent") or "")
+        confidence = float(decision.get("confidence") or 0.0)
+        target = raw_agent if raw_agent in known_agents else "RAG_AGENT"
+
+        # Low confidence: keep a CONVERSATION choice (it has the memory context;
+        # forcing RAG loses the topic of short follow-ups). Only a shaky
+        # WEB_SEARCH choice is pulled back to RAG, which itself still falls
+        # through to web search when retrieval is weak.
+        if (
+            confidence < AgentConfig.CONFIDENCE_THRESHOLD
+            and target == "WEB_SEARCH_PROCESSOR_AGENT"
+        ):
+            target = "RAG_AGENT"
+
+        print(f"Decision: {raw_agent} -> route: {target} (confidence={confidence:.2f})")
+        emit_progress(target)
 
         rag_sub_queries: List[str] = []
-        if decision["agent"] == "RAG_AGENT":
+        if target == "RAG_AGENT":
             rag_sub_queries = normalize_sub_queries(
                 decision.get("sub_queries"),
                 input_text,
                 max_count=config.rag.max_sub_queries,
             )
+            # Router wrote no sub-queries (fallback / hallucinated label): the raw
+            # message may omit the topic — anchor it with the previous question.
+            if rag_sub_queries == [input_text.strip()]:
+                prior_question = _most_recent_prior_user_question(
+                    state, exclude=input_text
+                )
+                rag_sub_queries = build_fallback_rag_queries(
+                    input_text,
+                    prior_question,
+                    max_count=config.rag.max_sub_queries,
+                )
             print(f"RAG sub-queries: {rag_sub_queries}")
-        
-        # Update state with decision
+
         updated_state = {
             **state,
-            "agent_name": decision["agent"],
+            "agent_name": target,
             "rag_sub_queries": rag_sub_queries,
         }
-        
-        # Route based on agent name and confidence
-        if decision["confidence"] < AgentConfig.CONFIDENCE_THRESHOLD:
-            return {**updated_state, "next": "needs_validation"}
-
-        return {**updated_state, "next": decision["agent"]}
+        return {**updated_state, "next": target}
 
     # Define agent execution functions (these will be implemented in their respective modules)
     def run_conversation_agent(state: AgentState) -> AgentState:
@@ -361,7 +420,8 @@ Which agent should handle this message? If RAG_AGENT, write sub_queries that pre
 
         4. **Follow-Up & Clarifications:**
         - Maintain conversation history for better responses.
-        - If a query is unclear, ask **follow-up questions** before answering.
+        - **Cross-session continuity:** if the current message is short or ambiguous but RELEVANT PAST SESSIONS (in the memory context above) shows a recent related topic, interpret the message as CONTINUING that topic. Answer it directly with a one-line bridge (e.g. "Nếu bạn đang hỏi tiếp về đau đầu và sức khỏe tâm thần — ở sinh viên thì..."), instead of asking a fully open clarifying question.
+        - Only ask a clarifying question when neither the session context nor past sessions give a usable topic.
 
         {PLAIN_LANGUAGE_MEDICAL_INSTRUCTIONS}
 
@@ -626,7 +686,6 @@ Which agent should handle this message? If RAG_AGENT, write sub_queries that pre
             "CONVERSATION_AGENT": "CONVERSATION_AGENT",
             "RAG_AGENT": "RAG_AGENT",
             "WEB_SEARCH_PROCESSOR_AGENT": "WEB_SEARCH_PROCESSOR_AGENT",
-            "needs_validation": "RAG_AGENT"  # Default to RAG if confidence is low
         }
     )
     
@@ -646,7 +705,7 @@ def init_agent_state() -> AgentState:
         "session_id": None,
         "conversation_summary": None,
         "user_long_term_memory": None,
-        "prior_user_questions": None,
+        "prior_turns": None,
         "agent_name": None,
         "current_input": None,
         "output": None,
@@ -671,7 +730,7 @@ def process_query(
     conversation_history: List[BaseMessage] | None = None,
     conversation_summary: str = "",
     user_long_term_memory: str = "",
-    prior_user_questions: List[str] | None = None,
+    prior_turns: List[Dict[str, str]] | None = None,
 ) -> dict:
     """
     Process a user query through the agent decision system.
@@ -681,7 +740,7 @@ def process_query(
         thread_id: LangGraph checkpoint id (use thesis session_id)
         conversation_history: Unused; history kept in MemorySaver per thread_id
         user_long_term_memory: Cross-session profile for logged-in users
-        prior_user_questions: Mongo fallback for recent session questions
+        prior_turns: Mongo fallback for recent session Q&A pairs (newest first)
 
     Returns:
         Final graph state dict (messages, agent_name, output, ...)
@@ -696,7 +755,7 @@ def process_query(
     state["session_id"] = thread_id
     state["conversation_summary"] = (conversation_summary or "").strip()
     state["user_long_term_memory"] = (user_long_term_memory or "").strip()
-    state["prior_user_questions"] = prior_user_questions or []
+    state["prior_turns"] = prior_turns or []
 
     message_text = extract_input_text(query) or str(query)
 
