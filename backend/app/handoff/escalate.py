@@ -38,12 +38,23 @@ async def escalate_to_awaiting_support(
     session_id: str,
     source: Literal["guard", "button"] = "guard",
 ) -> None:
+    from app.conversation.summary import schedule_summary_consolidation
+
     now = datetime.now(UTC)
     await update_conversation_support_mode(
         db,
         conversation_id,
         "awaiting_support",
         extra={"handoff_requested_at": now},
+    )
+    # Flush the rolling summary now so the handoff brief is fresh when a
+    # counselor joins, without adding latency to either request.
+    schedule_summary_consolidation(
+        db,
+        redis,
+        session_id=session_id,
+        conversation_id=conversation_id,
+        force=True,
     )
     await publish_ws_event(
         redis,

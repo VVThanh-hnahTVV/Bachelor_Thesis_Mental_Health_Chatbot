@@ -86,7 +86,14 @@ class WebSearchProcessor:
         {query}
 
         {_web_search_time_instructions(for_query_rewrite=True)}
-        Summarize them into a single, well-formed search query only if the past conversation seems relevant.
+        Rewrite the user's question into a single, well-formed, standalone search query.
+        - If the question is a follow-up — it uses pronouns ("nó", "cái đó", "bệnh này"),
+          omits the subject, or only makes sense in context (e.g. "trị liệu tâm lý có chữa
+          được không" right after discussing tự kỷ) — resolve it against the conversation
+          memory and make the topic explicit in the query.
+        - If the question introduces a new, self-contained topic, ignore the memory and
+          use the question as-is.
+        - Never add topics from memory that the current question does not refer to.
         Reply with ONLY the search query text (one line, no quotes, no preamble like "Here is the query:").
         Keep it concise (under 200 characters) and capture the key medical intent.
         """

@@ -602,6 +602,13 @@ Which agent should handle this message? If RAG_AGENT, write sub_queries that pre
         """Apply output guardrails to the generated response."""
         from app.chat_progress import emit_progress
 
+        # Canned guardrail notices (off-topic scope notice, blocked input,
+        # handoff consent) are already final and localized. Reviewing them
+        # with the output LLM lets it "helpfully" answer the off-topic
+        # question instead of keeping the refusal.
+        if state.get("bypass_routing"):
+            return state
+
         emit_progress("apply_guardrails")
         output = state["output"]
         current_input = state["current_input"]

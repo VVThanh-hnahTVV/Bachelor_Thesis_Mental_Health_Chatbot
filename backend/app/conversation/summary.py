@@ -113,6 +113,7 @@ def schedule_summary_consolidation(
     session_id: str,
     conversation_id: ObjectId,
     provider: ProviderName | None = None,
+    force: bool = False,
 ) -> None:
     """Fire-and-forget consolidation check after the HTTP response is sent."""
 
@@ -124,6 +125,7 @@ def schedule_summary_consolidation(
                 session_id=session_id,
                 conversation_id=conversation_id,
                 provider=provider,
+                force=force,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("summary consolidation failed (non-critical): %s", exc)

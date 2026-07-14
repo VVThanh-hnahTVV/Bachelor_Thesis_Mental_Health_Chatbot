@@ -115,8 +115,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("IP_DAILY_CHAT_LIMIT"),
     )
 
+    # Cap for summary/brief completions. Reasoning models (e.g. gpt-5.x)
+    # count thinking tokens against this budget, so keep it well above the
+    # expected visible output length or the completion comes back empty.
     conversation_summary_max_tokens: int = Field(
-        default=512,
+        default=2048,
         validation_alias=AliasChoices("CONVERSATION_SUMMARY_MAX_TOKENS"),
     )
     # Consolidate the rolling summary only after this many un-summarized user turns.

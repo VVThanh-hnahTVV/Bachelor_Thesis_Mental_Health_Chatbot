@@ -130,6 +130,21 @@ def _apply_max_tokens(model: BaseChatModel, max_tokens: int | None) -> BaseChatM
     return model.bind(max_tokens=max_tokens)
 
 
+def _message_text(msg: BaseMessage) -> str:
+    content = msg.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text") or ""))
+        return "".join(parts)
+    return str(content or "")
+
+
 async def invoke_with_fallback(
     llm: BaseChatModel,
     messages: list[BaseMessage],
@@ -149,7 +164,15 @@ async def invoke_with_fallback(
         try:
             model = get_chat_model(prov) if prov != primary else llm
             model = _apply_max_tokens(model, max_tokens)
-            return await model.ainvoke(messages)
+            result = await model.ainvoke(messages)
+            if _message_text(result).strip():
+                return result
+            # Reasoning models can burn the whole max_tokens budget on
+            # thinking and return an empty completion without erroring.
+            logger.warning(
+                "LLM provider %s returned empty content (label=%s)", prov, label
+            )
+            last_err = RuntimeError(f"provider {prov} returned empty content")
         except Exception as e:
             logger.warning("LLM provider %s failed: %s", prov, e)
             last_err = e

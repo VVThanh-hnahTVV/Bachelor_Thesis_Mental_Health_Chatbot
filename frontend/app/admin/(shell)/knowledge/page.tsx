@@ -172,7 +172,7 @@ function webDeleteSuccessMessage(
 ): string {
   if (status === "indexed" || result.action === "recycled") {
     return result.points_deleted > 0
-      ? `Đã gỡ ${result.points_deleted} điểm vector và đưa bài về chờ duyệt`
+      ? `Đã gỡ ${result.points_deleted} chunk và đưa bài về chờ duyệt`
       : "Đã đưa bài về chờ duyệt (không còn vector trong DB)";
   }
   return "Đã xóa bài và chặn crawl lại";
@@ -311,7 +311,7 @@ export default function AdminKnowledgePage() {
         const res = await deletePdf(pdf.path);
         setMessage(
           res.vectors_removed
-            ? `Đã xóa tệp và gỡ ${res.vectors_removed} điểm vector`
+            ? `Đã xóa tệp và gỡ ${res.vectors_removed} chunk`
             : "Đã xóa tệp PDF"
         );
         await Promise.all([invalidatePdfs(), invalidateStats()]);
@@ -387,7 +387,7 @@ export default function AdminKnowledgePage() {
             {totalPoints.toLocaleString("vi-VN")}
           </div>
           <div className="text-xs uppercase tracking-widest text-muted-foreground">
-            Điểm Qdrant
+            Chunk Qdrant
           </div>
         </div>
       </div>
@@ -411,7 +411,7 @@ export default function AdminKnowledgePage() {
             {
               label: "Vector web",
               value: stats.web_collection_points ?? 0,
-              suffix: "điểm",
+              suffix: "chunk",
               border: "border-serene-green/40",
             },
             {
@@ -598,7 +598,7 @@ export default function AdminKnowledgePage() {
                             {article.title}
                           </a>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {article.publisher} · điểm {article.relevance_score}
+                            {article.publisher}
                           </p>
                         </div>
                         <div className="flex shrink-0 gap-1">
@@ -815,7 +815,7 @@ export default function AdminKnowledgePage() {
                                       .then((res) => {
                                         setMessage(
                                           res.points_deleted > 0
-                                            ? `Đã gỡ ${res.points_deleted} điểm vector khỏi ${pdf.name}`
+                                            ? `Đã gỡ ${res.points_deleted} chunk khỏi ${pdf.name}`
                                             : `Không tìm thấy vector cho ${pdf.name}`
                                         );
                                         return invalidateStats();
@@ -972,7 +972,7 @@ export default function AdminKnowledgePage() {
                 <span className="font-bold">{stats?.web_collection}</span>
               </div>
               <div className="flex justify-between border-b border-border/20 py-2">
-                <span>Điểm web</span>
+                <span>Chunk web</span>
                 <span className="font-bold">
                   {stats?.web_collection_points?.toLocaleString("vi-VN") ?? 0}
                 </span>
@@ -982,7 +982,7 @@ export default function AdminKnowledgePage() {
                 <span className="font-bold">{stats?.pdf_collection}</span>
               </div>
               <div className="flex justify-between py-2">
-                <span>Điểm PDF</span>
+                <span>Chunk PDF</span>
                 <span className="font-bold">
                   {stats?.pdf_collection_points?.toLocaleString("vi-VN") ?? 0}
                 </span>

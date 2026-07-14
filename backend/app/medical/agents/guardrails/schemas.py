@@ -147,7 +147,9 @@ _OFF_TOPIC_TRIVIA = re.compile(
     r"\bwhat\s+year\b|\btỉ\s*số\b|\bworld\s+cup\b|\bbóng\s*đá\b|"
     r"\bdịch\s+(hộ|giúp)\b|\btranslate\b|\bviết\s+code\b|\bwrite\s+code\b|"
     r"\bdebug\b|\bhomework\b|\bbài\s+tập\b|\btính\s+toán\b|\bcalculate\b|"
-    r"\bgiá\s+vàng\b|\bstock\s+price\b|\bthời\s+tiết\b|\bweather\b)",
+    r"\bgiá\s+vàng\b|\bstock\s+price\b|\bthời\s+tiết\b|\bweather\b|"
+    r"hôm\s*nay\s*(là\s*)?(thứ|ngày)\s*mấy|mấy\s*giờ\s*rồi|bây\s*giờ\s*là\s*mấy\s*giờ|"
+    r"what\s+(day|date)\s+is\s+(it|today)|today'?s\s+date|what\s+time\s+is\s+it)",
     re.IGNORECASE,
 )
 

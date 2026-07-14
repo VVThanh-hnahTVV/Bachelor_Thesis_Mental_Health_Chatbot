@@ -40,7 +40,7 @@ You prepare a handoff brief for a human support counselor joining a Helios chat 
 Given the user's long-term context (prior sessions), AI conversation summary for this session,
 and full transcript, write a Markdown brief for the counselor:
 
-## Bối cảnh từ các phiên trước (long-term)
+## Bối cảnh từ các phiên trước
 - bullets from long-term memory, or "Không có" if none provided
 
 ## Tóm tắt nhanh

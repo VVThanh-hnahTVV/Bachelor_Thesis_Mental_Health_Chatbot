@@ -16,6 +16,7 @@ backend/data/medical/parsed_docs/
 backend/data/medical/docs_db/
 backend/uploads/medical/
 backend/data/medical/raw/
+backend/data/evaluation/
 backend/tests/
 *.pt *.pth
 *.pth.tar

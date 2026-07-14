@@ -17,7 +17,12 @@ COPY app ./app
 COPY data ./data
 COPY scripts ./scripts
 
-RUN pip install --upgrade pip && pip install -e ".[medical]"
+# Torch CPU-only cài trước (pod chạy CPU, không cần CUDA): tránh kéo bản CUDA
+# mặc định trên PyPI + chùm wheel nvidia-* nhiều GB — build nhanh, image nhỏ,
+# đỡ đứt mạng giữa chừng. sentence-transformers/docling thấy torch đã có sẽ không cài lại.
+RUN pip install --upgrade pip && \
+    pip install --retries 10 --timeout 120 torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --retries 10 --timeout 120 -e ".[medical]"
 
 EXPOSE 8000
 
