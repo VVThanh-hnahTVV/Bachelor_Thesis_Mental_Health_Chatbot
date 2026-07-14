@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pprint import pprint
 
 from fastapi import FastAPI
@@ -14,6 +15,7 @@ from app.api.ws_routes import router as ws_router
 from app.auth.repository import ensure_auth_indexes
 from app.cache.redis_client import close_redis_client, get_redis_client
 from app.config import get_settings
+from app.conversation.idle_finalize import start_idle_finalize_loop
 from app.rag.embeddings import resolve_embedding_model, resolve_embedding_provider
 from app.db.client import close_mongo_client, get_mongo_client
 from app.db.repository import ensure_indexes
@@ -116,7 +118,15 @@ async def lifespan(app: FastAPI):
     await redis.ping()
     app.state.redis = redis
 
+    # Idle-session checkpoint: fold quiet sessions into episodic memory.
+    idle_finalize_task = start_idle_finalize_loop(db, redis)
+
     yield
+
+    if idle_finalize_task is not None:
+        idle_finalize_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await idle_finalize_task
 
     await close_mongo_client()
     await close_redis_client()

@@ -21,6 +21,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db[MESSAGES].create_index([("conversation_id", 1), ("created_at", 1)])
     await db[CONVERSATIONS].create_index([("session_id", 1)], unique=True)
     await db[CONVERSATIONS].create_index([("user_id", 1), ("updated_at", -1)])
+    await db[CONVERSATIONS].create_index([("updated_at", -1)])
     await db[CONVERSATIONS].create_index([("support_mode", 1), ("handoff_requested_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("session_id", 1), ("created_at", -1)])
     await db[ACTIVITY_COMPLETIONS].create_index([("linked_message_id", 1)])
@@ -638,6 +639,50 @@ async def mark_conversation_memory_extracted(
                 "memory_extracted_at": datetime.now(UTC),
             }
         },
+    )
+
+
+_IDLE_CHECK_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+async def list_idle_conversations_for_memory(
+    db: AsyncIOMotorDatabase,
+    *,
+    idle_before: datetime,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Conversations quiet since ``idle_before`` with activity newer than their
+    last idle check — candidates for the idle episodic-memory checkpoint.
+
+    Sessions in human mode are excluded (finalized when the counselor leaves).
+    """
+    cursor = (
+        db[CONVERSATIONS]
+        .find(
+            {
+                "updated_at": {"$lte": idle_before},
+                "support_mode": {"$ne": "human"},
+                "$expr": {
+                    "$lt": [
+                        {"$ifNull": ["$idle_memory_checked_at", _IDLE_CHECK_EPOCH]},
+                        "$updated_at",
+                    ]
+                },
+            },
+            {"session_id": 1, "updated_at": 1},
+        )
+        .sort("updated_at", 1)
+        .limit(limit)
+    )
+    return [doc async for doc in cursor]
+
+
+async def mark_conversation_idle_checked(
+    db: AsyncIOMotorDatabase, conversation_id: ObjectId
+) -> None:
+    await db[CONVERSATIONS].update_one(
+        {"_id": conversation_id},
+        {"$set": {"idle_memory_checked_at": datetime.now(UTC)}},
     )
 
 

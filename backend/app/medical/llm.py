@@ -25,6 +25,23 @@ def _log_medical_input(input: Any) -> None:
     print_llm_prompt(label, default_provider(), messages)
 
 
+def _log_medical_usage(llm: Any, result: Any) -> None:
+    if not get_settings().debug_llm_prompts:
+        return
+    usage = getattr(result, "usage_metadata", None)
+    if not usage:
+        return
+    from app.loclog import infer_caller_label, loc_print
+
+    label = infer_caller_label(prefix="medical")
+    model = getattr(llm, "model_name", None) or getattr(llm, "model", "")
+    loc_print(
+        f"LLM TOKENS  label={label}  model={model}  "
+        f"input={usage.get('input_tokens')}  output={usage.get('output_tokens')}  "
+        f"total={usage.get('total_tokens')}"
+    )
+
+
 class _LoggingMixin:
     def invoke(
         self,
@@ -33,7 +50,9 @@ class _LoggingMixin:
         **kwargs: Any,
     ) -> Any:
         _log_medical_input(input)
-        return super().invoke(input, config, **kwargs)
+        result = super().invoke(input, config, **kwargs)
+        _log_medical_usage(self, result)
+        return result
 
     async def ainvoke(
         self,
@@ -42,7 +61,9 @@ class _LoggingMixin:
         **kwargs: Any,
     ) -> Any:
         _log_medical_input(input)
-        return await super().ainvoke(input, config, **kwargs)
+        result = await super().ainvoke(input, config, **kwargs)
+        _log_medical_usage(self, result)
+        return result
 
 
 class LoggingChatOpenAI(_LoggingMixin, ChatOpenAI):

@@ -16,6 +16,11 @@ RECENT_TURNS_LIMIT = 5
 _QUESTION_MAX_CHARS = 400
 _LAST_ANSWER_MAX_CHARS = 500
 _OLDER_ANSWER_MAX_CHARS = 300
+# Executing agents get the previous reply near-verbatim: offers and clarifying
+# questions live in its tail ("tôi có thể lập một kế hoạch 7 ngày..."), and the
+# user's next message is often an answer to them. Guardrail and routing keep
+# the short excerpt — they only need the topic, not the wording.
+_AGENT_LAST_ANSWER_MAX_CHARS = 2000
 
 
 def build_agent_memory_context(
@@ -36,14 +41,17 @@ def build_agent_memory_context(
             prior_turns=prior_turns,
             limit=recent_turns_limit,
             exclude_current=current_input,
-        )
+        ),
+        last_answer_max_chars=_AGENT_LAST_ANSWER_MAX_CHARS,
     )
     return (
         f"CONVERSATION SUMMARY (session, short-term):\n"
         f"{summary}\n\n"
         f"RECENT TURNS (session, short-term — up to {recent_turns_limit} prior "
         f"question/answer pairs, excluding current input — 1 = most recent, "
-        f"higher = older; Helios replies are truncated excerpts):\n"
+        f"higher = older; turn 1's Helios reply is near-verbatim and may contain "
+        f"a question or offer you made that the current message answers; older "
+        f"replies are truncated excerpts):\n"
         f"{recent_turns}\n\n"
         f"RELEVANT PAST SESSIONS (cross-session episodic memory, retrieved by "
         f"relevance to the current question; logged-in users only):\n"
@@ -88,7 +96,11 @@ def resolve_recent_turns(
     return merged
 
 
-def format_recent_turns(turns: list[dict[str, str]]) -> str:
+def format_recent_turns(
+    turns: list[dict[str, str]],
+    *,
+    last_answer_max_chars: int = _LAST_ANSWER_MAX_CHARS,
+) -> str:
     """Numbered block (1 = most recent) with per-part truncation budgets."""
     if not turns:
         return "(none)"
@@ -98,7 +110,7 @@ def format_recent_turns(turns: list[dict[str, str]]) -> str:
             str(turn.get("user") or ""), max_chars=_QUESTION_MAX_CHARS
         )
         answer = str(turn.get("assistant") or "").strip()
-        budget = _LAST_ANSWER_MAX_CHARS if i == 1 else _OLDER_ANSWER_MAX_CHARS
+        budget = last_answer_max_chars if i == 1 else _OLDER_ANSWER_MAX_CHARS
         answer_text = _truncate_excerpt(answer, max_chars=budget) if answer else "(no reply)"
         lines.append(f"{i}. User: {question}\n   Helios: {answer_text}")
     return "\n".join(lines)

@@ -1,0 +1,258 @@
+Loading RAG pipeline and building 86 samples...
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/.venv/lib/python3.12/site-packages/torch/cuda/__init__.py:187: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 12060). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+  return torch._C._cuda_getDeviceCount() > 0
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 10854.88it/s]
+[1/86] q0001 (vi) ok
+[2/86] q0002 (en) ok
+[3/86] q0003 (vi) ok
+[4/86] q0004 (en) ok
+[5/86] q0005 (vi) ok
+[6/86] q0006 (en) ok
+[7/86] q0007 (vi) ok
+[8/86] q0008 (en) ok
+[9/86] q0009 (vi) ok
+[10/86] q0010 (en) ok
+[11/86] q0011 (vi) ok
+[12/86] q0012 (en) ok
+[13/86] q0013 (vi) ok
+[14/86] q0014 (en) ok
+[15/86] q0015 (vi) ok
+[16/86] q0016 (en) ok
+[17/86] q0017 (vi) ok
+[18/86] q0018 (en) ok
+[19/86] q0019 (vi) ok
+[20/86] q0020 (en) ok
+[21/86] q0021 (vi) ok
+[22/86] q0022 (en) ok
+[23/86] q0023 (vi) ok
+[24/86] q0024 (en) ok
+[25/86] q0025 (vi) ok
+[26/86] q0026 (en) ok
+[27/86] q0027 (vi) ok
+[28/86] q0028 (en) ok
+[29/86] q0029 (vi) ok
+[30/86] q0030 (en) ok
+[31/86] q0031 (vi) ok
+[32/86] q0032 (en) ok
+[33/86] q0033 (vi) ok
+[34/86] q0034 (en) ok
+[35/86] q0035 (vi) ok
+[36/86] q0036 (en) ok
+[37/86] q0037 (vi) ok
+[38/86] q0038 (en) ok
+[39/86] q0039 (vi) ok
+[40/86] q0040 (en) ok
+[41/86] q0041 (vi) ok
+[42/86] q0042 (en) ok
+[43/86] q0043 (vi) ok
+[44/86] q0044 (en) ok
+[45/86] q0045 (vi) ok
+[46/86] q0046 (en) ok
+[47/86] q0047 (vi) ok
+[48/86] q0048 (en) ok
+[49/86] q0049 (vi) ok
+[50/86] q0050 (en) ok
+[51/86] q0051 (vi) ok
+[52/86] q0052 (en) ok
+[53/86] q0053 (vi) ok
+[54/86] q0054 (en) ok
+[55/86] q0055 (vi) ok
+[56/86] q0056 (en) ok
+[57/86] q0057 (vi) ok
+[58/86] q0058 (en) ok
+[59/86] q0059 (vi) ok
+[60/86] q0060 (en) ok
+[61/86] q0061 (vi) ok
+[62/86] q0062 (en) ok
+[63/86] q0063 (vi) ok
+[64/86] q0064 (en) ok
+[65/86] q0065 (vi) ok
+[66/86] q0066 (en) ok
+[67/86] q0067 (vi) ok
+[68/86] q0068 (en) ok
+[69/86] q0069 (vi) ok
+[70/86] q0070 (en) ok
+[71/86] q0071 (vi) ok
+[72/86] q0072 (en) ok
+[73/86] q0073 (vi) ok
+[74/86] q0074 (en) ok
+[75/86] q0075 (vi) ok
+[76/86] q0076 (en) ok
+[77/86] q0077 (vi) ok
+[78/86] q0078 (en) ok
+[79/86] q0079 (vi) ok
+[80/86] q0080 (en) ok
+[81/86] q0081 (vi) ok
+[82/86] q0082 (en) ok
+[83/86] q0083 (vi) ok
+[84/86] q0084 (en) ok
+[85/86] q0085 (vi) ok
+[86/86] q0086 (en) ok
+
+Scoring 86 samples with RAGAS (judge=gpt-4o-mini)...
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:184: DeprecationWarning: Importing answer_relevancy from 'ragas.metrics' is deprecated and will be removed in v1.0. Please use 'ragas.metrics.collections' instead. Example: from ragas.metrics.collections import answer_relevancy
+  from ragas.metrics import (
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:184: DeprecationWarning: Importing context_precision from 'ragas.metrics' is deprecated and will be removed in v1.0. Please use 'ragas.metrics.collections' instead. Example: from ragas.metrics.collections import context_precision
+  from ragas.metrics import (
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:184: DeprecationWarning: Importing context_recall from 'ragas.metrics' is deprecated and will be removed in v1.0. Please use 'ragas.metrics.collections' instead. Example: from ragas.metrics.collections import context_recall
+  from ragas.metrics import (
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:184: DeprecationWarning: Importing faithfulness from 'ragas.metrics' is deprecated and will be removed in v1.0. Please use 'ragas.metrics.collections' instead. Example: from ragas.metrics.collections import faithfulness
+  from ragas.metrics import (
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:192: DeprecationWarning: LangchainLLMWrapper is deprecated and will be removed in a future version. Use llm_factory instead: from openai import OpenAI; from ragas.llms import llm_factory; llm = llm_factory('gpt-4o-mini', client=OpenAI(api_key='...'))
+  judge = LangchainLLMWrapper(ChatOpenAI(model=args.judge_model, temperature=0.0))
+/home/vvt/D/SubjectResource/2025.2/IT4995_Bachelor Thesis/Bachelor_Thesis/backend/evaluation/run_ragas_eval.py:193: DeprecationWarning: LangchainEmbeddingsWrapper is deprecated and will be removed in a future version. Use the modern embedding providers instead: embedding_factory('openai', model='text-embedding-3-small', client=openai_client) or from ragas.embeddings import OpenAIEmbeddings, GoogleEmbeddings, HuggingFaceEmbeddings
+  embeddings = LangchainEmbeddingsWrapper(OpenAIEmbeddings(model=args.embed_model))
+Evaluating:   0%|          | 0/344 [00:00<?, ?it/s]Evaluating:   0%|          | 1/344 [01:25<8:06:34, 85.11s/it]Evaluating:   1%|          | 2/344 [04:41<14:17:37, 150.46s/it]Evaluating:   1%|          | 4/344 [06:24<8:21:18, 88.47s/it]  Evaluating:   1%|▏         | 5/344 [07:58<8:30:20, 90.33s/it]Evaluating:   2%|▏         | 7/344 [08:57<5:46:37, 61.71s/it]Evaluating:   2%|▏         | 8/344 [10:55<7:04:51, 75.87s/it]Evaluating:   3%|▎         | 9/344 [11:30<6:02:47, 64.98s/it]Evaluating:   3%|▎         | 10/344 [13:14<7:02:09, 75.84s/it]Exception raised in Job[2]: TimeoutError()
+Exception raised in Job[11]: APIConnectionError(Connection error.)
+Exception raised in Job[10]: APIConnectionError(Connection error.)
+Exception raised in Job[9]: APIConnectionError(Connection error.)
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:   4%|▍         | 15/344 [14:49<3:29:06, 38.13s/it]Evaluating:   5%|▍         | 16/344 [17:16<5:03:35, 55.53s/it]Evaluating:   5%|▌         | 18/344 [18:41<4:39:42, 51.48s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:   6%|▌         | 19/344 [20:52<5:57:14, 65.95s/it]Evaluating:   6%|▌         | 20/344 [23:35<7:43:40, 85.86s/it]Exception raised in Job[18]: TimeoutError()
+Exception raised in Job[14]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:   7%|▋         | 24/344 [25:07<4:36:58, 51.93s/it]Evaluating:   7%|▋         | 25/344 [27:45<6:07:04, 69.04s/it]Exception raised in Job[22]: TimeoutError()
+Evaluating:   8%|▊         | 27/344 [29:14<5:23:59, 61.32s/it]Evaluating:   8%|▊         | 28/344 [31:53<6:57:15, 79.23s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:   9%|▉         | 31/344 [33:24<5:01:14, 57.75s/it]Evaluating:   9%|▉         | 32/344 [35:54<6:23:46, 73.80s/it]Exception raised in Job[26]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  10%|▉         | 34/344 [38:44<6:39:46, 77.38s/it]Exception raised in Job[30]: TimeoutError()
+Evaluating:  10%|█         | 36/344 [40:35<6:01:26, 70.41s/it]Evaluating:  11%|█         | 38/344 [43:10<6:10:06, 72.57s/it]Exception raised in Job[34]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  11%|█▏        | 39/344 [44:42<6:27:37, 76.26s/it]Exception raised in Job[38]: TimeoutError()
+Evaluating:  12%|█▏        | 41/344 [46:19<5:36:54, 66.71s/it]Evaluating:  12%|█▏        | 42/344 [49:14<7:23:12, 88.06s/it]Exception raised in Job[40]: TimeoutError()
+Evaluating:  13%|█▎        | 44/344 [50:42<6:00:54, 72.18s/it]Exception raised in Job[42]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  13%|█▎        | 46/344 [52:15<5:14:54, 63.40s/it]Evaluating:  14%|█▎        | 47/344 [54:37<6:30:06, 78.81s/it]Evaluating:  14%|█▍        | 49/344 [56:14<5:34:15, 67.99s/it]Exception raised in Job[46]: TimeoutError()
+Evaluating:  15%|█▍        | 50/344 [58:41<6:51:40, 84.02s/it]Evaluating:  15%|█▌        | 53/344 [1:00:45<5:10:59, 64.12s/it]Exception raised in Job[50]: TimeoutError()
+Evaluating:  16%|█▌        | 55/344 [1:02:47<5:04:00, 63.11s/it]Evaluating:  17%|█▋        | 57/344 [1:03:40<4:08:23, 51.93s/it]Evaluating:  17%|█▋        | 58/344 [1:06:14<5:35:17, 70.34s/it]Exception raised in Job[54]: TimeoutError()
+Evaluating:  17%|█▋        | 60/344 [1:08:20<5:20:38, 67.74s/it]Evaluating:  18%|█▊        | 61/344 [1:08:51<4:46:04, 60.65s/it]Exception raised in Job[58]: TimeoutError()
+Evaluating:  18%|█▊        | 62/344 [1:11:05<6:00:08, 76.63s/it]Evaluating:  18%|█▊        | 63/344 [1:12:49<6:28:30, 82.96s/it]Exception raised in Job[60]: TimeoutError()
+Evaluating:  19%|█▉        | 65/344 [1:13:17<4:16:51, 55.24s/it]Evaluating:  19%|█▉        | 66/344 [1:14:48<4:52:40, 63.17s/it]Evaluating:  20%|█▉        | 68/344 [1:16:30<4:29:04, 58.49s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  20%|██        | 69/344 [1:18:30<5:29:05, 71.80s/it]Evaluating:  20%|██        | 70/344 [1:20:39<6:30:39, 85.54s/it]Exception raised in Job[66]: TimeoutError()
+Evaluating:  21%|██        | 71/344 [1:22:03<6:27:25, 85.15s/it]Exception raised in Job[70]: TimeoutError()
+Evaluating:  21%|██        | 73/344 [1:23:19<4:55:15, 65.37s/it]Evaluating:  22%|██▏       | 74/344 [1:25:00<5:30:43, 73.49s/it]Exception raised in Job[72]: TimeoutError()
+Evaluating:  22%|██▏       | 76/344 [1:26:52<4:57:20, 66.57s/it]Evaluating:  22%|██▏       | 77/344 [1:27:25<4:22:48, 59.06s/it]Exception raised in Job[74]: TimeoutError()
+Evaluating:  23%|██▎       | 78/344 [1:28:34<4:33:05, 61.60s/it]Evaluating:  23%|██▎       | 79/344 [1:31:43<6:54:57, 93.95s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  24%|██▎       | 81/344 [1:34:12<6:16:16, 85.84s/it]Exception raised in Job[78]: TimeoutError()
+Evaluating:  24%|██▍       | 83/344 [1:37:02<6:11:30, 85.40s/it]Exception raised in Job[82]: TimeoutError()
+Evaluating:  25%|██▌       | 86/344 [1:37:31<3:42:05, 51.65s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  25%|██▌       | 87/344 [1:39:11<4:17:52, 60.21s/it]Evaluating:  26%|██▌       | 88/344 [1:41:36<5:29:28, 77.22s/it]Evaluating:  26%|██▌       | 90/344 [1:42:50<4:24:53, 62.57s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  26%|██▋       | 91/344 [1:44:24<4:50:28, 68.89s/it]Exception raised in Job[86]: TimeoutError()
+Evaluating:  27%|██▋       | 93/344 [1:46:29<4:38:33, 66.59s/it]Exception raised in Job[90]: TimeoutError()
+Evaluating:  28%|██▊       | 95/344 [1:47:03<3:24:50, 49.36s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  28%|██▊       | 96/344 [1:48:42<4:05:13, 59.33s/it]Evaluating:  28%|██▊       | 97/344 [1:49:08<3:34:04, 52.00s/it]Evaluating:  28%|██▊       | 98/344 [1:50:41<4:12:40, 61.63s/it]Exception raised in Job[94]: TimeoutError()
+Evaluating:  29%|██▉       | 99/344 [1:51:49<4:18:53, 63.40s/it]Evaluating:  29%|██▉       | 100/344 [1:53:31<4:59:59, 73.77s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  30%|██▉       | 102/344 [1:57:12<6:01:09, 89.54s/it]Exception raised in Job[98]: TimeoutError()
+Exception raised in Job[100]: TimeoutError()
+Evaluating:  31%|███       | 105/344 [1:58:04<3:38:24, 54.83s/it]Evaluating:  31%|███       | 106/344 [1:58:39<3:22:52, 51.15s/it]Evaluating:  31%|███       | 107/344 [1:59:08<3:03:21, 46.42s/it]Evaluating:  31%|███▏      | 108/344 [1:59:34<2:44:10, 41.74s/it]Evaluating:  32%|███▏      | 109/344 [2:01:47<4:12:21, 64.43s/it]Evaluating:  32%|███▏      | 110/344 [2:03:49<5:10:16, 79.56s/it]Exception raised in Job[106]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  32%|███▏      | 111/344 [2:05:26<5:27:12, 84.26s/it]Exception raised in Job[108]: TimeoutError()
+Evaluating:  33%|███▎      | 113/344 [2:07:26<4:43:07, 73.54s/it]Evaluating:  33%|███▎      | 114/344 [2:10:43<6:34:56, 103.03s/it]Exception raised in Job[110]: TimeoutError()
+Evaluating:  33%|███▎      | 115/344 [2:11:37<5:45:26, 90.51s/it] Exception raised in Job[114]: TimeoutError()
+Evaluating:  34%|███▍      | 117/344 [2:12:07<3:42:12, 58.73s/it]Evaluating:  34%|███▍      | 118/344 [2:12:45<3:23:35, 54.05s/it]Evaluating:  35%|███▍      | 119/344 [2:13:47<3:30:29, 56.13s/it]Evaluating:  35%|███▍      | 120/344 [2:16:36<5:19:38, 85.62s/it]Evaluating:  35%|███▌      | 121/344 [2:18:09<5:25:37, 87.61s/it]Evaluating:  36%|███▌      | 123/344 [2:19:05<3:46:07, 61.39s/it]Evaluating:  36%|███▌      | 124/344 [2:22:21<5:43:02, 93.56s/it]Exception raised in Job[122]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  37%|███▋      | 127/344 [2:23:47<3:39:57, 60.82s/it]Evaluating:  38%|███▊      | 129/344 [2:25:31<3:27:35, 57.93s/it]Evaluating:  38%|███▊      | 130/344 [2:27:42<4:15:33, 71.65s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  38%|███▊      | 131/344 [2:29:08<4:25:27, 74.78s/it]Exception raised in Job[126]: TimeoutError()
+Evaluating:  39%|███▊      | 133/344 [2:34:16<6:07:38, 104.54s/it]Exception raised in Job[130]: TimeoutError()
+Exception raised in Job[132]: TimeoutError()
+Evaluating:  40%|███▉      | 137/344 [2:37:47<4:27:58, 77.67s/it] Exception raised in Job[134]: TimeoutError()
+Evaluating:  41%|████      | 140/344 [2:38:14<3:00:46, 53.17s/it]Evaluating:  41%|████      | 141/344 [2:39:49<3:20:42, 59.32s/it]Evaluating:  41%|████▏     | 142/344 [2:42:11<4:07:32, 73.53s/it]Exception raised in Job[138]: TimeoutError()
+Evaluating:  42%|████▏     | 144/344 [2:44:29<4:00:02, 72.01s/it]Evaluating:  42%|████▏     | 145/344 [2:45:52<4:05:42, 74.08s/it]Evaluating:  42%|████▏     | 146/344 [2:48:38<5:09:26, 93.77s/it]Exception raised in Job[142]: TimeoutError()
+Evaluating:  43%|████▎     | 149/344 [2:49:43<3:12:38, 59.27s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  44%|████▎     | 150/344 [2:51:12<3:29:39, 64.85s/it]Exception raised in Job[146]: TimeoutError()
+Evaluating:  44%|████▍     | 152/344 [2:52:20<2:52:55, 54.04s/it]Evaluating:  44%|████▍     | 153/344 [2:54:15<3:30:48, 66.22s/it]Exception raised in Job[152]: APIConnectionError(Connection error.)
+Exception raised in Job[151]: APIConnectionError(Connection error.)
+Evaluating:  45%|████▍     | 154/344 [2:54:49<3:06:55, 59.03s/it]Exception raised in Job[150]: TimeoutError()
+Evaluating:  45%|████▌     | 156/344 [2:56:51<3:07:29, 59.84s/it]Evaluating:  46%|████▌     | 157/344 [2:57:21<2:46:03, 53.28s/it]Evaluating:  46%|████▌     | 158/344 [2:57:50<2:27:57, 47.73s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  46%|████▌     | 159/344 [2:59:23<3:01:55, 59.01s/it]Evaluating:  47%|████▋     | 160/344 [3:01:15<3:44:21, 73.16s/it]Evaluating:  47%|████▋     | 163/344 [3:03:18<2:48:48, 55.96s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  48%|████▊     | 164/344 [3:05:14<3:24:14, 68.08s/it]Exception raised in Job[158]: TimeoutError()
+Evaluating:  48%|████▊     | 166/344 [3:07:06<3:09:15, 63.79s/it]Exception raised in Job[162]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  49%|████▉     | 168/344 [3:08:41<2:50:32, 58.14s/it]Evaluating:  49%|████▉     | 169/344 [3:12:20<4:21:52, 89.78s/it]Exception raised in Job[166]: TimeoutError()
+Evaluating:  50%|████▉     | 171/344 [3:14:12<3:43:49, 77.63s/it]Evaluating:  51%|█████     | 174/344 [3:16:47<3:07:52, 66.31s/it]Exception raised in Job[170]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  51%|█████     | 175/344 [3:18:15<3:17:16, 70.04s/it]Evaluating:  51%|█████▏    | 177/344 [3:23:23<4:31:58, 97.72s/it]Exception raised in Job[174]: TimeoutError()
+Evaluating:  53%|█████▎    | 181/344 [3:25:06<2:50:49, 62.88s/it]Exception raised in Job[178]: TimeoutError()
+Evaluating:  53%|█████▎    | 183/344 [3:26:50<2:41:13, 60.08s/it]Evaluating:  54%|█████▍    | 185/344 [3:28:29<2:31:26, 57.15s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  54%|█████▍    | 186/344 [3:30:48<3:05:20, 70.38s/it]Evaluating:  54%|█████▍    | 187/344 [3:33:13<3:40:39, 84.33s/it]Exception raised in Job[182]: TimeoutError()
+Evaluating:  55%|█████▍    | 189/344 [3:33:37<2:32:45, 59.13s/it]Exception raised in Job[186]: TimeoutError()
+Evaluating:  55%|█████▌    | 190/344 [3:35:07<2:47:27, 65.25s/it]Evaluating:  56%|█████▌    | 191/344 [3:36:46<3:05:45, 72.85s/it]Evaluating:  56%|█████▌    | 193/344 [3:39:30<3:12:11, 76.37s/it]Evaluating:  57%|█████▋    | 195/344 [3:41:32<2:55:52, 70.82s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  57%|█████▋    | 196/344 [3:43:06<3:06:26, 75.59s/it]Evaluating:  57%|█████▋    | 197/344 [3:44:43<3:16:37, 80.25s/it]Exception raised in Job[192]: TimeoutError()
+Exception raised in Job[194]: TimeoutError()
+Evaluating:  58%|█████▊    | 200/344 [3:47:18<2:38:55, 66.22s/it]Evaluating:  59%|█████▊    | 202/344 [3:48:51<2:21:57, 59.98s/it]Evaluating:  59%|█████▉    | 203/344 [3:49:44<2:18:06, 58.77s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  59%|█████▉    | 204/344 [3:52:26<3:07:32, 80.37s/it]Exception raised in Job[198]: TimeoutError()
+Evaluating:  60%|█████▉    | 206/344 [3:53:52<2:32:33, 66.33s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  60%|██████    | 208/344 [3:55:55<2:26:32, 64.65s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  61%|██████    | 210/344 [3:57:13<2:05:28, 56.18s/it]Exception raised in Job[206]: TimeoutError()
+Evaluating:  61%|██████▏   | 211/344 [3:58:18<2:08:14, 57.85s/it]Evaluating:  62%|██████▏   | 212/344 [3:59:26<2:12:04, 60.03s/it]Evaluating:  62%|██████▏   | 213/344 [3:59:59<1:56:58, 53.57s/it]Evaluating:  62%|██████▏   | 214/344 [4:03:08<3:09:52, 87.63s/it]Evaluating:  62%|██████▎   | 215/344 [4:04:43<3:13:00, 89.77s/it]Exception raised in Job[210]: TimeoutError()
+Exception raised in Job[214]: TimeoutError()
+Evaluating:  63%|██████▎   | 217/344 [4:05:58<2:22:10, 67.17s/it]Evaluating:  63%|██████▎   | 218/344 [4:07:54<2:45:04, 78.61s/it]Evaluating:  64%|██████▎   | 219/344 [4:09:25<2:50:28, 81.83s/it]Evaluating:  64%|██████▍   | 220/344 [4:10:22<2:35:32, 75.26s/it]Exception raised in Job[218]: TimeoutError()
+Evaluating:  65%|██████▍   | 222/344 [4:10:47<1:37:53, 48.15s/it]Evaluating:  65%|██████▍   | 223/344 [4:11:35<1:37:17, 48.24s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  65%|██████▌   | 224/344 [4:13:39<2:14:29, 67.25s/it]Evaluating:  65%|██████▌   | 225/344 [4:16:14<2:59:30, 90.51s/it]Exception raised in Job[222]: TimeoutError()
+Evaluating:  66%|██████▌   | 227/344 [4:17:52<2:21:29, 72.56s/it]Evaluating:  66%|██████▋   | 228/344 [4:18:30<2:04:36, 64.45s/it]Evaluating:  67%|██████▋   | 229/344 [4:20:08<2:19:32, 72.80s/it]Evaluating:  67%|██████▋   | 230/344 [4:22:29<2:52:31, 90.80s/it]Exception raised in Job[226]: TimeoutError()
+Evaluating:  68%|██████▊   | 233/344 [4:24:08<1:51:23, 60.21s/it]Evaluating:  68%|██████▊   | 234/344 [4:26:43<2:25:33, 79.40s/it]Exception raised in Job[230]: TimeoutError()
+Evaluating:  69%|██████▉   | 237/344 [4:28:13<1:40:37, 56.43s/it]Evaluating:  69%|██████▉   | 238/344 [4:30:46<2:10:39, 73.96s/it]Exception raised in Job[234]: TimeoutError()
+Evaluating:  70%|███████   | 241/344 [4:32:11<1:32:41, 53.99s/it]Evaluating:  70%|███████   | 242/344 [4:34:12<1:51:23, 65.53s/it]Exception raised in Job[238]: TimeoutError()
+Evaluating:  71%|███████   | 244/344 [4:34:50<1:23:44, 50.25s/it]Evaluating:  71%|███████   | 245/344 [4:36:02<1:29:45, 54.39s/it]Evaluating:  72%|███████▏  | 246/344 [4:38:47<2:07:31, 78.07s/it]Exception raised in Job[242]: TimeoutError()
+Evaluating:  72%|███████▏  | 248/344 [4:40:13<1:43:20, 64.58s/it]Evaluating:  72%|███████▏  | 249/344 [4:41:16<1:41:52, 64.34s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  73%|███████▎  | 250/344 [4:43:12<1:59:37, 76.35s/it]Exception raised in Job[246]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  74%|███████▎  | 253/344 [4:47:27<2:02:22, 80.69s/it]Exception raised in Job[250]: TimeoutError()
+Evaluating:  74%|███████▍  | 255/344 [4:47:55<1:27:51, 59.23s/it]Evaluating:  74%|███████▍  | 256/344 [4:49:35<1:38:04, 66.87s/it]Exception raised in Job[252]: TimeoutError()
+Evaluating:  75%|███████▌  | 258/344 [4:50:37<1:17:56, 54.38s/it]Exception raised in Job[254]: TimeoutError()
+Evaluating:  75%|███████▌  | 259/344 [4:51:36<1:18:13, 55.21s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  76%|███████▌  | 260/344 [4:53:02<1:26:59, 62.13s/it]Evaluating:  76%|███████▌  | 261/344 [4:54:39<1:37:35, 70.55s/it]Evaluating:  76%|███████▌  | 262/344 [4:55:42<1:33:47, 68.62s/it]Evaluating:  76%|███████▋  | 263/344 [4:57:18<1:42:23, 75.85s/it]Exception raised in Job[258]: TimeoutError()
+Evaluating:  77%|███████▋  | 265/344 [4:58:54<1:23:56, 63.76s/it]Evaluating:  77%|███████▋  | 266/344 [5:01:21<1:48:29, 83.46s/it]Exception raised in Job[262]: TimeoutError()
+Evaluating:  78%|███████▊  | 269/344 [5:03:06<1:13:53, 59.12s/it]Evaluating:  78%|███████▊  | 270/344 [5:05:43<1:36:14, 78.04s/it]Exception raised in Job[266]: TimeoutError()
+Evaluating:  79%|███████▉  | 273/344 [5:07:01<1:04:22, 54.40s/it]Evaluating:  80%|███████▉  | 274/344 [5:12:22<1:58:36, 101.67s/it]Exception raised in Job[270]: TimeoutError()
+Exception raised in Job[274]: TimeoutError()
+Evaluating:  81%|████████  | 277/344 [5:13:32<1:15:45, 67.84s/it] Evaluating:  81%|████████  | 278/344 [5:17:21<1:44:50, 95.32s/it]Exception raised in Job[278]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  82%|████████▏ | 282/344 [5:20:11<1:11:35, 69.28s/it]Evaluating:  82%|████████▏ | 283/344 [5:21:49<1:14:46, 73.55s/it]Evaluating:  83%|████████▎ | 285/344 [5:24:35<1:15:08, 76.41s/it]Exception raised in Job[282]: TimeoutError()
+Evaluating:  83%|████████▎ | 286/344 [5:25:11<1:07:02, 69.36s/it]Evaluating:  83%|████████▎ | 287/344 [5:26:19<1:05:39, 69.11s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  84%|████████▍ | 289/344 [5:28:36<1:03:04, 68.81s/it]Exception raised in Job[286]: TimeoutError()
+Evaluating:  85%|████████▍ | 291/344 [5:30:10<54:11, 61.36s/it]  Evaluating:  85%|████████▌ | 293/344 [5:31:53<49:25, 58.15s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  85%|████████▌ | 294/344 [5:34:55<1:07:59, 81.59s/it]Exception raised in Job[290]: TimeoutError()
+Evaluating:  86%|████████▌ | 296/344 [5:37:07<1:00:56, 76.18s/it]Evaluating:  86%|████████▋ | 297/344 [5:37:46<53:51, 68.76s/it]  Exception raised in Job[294]: TimeoutError()
+Evaluating:  87%|████████▋ | 298/344 [5:38:53<52:24, 68.37s/it]Evaluating:  87%|████████▋ | 299/344 [5:41:58<1:12:16, 96.37s/it]Exception raised in Job[298]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  88%|████████▊ | 302/344 [5:43:59<47:30, 67.87s/it]  Evaluating:  88%|████████▊ | 303/344 [5:45:44<51:22, 75.19s/it]Exception raised in Job[300]: TimeoutError()
+Evaluating:  89%|████████▊ | 305/344 [5:46:43<38:14, 58.84s/it]Exception raised in Job[302]: TimeoutError()
+Evaluating:  89%|████████▉ | 306/344 [5:47:53<38:37, 60.99s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  89%|████████▉ | 307/344 [5:50:52<54:03, 87.67s/it]Evaluating:  90%|████████▉ | 309/344 [5:55:49<1:05:03, 111.54s/it]Exception raised in Job[306]: TimeoutError()
+Exception raised in Job[310]: TimeoutError()
+Evaluating:  91%|█████████ | 313/344 [5:56:45<30:59, 59.98s/it]   Evaluating:  91%|█████████▏| 314/344 [5:57:57<30:58, 61.94s/it]Evaluating:  92%|█████████▏| 315/344 [5:59:27<32:23, 67.01s/it]Evaluating:  92%|█████████▏| 316/344 [5:59:56<27:39, 59.26s/it]Evaluating:  92%|█████████▏| 317/344 [6:04:43<50:10, 111.48s/it]Evaluating:  93%|█████████▎| 320/344 [6:05:53<27:07, 67.80s/it] Exception raised in Job[314]: TimeoutError()
+LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  94%|█████████▎| 322/344 [6:07:31<22:37, 61.70s/it]Exception raised in Job[318]: TimeoutError()
+Evaluating:  94%|█████████▍| 324/344 [6:09:10<19:17, 57.89s/it]Evaluating:  94%|█████████▍| 325/344 [6:10:15<18:44, 59.18s/it]LLM returned 1 generations instead of requested 3. Proceeding with 1 generations.
+Evaluating:  95%|█████████▍| 326/344 [6:13:10<24:58, 83.23s/it]Evaluating:  95%|█████████▌| 327/344 [6:14:39<23:55, 84.45s/it]Exception raised in Job[322]: TimeoutError()
+Evaluating:  96%|█████████▌| 329/344 [6:16:51<19:20, 77.35s/it]Evaluating:  96%|█████████▌| 330/344 [6:18:50<20:08, 86.33s/it]Exception raised in Job[326]: TimeoutError()
+Evaluating:  97%|█████████▋| 333/344 [6:20:42<11:29, 62.67s/it]Exception raised in Job[330]: TimeoutError()
+Evaluating:  97%|█████████▋| 335/344 [6:22:41<09:13, 61.54s/it]Evaluating:  98%|█████████▊| 337/344 [6:23:38<05:59, 51.38s/it]Evaluating:  98%|█████████▊| 338/344 [6:25:56<06:42, 67.01s/it]Exception raised in Job[334]: TimeoutError()
+Evaluating:  99%|█████████▊| 339/344 [6:27:05<05:37, 67.53s/it]Evaluating:  99%|█████████▉| 340/344 [6:28:03<04:21, 65.41s/it]Evaluating:  99%|█████████▉| 341/344 [6:28:35<02:51, 57.20s/it]Evaluating:  99%|█████████▉| 342/344 [6:30:12<02:15, 67.55s/it]Exception raised in Job[338]: TimeoutError()
+Evaluating: 100%|█████████▉| 343/344 [6:30:49<00:59, 59.06s/it]Evaluating: 100%|██████████| 344/344 [6:31:20<00:00, 51.22s/it]Evaluating: 100%|██████████| 344/344 [6:31:20<00:00, 68.26s/it]
+
+============================================
+RAGAS EVALUATION RESULTS
+============================================
+
+Overall (n=86)
+  faithfulness           0.924
+  answer_relevancy       0.543
+  context_precision      0.744
+  context_recall         0.742
+
+Language: en (n=43)
+  faithfulness           0.902
+  answer_relevancy       0.694
+  context_precision      0.658
+  context_recall         0.723
+
+Language: vi (n=43)
+  faithfulness           0.946
+  answer_relevancy       0.388
+  context_precision      1.000
+  context_recall         0.761
+
+Wrote RAGAS results to data/evaluation/ragas_results.json

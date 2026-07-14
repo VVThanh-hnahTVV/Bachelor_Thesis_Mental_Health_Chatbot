@@ -1,0 +1,66 @@
+{
+  "summary": {
+    "num_samples": 4,
+    "judge_model": "gpt-4o-mini",
+    "overall": {
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.5964582460713858,
+      "context_precision": 0.9888888888713333,
+      "context_recall": 0.7904761904761906
+    },
+    "by_language": {
+      "en": {
+        "n": 2,
+        "metrics": {
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.8420723332193915,
+          "context_precision": 0.9999999999833333,
+          "context_recall": 0.6892857142857143
+        }
+      },
+      "vi": {
+        "n": 2,
+        "metrics": {
+          "faithfulness": 1.0,
+          "answer_relevancy": 0.35084415892337995,
+          "context_precision": 0.9666666666473333,
+          "context_recall": 0.8916666666666666
+        }
+      }
+    }
+  },
+  "per_record": [
+    {
+      "id": "q0001",
+      "language": "vi",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.432101799549588,
+      "context_precision": NaN,
+      "context_recall": 0.8333333333333334
+    },
+    {
+      "id": "q0002",
+      "language": "en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8843139014730831,
+      "context_precision": 0.9999999999833333,
+      "context_recall": 0.42857142857142855
+    },
+    {
+      "id": "q0003",
+      "language": "vi",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.2695865182971719,
+      "context_precision": 0.9666666666473333,
+      "context_recall": 0.95
+    },
+    {
+      "id": "q0004",
+      "language": "en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7998307649656998,
+      "context_precision": 0.9999999999833333,
+      "context_recall": 0.95
+    }
+  ]
+}

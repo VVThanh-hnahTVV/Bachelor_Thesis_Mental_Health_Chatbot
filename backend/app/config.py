@@ -174,6 +174,19 @@ class Settings(BaseSettings):
         ge=1,
         validation_alias=AliasChoices("EPISODIC_MEMORY_MIN_TURNS"),
     )
+    # Idle checkpoint: a session with no new messages for this long is folded
+    # into episodic memory early. The session stays open — the user keeps the
+    # full short-term context when they resume. 0 disables the sweeper.
+    session_idle_finalize_minutes: int = Field(
+        default=30,
+        ge=0,
+        validation_alias=AliasChoices("SESSION_IDLE_FINALIZE_MINUTES"),
+    )
+    session_idle_sweep_interval_seconds: int = Field(
+        default=300,
+        ge=30,
+        validation_alias=AliasChoices("SESSION_IDLE_SWEEP_INTERVAL_SECONDS"),
+    )
     handoff_confidence_threshold: float = Field(
         default=0.85,
         validation_alias=AliasChoices("HANDOFF_CONFIDENCE_THRESHOLD"),

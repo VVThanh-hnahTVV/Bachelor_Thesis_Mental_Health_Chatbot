@@ -1,0 +1,66 @@
+{
+  "summary": {
+    "num_samples": 4,
+    "judge_model": "gpt-4o-mini",
+    "overall": {
+      "faithfulness": NaN,
+      "answer_relevancy": 0.5290520539974206,
+      "context_precision": NaN,
+      "context_recall": 0.7645833333333334
+    },
+    "by_language": {
+      "en": {
+        "n": 2,
+        "metrics": {
+          "faithfulness": NaN,
+          "answer_relevancy": 0.8420532082200471,
+          "context_precision": NaN,
+          "context_recall": 0.6625
+        }
+      },
+      "vi": {
+        "n": 2,
+        "metrics": {
+          "faithfulness": NaN,
+          "answer_relevancy": 0.216050899774794,
+          "context_precision": NaN,
+          "context_recall": 0.8666666666666667
+        }
+      }
+    }
+  },
+  "per_record": [
+    {
+      "id": "q0001",
+      "language": "vi",
+      "faithfulness": NaN,
+      "answer_relevancy": 0.432101799549588,
+      "context_precision": NaN,
+      "context_recall": 0.8333333333333334
+    },
+    {
+      "id": "q0002",
+      "language": "en",
+      "faithfulness": NaN,
+      "answer_relevancy": 0.8842916687169542,
+      "context_precision": NaN,
+      "context_recall": 0.375
+    },
+    {
+      "id": "q0003",
+      "language": "vi",
+      "faithfulness": NaN,
+      "answer_relevancy": 0.0,
+      "context_precision": NaN,
+      "context_recall": 0.9
+    },
+    {
+      "id": "q0004",
+      "language": "en",
+      "faithfulness": NaN,
+      "answer_relevancy": 0.7998147477231402,
+      "context_precision": NaN,
+      "context_recall": 0.95
+    }
+  ]
+}
